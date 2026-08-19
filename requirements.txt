@@ -21,7 +21,7 @@ python-docx>=1.1.0
 
 # PDF text extraction and output support
 pypdf>=5.0.0
-reportlab>=4.0.0
+reportlab>=5.0.0
 
 # LiteLLM gateway (100+ providers, CLI-only) - OPTIONAL
 # Enables --provider litellm. Lazy-imported, so not required unless used.
