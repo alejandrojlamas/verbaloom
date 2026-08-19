@@ -25,11 +25,17 @@ class PathValidator:
             raise ValueError("File path is empty or invalid")
         raw_path = Path(raw).expanduser()
         resolved_roots = [Path(root).expanduser().resolve() for root in roots]
-        candidates = (
-            [raw_path.resolve()]
-            if raw_path.is_absolute()
-            else [(root / raw_path).resolve() for root in resolved_roots]
-        )
+        if raw_path.is_absolute():
+            candidates = [raw_path.resolve()]
+        else:
+            # Checkpoints historically store both a basename (relative to a
+            # managed root) and an application-relative path such as
+            # ``data/uploads/<job>/<file>``. Resolve both representations, then
+            # apply the same containment check below. A traversal or unrelated
+            # cwd-relative path still cannot escape an approved root.
+            candidates = [raw_path.resolve()]
+            candidates.extend((root / raw_path).resolve() for root in resolved_roots)
+            candidates = list(dict.fromkeys(candidates))
 
         inside_managed_storage = False
         for candidate in candidates:

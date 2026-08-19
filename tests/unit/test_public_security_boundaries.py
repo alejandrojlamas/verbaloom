@@ -169,6 +169,24 @@ def test_managed_file_resolution_rejects_sibling_prefix_and_arbitrary_absolute(t
         PathValidator.resolve_managed_file(link, [managed])
 
 
+def test_managed_file_resolution_accepts_application_relative_checkpoint_path(
+    tmp_path,
+    monkeypatch,
+):
+    managed = tmp_path / "data" / "uploads" / "trans_123"
+    managed.mkdir(parents=True)
+    source = managed / "book.epub"
+    source.write_text("epub", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    resolved = PathValidator.resolve_managed_file(
+        "data/uploads/trans_123/book.epub",
+        [managed],
+    )
+
+    assert resolved == source.resolve()
+
+
 @pytest.mark.parametrize("filename", [".", "..", "chapter\n.txt", "chapter\x00.txt"])
 def test_output_filename_rejects_dot_segments_and_control_characters(filename):
     valid, _error = PathValidator.validate_filename(filename)

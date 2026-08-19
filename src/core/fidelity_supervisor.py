@@ -824,6 +824,7 @@ def _source_language_residual_issue(
     )
     stylized_sound_effects: list[tuple[str, float]] = []
     ambiguous_short_phrases: list[tuple[str, float]] = []
+    ambiguous_vocatives: list[tuple[str, float]] = []
     bibliographic_metadata: list[tuple[str, float]] = []
     if copied_phrases:
         bibliographic_metadata = [
@@ -848,6 +849,20 @@ def _source_language_residual_issue(
             item
             for item in copied_phrases
             if not _is_stylized_nonlexical_sound_effect(item[0])
+        ]
+        ambiguous_vocatives = [
+            item
+            for item in copied_phrases
+            if _is_ambiguous_vocative_with_target_function_tail(
+                item[0],
+                source_text=analysis_source,
+                target_key=target_key,
+            )
+        ]
+        copied_phrases = [
+            item
+            for item in copied_phrases
+            if item not in ambiguous_vocatives
         ]
         ambiguous_short_phrases = [
             item
@@ -912,6 +927,7 @@ def _source_language_residual_issue(
             target_language,
             stylized_sound_effects
             + ambiguous_short_phrases
+            + ambiguous_vocatives
             + bibliographic_metadata,
         )
 
@@ -951,6 +967,7 @@ def _source_language_residual_issue(
             target_language,
             stylized_sound_effects
             + ambiguous_short_phrases
+            + ambiguous_vocatives
             + bibliographic_metadata,
         )
     # A single same-script token is not enough evidence by itself: loanwords,
@@ -971,6 +988,7 @@ def _source_language_residual_issue(
             target_language,
             stylized_sound_effects
             + ambiguous_short_phrases
+            + ambiguous_vocatives
             + bibliographic_metadata,
         )
     examples = ", ".join(
@@ -1416,6 +1434,12 @@ def _copied_source_language_phrases(
                 continue
             if _is_target_language_function_word_sequence(folded, target_key):
                 continue
+            if _is_preserved_term_with_target_function_words(
+                folded,
+                target_key=target_key,
+                preserved=preserved,
+            ):
+                continue
             if _is_intentional_source_language_literal(source_segment, phrase):
                 continue
             if _is_multiword_proper_name(
@@ -1534,6 +1558,75 @@ def _is_target_language_function_word_sequence(
     else:
         return False
     return all(marker.fullmatch(token) is not None for token in folded_tokens)
+
+
+def _is_preserved_term_with_target_function_words(
+    folded_tokens: list[str],
+    *,
+    target_key: str,
+    preserved: set[str],
+) -> bool:
+    """Honor canonical glossary terms inside target-language expressions.
+
+    A phrase such as ``<canonical name>, no`` is copied from the source only
+    because the name must remain stable and the particle is valid in both
+    languages. Requiring every token to be either explicitly preserved or a
+    target-language function word keeps this exception narrower than a generic
+    proper-name heuristic.
+    """
+    if not folded_tokens or not preserved:
+        return False
+    has_preserved_term = False
+    for token in folded_tokens:
+        if token in preserved:
+            has_preserved_term = True
+            continue
+        if _is_target_language_function_word_sequence([token], target_key):
+            continue
+        return False
+    return has_preserved_term
+
+
+def _is_ambiguous_vocative_with_target_function_tail(
+    phrase: str,
+    *,
+    source_text: str,
+    target_key: str,
+) -> bool:
+    """Recognize a short vocative whose remaining words fit the target.
+
+    Without a glossary, a capitalized vocative is not enough evidence to call
+    the phrase a proper name. It is also not enough evidence to stop a whole
+    book. These cases go to the contextual auditor as warnings. The comma
+    boundary and target-language tail deliberately exclude ordinary residuals
+    such as ``No problem`` and longer copied clauses.
+    """
+    tokens = _ordered_surface_tokens(phrase)
+    if not 2 <= len(tokens) <= 4:
+        return False
+    for split_at in range(1, len(tokens)):
+        vocative = tokens[:split_at]
+        tail = [token.casefold() for token in tokens[split_at:]]
+        if not all(token[:1].isupper() for token in vocative):
+            continue
+        if _is_target_language_function_word_sequence(
+            [token.casefold() for token in vocative],
+            target_key,
+        ):
+            continue
+        if not _is_target_language_function_word_sequence(tail, target_key):
+            continue
+        head_pattern = r"[^\w]+".join(re.escape(token) for token in vocative)
+        tail_pattern = r"[^\w]+".join(
+            re.escape(token) for token in tokens[split_at:]
+        )
+        if re.search(
+            rf"(?<!\w){head_pattern}\s*,\s*{tail_pattern}(?!\w)",
+            source_text or "",
+            flags=re.IGNORECASE,
+        ):
+            return True
+    return False
 
 
 _DISTINCT_TARGET_LANGUAGE_MARKERS = {

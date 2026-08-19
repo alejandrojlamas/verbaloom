@@ -1026,6 +1026,56 @@ def test_target_language_gate_allows_shared_repeated_function_word():
     assert "source_language_residual" not in {item.code for item in decision.rejections}
 
 
+def test_target_language_gate_honors_canonical_name_with_shared_dialogue_particle():
+    source = (
+        "But I said, ‘Circe, no! What decent man could bear to taste his food "
+        "before he saw his men with his own eyes?’"
+    )
+    candidate = (
+        "Pero dije: «¡Circe, no! ¿Qué hombre decente soportaría probar la comida "
+        "antes de ver a sus hombres con sus propios ojos?»"
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=34,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"glossary_terms": {"Circe": "Circe"}},
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections + decision.warnings
+    }
+
+
+def test_target_language_gate_warns_instead_of_rejecting_ambiguous_vocative():
+    source = (
+        "But I said, ‘Circe, no! What decent man could bear to taste his food "
+        "before he saw his men with his own eyes?’"
+    )
+    candidate = (
+        "Pero dije: «¡Circe, no! ¿Qué hombre decente soportaría probar la comida "
+        "antes de ver a sus hombres con sus propios ojos?»"
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=34,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections
+    }
+    assert "source_language_residual" in {item.code for item in decision.warnings}
+
+
 def test_target_language_gate_allows_multiword_german_proper_names():
     source = (
         "Das Buch erschien bei Vito von Eichhorn GmbH und nennt Die Andere Bibliothek."
