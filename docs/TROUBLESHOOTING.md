@@ -275,7 +275,7 @@ block. It is never allowed to redistribute prose across neighboring blocks.
 
 **Solutions**:
 1. Check browser console for WebSocket errors
-2. Verify `HOST=127.0.0.1` or `HOST=0.0.0.0` in `.env`
+2. Verify `HOST=127.0.0.1` in `.env`; non-loopback binds require the explicit documented opt-in and an authenticated proxy
 3. Check firewall allows WebSocket connections
 4. Try a different browser
 5. Disable proxy/VPN temporarily

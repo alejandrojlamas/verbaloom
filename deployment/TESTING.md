@@ -181,7 +181,7 @@ docker-compose logs
    ```bash
    docker-compose ps
    ```
-   Should show: `0.0.0.0:5000->5000/tcp`
+   Should show: `127.0.0.1:5000->5000/tcp`
 
 ### Cannot Access Web Interface
 
@@ -194,7 +194,6 @@ docker-compose logs
 
 **Try localhost alternatives:**
 - http://127.0.0.1:5000
-- http://0.0.0.0:5000 (may not work on Windows)
 
 ### Docker Daemon Not Running
 

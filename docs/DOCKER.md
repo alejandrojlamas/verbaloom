@@ -14,7 +14,7 @@ docker pull ghcr.io/hydropix/translatebookswithllms:latest
 
 ```bash
 docker run -d \
-  -p 5000:5000 \
+  -p 127.0.0.1:5000:5000 \
   -v $(pwd)/translated_files:/app/translated_files \
   -v $(pwd)/logs:/app/logs \
   -e API_ENDPOINT=http://host.docker.internal:11434/api/generate \
@@ -60,7 +60,7 @@ services:
   translate-book:
     image: ghcr.io/hydropix/translatebookswithllms:latest
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - ./translated_files:/app/translated_files
       - ./logs:/app/logs
@@ -93,7 +93,7 @@ services:
   translate-book:
     image: ghcr.io/hydropix/translatebookswithllms:latest
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     environment:
       - API_ENDPOINT=http://ollama-server.local:11434/api/generate
       - LLM_PROVIDER=ollama
@@ -156,7 +156,7 @@ chmod 755 translated_files logs data
 
 ```bash
 docker run -d \
-  -p 5000:5000 \
+  -p 127.0.0.1:5000:5000 \
   -e API_ENDPOINT=http://host.docker.internal:11434/api/generate \
   -e DEFAULT_MODEL=qwen3:14b \
   ghcr.io/hydropix/translatebookswithllms:latest
@@ -180,7 +180,7 @@ services:
   translate-book:
     image: ghcr.io/hydropix/translatebookswithllms:latest
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     environment:
       - API_ENDPOINT=http://ollama:11434/api/generate
       - DEFAULT_MODEL=qwen3:14b
@@ -197,7 +197,7 @@ volumes:
 
 ```bash
 docker run -d \
-  -p 5000:5000 \
+  -p 127.0.0.1:5000:5000 \
   -e LLM_PROVIDER=gemini \
   -e GEMINI_API_KEY=your_api_key_here \
   -e DEFAULT_MODEL=gemini-2.0-flash \
@@ -208,7 +208,7 @@ docker run -d \
 
 ```bash
 docker run -d \
-  -p 5000:5000 \
+  -p 127.0.0.1:5000:5000 \
   -e LLM_PROVIDER=openai \
   -e OPENAI_API_KEY=your_api_key_here \
   -e API_ENDPOINT=https://api.openai.com/v1/chat/completions \
@@ -273,13 +273,13 @@ cd TranslateBookWithLLM
 docker build -f deployment/Dockerfile -t my-custom-translator .
 
 # Run your custom image
-docker run -d -p 5000:5000 my-custom-translator
+docker run -d -p 127.0.0.1:5000:5000 my-custom-translator
 ```
 
 ## Security Considerations
 
 - **API Keys**: Never commit API keys to `.env` files in version control
-- **Network**: Use Docker networks to isolate containers
+- **Network**: Keep the host port bound to `127.0.0.1`; use an authenticated reverse proxy for intentional remote access
 - **Volumes**: Mount volumes with minimal necessary permissions
 - **Updates**: Regularly update to the latest image version for security patches
 

@@ -8,6 +8,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!/deployment/.env.docker.example
 /venv
 build_installer.bat
 build/dist/
