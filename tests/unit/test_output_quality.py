@@ -102,7 +102,7 @@ def test_output_quality_does_not_treat_epub_chapter_numbers_as_pages(tmp_path):
         zf.writestr(
             "chapter.xhtml",
             """<html xmlns="http://www.w3.org/1999/xhtml"><body>
-<h2 class="tbl-section-marker">12</h2><p>Texto del capítulo.</p>
+<h2 class="verbaloom-section-marker">12</h2><p>Texto del capítulo.</p>
 <p>37</p><p>Texto posterior.</p><p>1959</p>
 </body></html>""",
         )

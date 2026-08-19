@@ -7,11 +7,11 @@ This directory contains all build-related files for creating standalone executab
 ```
 build/
 ├── windows/               # Windows build files
-│   ├── TranslateBook.spec    # PyInstaller spec for Windows
+│   ├── VerbaLoom.spec    # PyInstaller spec for Windows
 │   ├── build_exe.bat         # Windows build script
 │   └── install_chatterbox.bat # Chatterbox TTS installer
 ├── macos/                 # macOS build files
-│   ├── TranslateBook-macOS.spec # PyInstaller spec for macOS
+│   ├── VerbaLoom-macOS.spec # PyInstaller spec for macOS
 │   └── build_macos.sh           # macOS build script
 └── README.md              # This file
 ```
@@ -25,7 +25,7 @@ cd build/windows
 build_exe.bat
 ```
 
-The executable will be created at: `../../dist/TranslateBook.exe`
+The executable will be created at: `../../dist/VerbaLoom.exe`
 
 ### macOS
 
@@ -34,13 +34,13 @@ cd build/macos
 ./build_macos.sh
 ```
 
-The executable will be created at: `../../dist/TranslateBook`
+The executable will be created at: `../../dist/VerbaLoom`
 
 ## GitHub Workflows
 
 The GitHub Actions workflows automatically use these files:
-- [.github/workflows/build-windows.yml](../../.github/workflows/build-windows.yml)
-- [.github/workflows/build-macos.yml](../../.github/workflows/build-macos.yml)
+- [.github/workflows/build-windows.yml](../.github/workflows/build-windows.yml)
+- [.github/workflows/build-macos.yml](../.github/workflows/build-macos.yml)
 
 ## Output
 

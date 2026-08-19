@@ -74,7 +74,7 @@ def create_structured_audiobook_epub(
     source_epub: str | Path,
     output_epub: str | Path,
     *,
-    title_suffix: str = "Audiolibro",
+    title_suffix: str = "Audiobook",
 ) -> StructuredAudiobookEpubReport:
     """Clone an EPUB while proving that its visual publication contract survives.
 

@@ -13,7 +13,8 @@ import { StatusManager } from '../utils/status-manager.js';
 import { QuickTestManager } from '../translation/quick-test.js?v=20260628-transform-glossary';
 import { t } from '../i18n/i18n.js';
 
-const FILE_QUEUE_STORAGE_KEY = 'tbl_file_queue';
+const FILE_QUEUE_STORAGE_KEY = 'verbaloom_file_queue';
+const LEGACY_FILE_QUEUE_STORAGE_KEY = 'tbl_file_queue';
 const OUTPUT_FORMATS = new Set(['auto', 'txt', 'docx', 'pdf', 'epub']);
 
 // Track the last uploaded file for language synchronization
@@ -545,7 +546,14 @@ export const FileUpload = {
      */
     restoreFileQueueSync() {
         try {
-            const stored = localStorage.getItem(FILE_QUEUE_STORAGE_KEY);
+            let stored = localStorage.getItem(FILE_QUEUE_STORAGE_KEY);
+            if (!stored) {
+                stored = localStorage.getItem(LEGACY_FILE_QUEUE_STORAGE_KEY);
+                if (stored) {
+                    localStorage.setItem(FILE_QUEUE_STORAGE_KEY, stored);
+                    localStorage.removeItem(LEGACY_FILE_QUEUE_STORAGE_KEY);
+                }
+            }
             if (!stored) return;
 
             const savedFiles = JSON.parse(stored);
@@ -646,7 +654,14 @@ export const FileUpload = {
      */
     async restoreFileQueue() {
         try {
-            const stored = localStorage.getItem(FILE_QUEUE_STORAGE_KEY);
+            let stored = localStorage.getItem(FILE_QUEUE_STORAGE_KEY);
+            if (!stored) {
+                stored = localStorage.getItem(LEGACY_FILE_QUEUE_STORAGE_KEY);
+                if (stored) {
+                    localStorage.setItem(FILE_QUEUE_STORAGE_KEY, stored);
+                    localStorage.removeItem(LEGACY_FILE_QUEUE_STORAGE_KEY);
+                }
+            }
             if (!stored) return;
 
             const savedFiles = JSON.parse(stored);

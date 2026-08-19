@@ -16,7 +16,8 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { StateManager } from '../core/state-manager.js';
 import { t } from '../i18n/i18n.js';
 
-const STORAGE_KEY = 'tbl_pricing_overrides_v1';
+const STORAGE_KEY = 'verbaloom_pricing_overrides_v1';
+const LEGACY_STORAGE_KEY = 'tbl_pricing_overrides_v1';
 
 const LOCAL_PROVIDERS = new Set(['ollama']);
 const API_PRICING_PROVIDERS = new Set(['openrouter', 'poe']);
@@ -57,7 +58,14 @@ function invalidateCacheFor(provider, model) {
 
 function loadOverrides() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        let raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+            raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+            if (raw) {
+                localStorage.setItem(STORAGE_KEY, raw);
+                localStorage.removeItem(LEGACY_STORAGE_KEY);
+            }
+        }
         if (!raw) return {};
         const parsed = JSON.parse(raw);
         return (parsed && typeof parsed === 'object') ? parsed : {};

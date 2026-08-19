@@ -1,8 +1,8 @@
 ---
-name: translate-books-with-llms
+name: verbaloom
 description: >-
   Translate a full-length book, document, or subtitle file (EPUB, DOCX, SRT, or
-  TXT) into another language by running the official TranslateBooksWithLLMs CLI
+  TXT) into another language by running the official VerbaLoom CLI
   (translate.py). Preserves chapter structure, inline formatting, and SRT
   timecodes; supports local (Ollama) or cloud LLM providers, per-book
   glossaries, an optional literary refinement pass, and resume-on-interrupt.
@@ -11,12 +11,15 @@ description: >-
   single passage into a chat window.
 ---
 
-# TranslateBooksWithLLMs — official skill
+# VerbaLoom skill
 
-This is the official skill for **TranslateBooksWithLLMs (TBL)**, created and
-maintained by **@hydropix** and licensed under **AGPL-3.0**.
+This skill runs the VerbaLoom derivative maintained by **@alejandrojlamas**.
+VerbaLoom is based on **hydropix/TranslateBooksWithLLMs** and remains licensed
+under **AGPL-3.0**.
 
-Source: https://github.com/hydropix/TranslateBooksWithLLMs
+Current source: https://github.com/alejandrojlamas/verbaloom
+
+Historical upstream: https://github.com/hydropix/TranslateBooksWithLLMs
 
 Unlike a "proxy" skill that re-describes the workflow in prose, this skill runs
 the project's **real engine** (`translate.py`). You therefore get the actual
@@ -37,8 +40,8 @@ or for editing the upstream Python project itself.
 Requires Python 3.8+ and Git. Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/hydropix/TranslateBooksWithLLMs.git
-cd TranslateBooksWithLLMs
+git clone https://github.com/alejandrojlamas/verbaloom.git
+cd verbaloom
 python -m venv venv
 # Linux/macOS:
 source venv/bin/activate
@@ -154,8 +157,9 @@ input, with chapter structure, inline formatting, and SRT timecodes preserved.
 
 ## Attribution and license
 
-TranslateBooksWithLLMs is authored and maintained by **@hydropix** and licensed
-under **AGPL-3.0**. If you run this skill (or the underlying tool) as a network
-service, AGPL-3.0 §13 requires that you offer your users the corresponding
-source of the version you are running, and that you preserve this attribution
-and license.
+VerbaLoom is derived from
+**[hydropix/TranslateBooksWithLLMs](https://github.com/hydropix/TranslateBooksWithLLMs)**
+and is licensed under **AGPL-3.0**. If you run this skill (or the underlying
+tool) as a network service, AGPL-3.0 §13 requires that you offer your users the
+corresponding source of the version you are running, and that you preserve this
+attribution and license.

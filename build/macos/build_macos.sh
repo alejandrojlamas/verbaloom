@@ -1,11 +1,11 @@
 #!/bin/bash
 # ============================================
-# TranslateBook - Build macOS Executable
+# VerbaLoom - Build macOS Executable
 # ============================================
 
 echo ""
 echo "============================================"
-echo "TranslateBook - Building macOS Executable"
+echo "VerbaLoom - Building macOS Executable"
 echo "============================================"
 echo ""
 
@@ -33,14 +33,14 @@ echo "[OK] PyInstaller ready"
 
 # Clean previous builds
 echo "[3/4] Cleaning previous builds..."
-rm -rf ../../dist ../dist ../TranslateBookWithLLM
+rm -rf ../../dist ../dist ../VerbaLoom
 echo "[OK] Cleaned"
 
 # Build executable
-echo "[4/4] Building TranslateBook..."
+echo "[4/4] Building VerbaLoom..."
 echo "This may take 5-10 minutes..."
 echo ""
-pyinstaller --clean TranslateBook-macOS.spec
+pyinstaller --clean VerbaLoom-macOS.spec
 
 if [ $? -ne 0 ]; then
     echo ""
@@ -53,11 +53,11 @@ echo "============================================"
 echo "Build Complete!"
 echo "============================================"
 echo ""
-echo "Executable location: ../../dist/TranslateBook"
+echo "Executable location: ../../dist/VerbaLoom"
 
 # Get file size
-if [ -f "../../dist/TranslateBook" ]; then
-    SIZE=$(ls -lh ../../dist/TranslateBook | awk '{print $5}')
+if [ -f "../../dist/VerbaLoom" ]; then
+    SIZE=$(ls -lh ../../dist/VerbaLoom | awk '{print $5}')
     echo "File size: $SIZE"
 fi
 
@@ -66,5 +66,5 @@ echo "You can now distribute this executable"
 echo "Users need to have Ollama installed separately"
 echo ""
 echo "To make it executable on another Mac:"
-echo "  chmod +x TranslateBook"
+echo "  chmod +x VerbaLoom"
 echo ""

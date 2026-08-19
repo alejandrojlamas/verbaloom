@@ -12,7 +12,7 @@ from contextvars import ContextVar, Token
 from typing import Any
 
 
-_USAGE_CONTEXT: ContextVar[dict[str, Any]] = ContextVar("tbl_usage_context", default={})
+_USAGE_CONTEXT: ContextVar[dict[str, Any]] = ContextVar("verbaloom_usage_context", default={})
 
 
 def get_usage_context() -> dict[str, Any]:

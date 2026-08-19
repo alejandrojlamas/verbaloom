@@ -28,7 +28,7 @@ Translating a full book typically requires hundreds (sometimes thousands) of API
 
 ## Quick start
 
-You can supply multiple keys via **any** of the three configuration channels TBL supports. All accept the same comma-separated format.
+You can supply multiple keys via **any** of the three configuration channels VerbaLoom supports. All accept the same comma-separated format.
 
 ### 1. Via `.env` file (recommended for repeated runs)
 
@@ -160,7 +160,7 @@ DEEPSEEK_API_KEY=key1,key2,key3   # Triples your effective RPM ceiling
 
 - **It does not parallelize requests.** Translation is still sequential — the keys are used one at a time, in turn. Parallel dispatch is a separate feature.
 - **It does not pre-validate keys.** A revoked or invalid key (HTTP 401) stays in the pool and will keep generating 401 errors until you remove it. Only HTTP 429 is treated as transient.
-- **It does not persist throttle state across restarts.** If you restart TBL mid-translation, all keys are considered fresh. Most rate-limit windows are short (1 minute for RPM), so this is rarely a problem in practice. Daily quotas (RPD) reset at midnight UTC anyway.
+- **It does not persist throttle state across restarts.** If you restart VerbaLoom mid-translation, all keys are considered fresh. Most rate-limit windows are short (1 minute for RPM), so this is rarely a problem in practice. Daily quotas (RPD) reset at midnight UTC anyway.
 
 ### When rotation is skipped
 

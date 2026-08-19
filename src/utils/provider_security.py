@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 from urllib.parse import urlparse
 
+from src.utils.branding import env_value
+
 
 # A configurable endpoint is not automatically trusted just because it was
 # loaded at startup. Otherwise changing OPENAI_API_ENDPOINT in ``.env`` and
 # restarting would silently turn an arbitrary host into a credential sink.
-# Additional origins require the explicit TBL_TRUSTED_KEY_ENDPOINTS opt-in.
+# Additional origins require the explicit VERBALOOM_TRUSTED_KEY_ENDPOINTS opt-in.
 BUILTIN_TRUSTED_KEY_ENDPOINT_ORIGINS = {
     "https://api.openai.com",
     "https://integrate.api.nvidia.com",
@@ -37,7 +39,7 @@ def endpoint_origin(endpoint: str | None) -> str:
 
 def trusted_key_endpoint_origins(raw: str | None = None) -> set[str]:
     """Parse the explicit custom-endpoint credential allowlist."""
-    value = os.getenv("TBL_TRUSTED_KEY_ENDPOINTS", "") if raw is None else raw
+    value = env_value("TRUSTED_KEY_ENDPOINTS", "") if raw is None else raw
     return {
         origin
         for item in str(value or "").split(",")
@@ -77,7 +79,7 @@ def resolve_api_key_for_endpoint(
 
     An actual key in the request is considered explicit. Empty values use the
     environment only for the configured provider endpoint (or an origin listed
-    in ``TBL_TRUSTED_KEY_ENDPOINTS``). ``__USE_ENV__`` is rejected for any
+    in ``VERBALOOM_TRUSTED_KEY_ENDPOINTS``). ``__USE_ENV__`` is rejected for any
     other custom origin so the caller receives a visible error instead of a
     silent credential downgrade.
     """
@@ -93,7 +95,7 @@ def resolve_api_key_for_endpoint(
         raise EndpointCredentialError(
             "Saved API keys cannot be used with an untrusted custom endpoint. "
             "Provide the key explicitly for this request or add the endpoint "
-            "origin to TBL_TRUSTED_KEY_ENDPOINTS."
+            "origin to VERBALOOM_TRUSTED_KEY_ENDPOINTS."
         )
     return "", "none"
 

@@ -96,7 +96,7 @@
   "notifications_test": "Envoyer une notification de test",
   "notifications_test_sent": "Notification de test {{event}} envoyée avec succès.",
   "notifications_test_failed": "Échec du test : {{error}}",
-  "notifications_intro": "Recevez une alerte sur votre téléphone, dans un canal Discord ou sur n'importe quel point d'accès HTTP lorsqu'une traduction atteint un état final. Utile pour les tâches longues avec des modèles locaux. Compatible avec <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong> ou tout webhook personnalisé. Consultez <a href=\"https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a> pour la référence complète.",
+  "notifications_intro": "Recevez une alerte sur votre téléphone, dans un canal Discord ou sur n'importe quel point d'accès HTTP lorsqu'une traduction atteint un état final. Utile pour les tâches longues avec des modèles locaux. Compatible avec <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong> ou tout webhook personnalisé. Consultez <a href=\"https://github.com/alejandrojlamas/verbaloom/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a> pour la référence complète.",
   "notifications_presets_label": "Préréglages rapides",
   "notifications_presets_help": "Choisissez un service pour pré-remplir l'URL et la charge utile, puis modifiez les valeurs selon votre compte.",
   "notifications_preset_reset": "Réinitialiser (désactiver)",

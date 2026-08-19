@@ -6,7 +6,6 @@ GitHub release of the repository so the UI can surface an update banner.
 Result is cached in memory to avoid hammering the GitHub API.
 """
 import logging
-import os
 import re
 import threading
 import time
@@ -15,11 +14,12 @@ from typing import Optional, Tuple
 import requests
 
 from src import __version__
+from src.utils.branding import REPOSITORY_NAME, REPOSITORY_OWNER, env_value
 
 logger = logging.getLogger(__name__)
 
-GITHUB_REPO_OWNER = os.getenv("TBL_UPDATE_REPO_OWNER", "alejandrojlamas")
-GITHUB_REPO_NAME = os.getenv("TBL_UPDATE_REPO_NAME", "Traductor-y-estilizador-de-libros")
+GITHUB_REPO_OWNER = str(env_value("UPDATE_REPO_OWNER", REPOSITORY_OWNER))
+GITHUB_REPO_NAME = str(env_value("UPDATE_REPO_NAME", REPOSITORY_NAME))
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases/latest"
 GITHUB_TAGS_API = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/tags"
 

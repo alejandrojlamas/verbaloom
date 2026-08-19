@@ -27,9 +27,9 @@ class MockLLMProvider:
         from src.core.llm.base import LLMResponse
         self.call_count += 1
         marker_pattern = re.compile(
-            r"\[\[\[TBLBLOCK(?P<index>\d{3})\]\]\]"
+            r"\[\[\[VERBALOOMBLOCK(?P<index>\d{3})\]\]\]"
             r"(?P<body>.*?)"
-            r"\[\[\[/TBLBLOCK(?P=index)\]\]\]",
+            r"\[\[\[/VERBALOOMBLOCK(?P=index)\]\]\]",
             re.DOTALL,
         )
         marked_blocks = list(marker_pattern.finditer(str(prompt or "")))
@@ -50,8 +50,8 @@ class MockLLMProvider:
                 )
                 index = match.group("index")
                 rendered.append(
-                    f"[[[TBLBLOCK{index}]]]\n{translated}\n"
-                    f"[[[/TBLBLOCK{index}]]]"
+                    f"[[[VERBALOOMBLOCK{index}]]]\n{translated}\n"
+                    f"[[[/VERBALOOMBLOCK{index}]]]"
                 )
             content = "\n\n".join(rendered)
         else:

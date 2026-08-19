@@ -1,198 +1,99 @@
-# Validation des corrections Docker
+# Docker validation
 
-## Corrections appliquées
+This checklist validates the VerbaLoom container build, its local-first network
+boundary, and persistent runtime data.
 
-### 1. Dockerfile corrigé
-- ✅ `COPY ../requirements.txt .` → `COPY requirements.txt .`
-- ✅ `COPY . .` remplacé par des copies spécifiques:
-  - `COPY src/ /app/src/`
-  - `COPY translation_api.py /app/`
-  - `COPY translate.py /app/`
-- ✅ Version Python mise à jour: `3.9-slim` → `3.11-slim`
+## Validated build corrections
 
-### 2. .dockerignore amélioré
-- ✅ Ajout de plus d'exclusions (venv/, logs/, data/, tests/)
-- ✅ Exclusion des fichiers de déploiement (deployment/, Dockerfile, etc.)
-- ✅ Exclusion du dossier plan/ (selon CLAUDE.md)
+- `requirements.txt`, `translation_api.py`, `translate.py`, and `src/` are
+  copied from the repository build context.
+- The image uses Python 3.11 slim.
+- `.dockerignore` excludes local environments, logs, runtime data, tests,
+  development plans, Git metadata, bytecode, and `.env` files.
 
-## Comment tester
+## Automated validation
 
-### Option 1: Script automatisé (Recommandé)
+On Windows:
 
-**Windows:**
 ```cmd
 cd deployment
 test_docker.bat
 ```
 
-**Linux/macOS:**
+On Linux or macOS:
+
 ```bash
 cd deployment
 chmod +x test_docker.sh
 ./test_docker.sh
 ```
 
-### Option 2: Commandes manuelles
+## Manual validation
 
-1. **Démarrer Docker Desktop**
-   - Windows: Vérifier que l'icône Docker est verte dans la barre des tâches
+1. Start Docker Desktop.
+2. Build and start VerbaLoom:
 
-2. **Build l'image:**
    ```bash
    cd deployment
-   docker-compose build
+   docker compose build
+   docker compose up -d
+   docker compose ps
    ```
 
-   Vous devriez voir:
-   ```
-   [+] Building X.Xs (10/10) FINISHED
-   => [internal] load build definition from Dockerfile
-   => => transferring dockerfile: 1.05kB
-   => [internal] load .dockerignore
-   => [internal] load metadata for docker.io/library/python:3.11-slim
-   => [1/6] FROM docker.io/library/python:3.11-slim
-   => [internal] load build context
-   => [2/6] WORKDIR /app
-   => [3/6] RUN apt-get update && apt-get install -y --no-install-recommends curl
-   => [4/6] COPY requirements.txt .
-   => [5/6] RUN pip install --no-cache-dir -r requirements.txt
-   => [6/6] COPY src/ /app/src/
-   => exporting to image
-   ```
+3. Confirm that the service is healthy and exposed only on loopback:
 
-3. **Démarrer le conteneur:**
    ```bash
-   docker-compose up -d
+   curl --fail http://127.0.0.1:5000/api/health
+   docker compose ps
    ```
 
-4. **Vérifier le statut:**
+4. Open `http://127.0.0.1:5000` in a browser.
+5. Upload a small synthetic text file and verify that a translation starts.
+6. Inspect logs without printing provider credentials:
+
    ```bash
-   docker-compose ps
+   docker compose logs --tail=200 verbaloom
    ```
 
-   Devrait afficher: `Up X seconds (healthy)`
+## Image contents
 
-5. **Tester l'API:**
-   ```bash
-   curl http://localhost:5000/api/health
-   ```
+The image must contain:
 
-   Réponse attendue:
-   ```json
-   {
-     "message": "Translation API is running",
-     "status": "ok",
-     "supported_formats": ["txt", "epub", "srt"],
-     "translate_module": "loaded"
-   }
-   ```
+- `/app/requirements.txt`
+- `/app/src/`
+- `/app/translation_api.py`
+- `/app/translate.py`
 
-6. **Accéder à l'interface web:**
-   Ouvrir: http://localhost:5000
+It must not contain local `.env` files, Git history, tests, runtime data, logs,
+or development plans.
 
-## Vérifications de structure
-
-### Fichiers qui doivent être copiés dans l'image:
-- ✅ `/app/requirements.txt`
-- ✅ `/app/src/` (tous les modules Python, incluant src/prompts/)
-- ✅ `/app/translation_api.py`
-- ✅ `/app/translate.py`
-
-### Fichiers qui NE doivent PAS être copiés:
-- ❌ `deployment/` (fichiers de déploiement)
-- ❌ `tests/` (tests unitaires)
-- ❌ `plan/` (plans de développement)
-- ❌ `.git/` (historique Git)
-- ❌ `__pycache__/` (fichiers Python compilés)
-- ❌ `.env` (configuration locale)
-
-## Commandes utiles après le déploiement
+Inspect the relevant paths with:
 
 ```bash
-# Voir les logs
-docker-compose logs -f
-
-# Redémarrer
-docker-compose restart
-
-# Arrêter
-docker-compose down
-
-# Shell dans le conteneur
-docker-compose exec translatebook bash
-
-# Vérifier la structure des fichiers
-docker-compose exec translatebook ls -la /app/
-docker-compose exec translatebook ls -la /app/src/
-docker-compose exec translatebook ls -la /app/src/prompts/
+docker compose exec verbaloom ls -la /app/
+docker compose exec verbaloom ls -la /app/src/
+docker compose exec verbaloom ls -la /app/src/prompts/
 ```
 
-## Résolution de problèmes
+## Persistence check
 
-### Build échoue avec "no such file or directory"
-- Vérifier que vous êtes dans le dossier `deployment/`
-- Vérifier que `requirements.txt` existe à la racine du projet
-- Vérifier que les dossiers `src/` et `prompts/` existent
-
-### Conteneur redémarre continuellement
 ```bash
-docker-compose logs
-```
-Chercher les erreurs Python ou les imports manquants
-
-### Health check échoue
-Attendre 45 secondes après le démarrage (grace period), puis vérifier:
-```bash
-docker-compose exec translatebook curl http://localhost:5000/api/health
+docker compose down
+docker compose up -d
+docker compose exec verbaloom ls -la /app/data/
 ```
 
-## Tests de validation
+The service should return to a healthy state and retain its checkpoint database
+and job history.
 
-Après le démarrage réussi, testez:
+## Troubleshooting
 
-1. **Health endpoint:** ✅
-   ```bash
-   curl http://localhost:5000/api/health
-   ```
+- For a missing build file, confirm that the command runs from `deployment/`
+  and that the repository root contains `requirements.txt` and `src/`.
+- For a restart loop, inspect `docker compose logs verbaloom`.
+- For an early health-check failure, wait for the configured start period and
+  retry `curl --fail http://127.0.0.1:5000/api/health`.
 
-2. **Interface web:** ✅
-   Ouvrir http://localhost:5000 dans un navigateur
-
-3. **Traduction basique:** ✅
-   - Uploader un petit fichier .txt via l'interface
-   - Vérifier que la traduction démarre
-   - Vérifier les logs: `docker-compose logs -f`
-
-4. **Persistance des données:** ✅
-   ```bash
-   # Arrêter le conteneur
-   docker-compose down
-
-   # Redémarrer
-   docker-compose up -d
-
-   # Vérifier que les données persistent
-   docker-compose exec translatebook ls -la /app/data/
-   ```
-
-## Succès attendu
-
-Si tout fonctionne correctement, vous devriez voir:
-
-```
-✅ Docker image built successfully
-✅ Container started and healthy
-✅ Health endpoint responds with "ok"
-✅ Web interface accessible at http://localhost:5000
-✅ Logs show "LLM TRANSLATION SERVER STARTED"
-```
-
-## Note importante
-
-Les corrections appliquées résolvent les problèmes critiques du Dockerfile:
-- Les chemins de COPY sont maintenant corrects par rapport au contexte de build
-- La structure des fichiers dans l'image est propre et organisée
-- La version Python est mise à jour (3.11 vs 3.9)
-- Le .dockerignore évite de copier des fichiers inutiles
-
-Le package Docker est maintenant **opérationnel** et prêt pour le déploiement.
+Validation is complete only when the image builds, the container is healthy,
+the loopback endpoint responds, the browser UI loads, and runtime data survives
+a container restart.

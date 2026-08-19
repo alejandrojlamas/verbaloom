@@ -83,7 +83,7 @@ export const TextTransformManager = {
         const option = select?.selectedOptions?.[0];
         return {
             value: select?.value || 'modernize',
-            label: option?.dataset?.label || option?.textContent?.trim() || 'Transformar',
+            label: option?.dataset?.label || option?.textContent?.trim() || 'Transform',
             description: option?.dataset?.description || '',
         };
     },

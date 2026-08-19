@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hydropix/TranslateBookWithLLM/schemas/submission.schema.json",
-  "title": "TBL Benchmark Submission",
+  "$id": "https://github.com/alejandrojlamas/verbaloom/blob/main/benchmark/schemas/submission.schema.json",
+  "title": "VerbaLoom Benchmark Submission",
   "type": "object",
   "required": ["schema_version", "submission", "environment", "model", "results"],
   "additionalProperties": false,
@@ -23,10 +23,17 @@
     },
     "environment": {
       "type": "object",
-      "required": ["tbl_version", "prompt_version", "judge_id"],
+      "required": ["prompt_version", "judge_id"],
+      "anyOf": [
+        { "required": ["engine_version"] },
+        { "required": ["verbaloom_version"] },
+        { "required": ["tbl_version"] }
+      ],
       "additionalProperties": false,
       "properties": {
-        "tbl_version": { "type": "string" },
+        "engine_version": { "type": "string" },
+        "verbaloom_version": { "type": "string", "deprecated": true },
+        "tbl_version": { "type": "string", "deprecated": true },
         "prompt_version": { "type": "string" },
         "judge_id": { "type": "string" },
         "judge_seed": { "type": "integer" },

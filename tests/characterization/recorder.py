@@ -17,12 +17,12 @@ from typing import Any, Dict, List, Tuple
 # EPUB/DOCX rewrite a `dcterms:modified` (or core.xml) ISO-8601 timestamp on
 # save. Neutralize it before hashing so the fingerprint reflects content only.
 _ISO_TS = re.compile(rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?")
-_TBL_RENDER_UID = re.compile(rb"urn:tbl:[0-9a-fA-F]+")
+_VERBALOOM_RENDER_UID = re.compile(rb"urn:verbaloom:[0-9a-fA-F]+")
 
 
 def _hash_member(data: bytes) -> str:
     stable = _ISO_TS.sub(b"<TS>", data)
-    stable = _TBL_RENDER_UID.sub(b"urn:tbl:<UID>", stable)
+    stable = _VERBALOOM_RENDER_UID.sub(b"urn:verbaloom:<UID>", stable)
     return hashlib.sha256(stable).hexdigest()
 
 from src.core.adapters import translate_file, refine_file

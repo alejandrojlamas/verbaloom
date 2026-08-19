@@ -125,11 +125,19 @@ def test_mobile_routes_keep_aliases_and_escape_request_metadata(tmp_path):
 
     user_agent = "Mozilla/5.0 (Linux; Android) <script>alert(1)</script>"
     with app.test_client() as client:
-        for path in ("/mobile", "/android"):
+        for path in (
+            "/mobile",
+            "/android",
+            "/verbaloom/mobile",
+            "/verbaloom/android",
+        ):
             response = client.get(path, headers={"User-Agent": user_agent})
             page = response.get_data(as_text=True)
             assert response.status_code == 200
-            assert "Android detectado" in page
+            assert '<html lang="en">' in page
+            assert "Android detected" in page
+            assert "VerbaLoom mobile access" in page
+            assert "https://github.com/alejandrojlamas/verbaloom" in page
             assert "<script>alert(1)</script>" not in page
             assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
             assert response.headers["Cache-Control"].startswith("no-store")
@@ -141,8 +149,9 @@ def test_mobile_routes_keep_aliases_and_escape_request_metadata(tmp_path):
 
     assert payload["status"] == "ok"
     assert payload["current_url"].startswith("https://")
-    assert payload["recommended_url"] == "http://100.64.0.10/"
-    assert payload["dns_fallback_url"] == "http://100.64.0.10.nip.io/"
+    assert payload["recommended_url"] == "http://100.64.0.10/verbaloom"
+    assert payload["dns_fallback_url"] == "http://100.64.0.10.nip.io/verbaloom"
+    assert payload["fallback_url"] == "http://100.64.0.10:5000/verbaloom"
     assert payload["session_id"] == 1234567890
     assert payload["external_android_seen"] is False
 

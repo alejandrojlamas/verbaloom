@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import ipaddress
-import os
 
 from src.utils.provider_security import endpoint_origin
+from src.utils.branding import env_value
 
 
 def allowed_browser_origins(raw: str | None = None) -> list[str]:
     """Return explicit HTTP(S) origins; wildcards are intentionally ignored."""
-    value = os.getenv("TBL_ALLOWED_ORIGINS", "") if raw is None else raw
+    value = env_value("ALLOWED_ORIGINS", "") if raw is None else raw
     origins: list[str] = []
     for item in str(value or "").split(","):
         candidate = item.strip()
@@ -37,7 +37,7 @@ def network_bind_is_explicitly_allowed(host: str | None) -> bool:
     """Require a second opt-in before binding this unauthenticated lab app publicly."""
     if is_loopback_bind(host):
         return True
-    return os.getenv("TBL_ALLOW_NETWORK_BIND", "false").strip().casefold() in {
+    return str(env_value("ALLOW_NETWORK_BIND", "false")).strip().casefold() in {
         "1",
         "true",
         "yes",

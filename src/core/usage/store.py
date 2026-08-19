@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sqlite3
 import threading
 import time
@@ -12,10 +11,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.core.pricing import get_default_pricing
+from src.utils.branding import default_data_dir, env_value
 
 
 def _default_data_dir() -> Path:
-    return Path(os.getenv("TBL_DATA_DIR", Path.home() / ".local/share/TranslateBooksWithLLMs/data"))
+    return Path(str(env_value("DATA_DIR", str(default_data_dir()))))
 
 
 def _estimate_tokens(text: str) -> int:

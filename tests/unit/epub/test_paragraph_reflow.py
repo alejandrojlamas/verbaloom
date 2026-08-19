@@ -7,6 +7,7 @@ from lxml import etree
 from src.core.epub.paragraph_reflow import (
     REFLOW_ANCHOR_CLASS,
     REFLOW_CONTINUATION_CLASS,
+    is_valid_marked_continuation,
     repair_epub_split_paragraphs,
     reflow_split_paragraphs,
 )
@@ -43,6 +44,27 @@ def test_reflows_source_proven_plain_text_continuation_and_is_idempotent():
     assert paragraphs[1].text is None
     assert REFLOW_ANCHOR_CLASS in _classes(paragraphs[0])
     assert REFLOW_CONTINUATION_CLASS in _classes(paragraphs[1])
+    assert not any(value.startswith("tbl-") for value in _classes(paragraphs[0]))
+    assert not any(value.startswith("tbl-") for value in _classes(paragraphs[1]))
+
+
+def test_legacy_reflow_markers_remain_valid_for_resumed_artifacts():
+    source = _root(
+        "<p>The narrator continued describing the long afternoon beside the harbor and the people who were still</p>"
+        "<p>waiting there when the fishing boats finally returned through the fog.</p>"
+    )
+    output = _root(
+        '<p class="tbl-reflowed-paragraph">El narrador siguió describiendo la larga tarde junto al puerto y a las personas que todavía estaban esperando allí cuando regresaron los barcos.</p>'
+        '<p class="tbl-merged-continuation"></p>'
+    )
+    source_paragraphs = source.xpath("//*[local-name()='p']")
+    output_paragraphs = output.xpath("//*[local-name()='p']")
+
+    assert is_valid_marked_continuation(
+        source_paragraphs[0],
+        source_paragraphs[1],
+        output_paragraphs[1],
+    )
 
 
 def test_reflows_and_dehyphenates_page_split_word():

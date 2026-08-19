@@ -1,10 +1,9 @@
 {
-  "app_subtitle": "LLM으로 책 번역하기",
+  "app_subtitle": "편집 메모리와 충실도 검증을 갖춘 로컬 우선 AI 번역.",
   "llm_checking": "LLM: 확인 중...",
   "llm_connected": "LLM: 연결됨",
   "llm_offline": "LLM: 오프라인",
   "theme_toggle_title": "다크/라이트 모드 전환",
-
   "tab_translate": "번역",
   "tab_transform": "변환",
   "tab_profile_prep": "프로필",
@@ -13,7 +12,6 @@
   "tab_glossaries": "용어집",
   "tab_usage": "Tokens",
   "tab_files": "파일",
-
   "update_available": "업데이트 사용 가능",
   "update_release_notes": "릴리스 노트",
   "update_now": "지금 업데이트",
@@ -33,7 +31,6 @@
   "update_download_title": "새 빌드를 다운로드할 수 있는 GitHub 릴리스 페이지를 엽니다.",
   "update_status_failed": "업데이트에 실패했습니다.",
   "update_version_available": "v{{latest}}이(가) 사용 가능합니다 (현재 v{{current}}).",
-
   "refresh": "새로 고침",
   "cancel": "취소",
   "close": "닫기",
@@ -42,7 +39,6 @@
   "ok": "확인",
   "loading": "로딩 중...",
   "no_data": "데이터 없음",
-
   "usage_title": "Token usage and costs",
   "usage_backfill": "Estimate history",
   "usage_loading": "Loading usage...",
@@ -72,37 +68,33 @@
   "usage_date": "Date",
   "usage_book": "Book",
   "usage_status": "Status",
-
   "toast_dismiss": "닫기",
-
   "activity_log": "활동 로그",
   "activity_log_clear": "로그 지우기",
   "activity_log_cleared": "사용자가 활동 로그를 지웠습니다",
-
   "footer_github": "GitHub",
   "footer_report_bug": "버그 신고",
   "footer_report_bug_title": "버그 신고하기",
   "footer_suggest_feature": "기능 제안",
   "footer_suggest_feature_title": "기능 제안하기",
-
   "ws_connected_log": "서버와 WebSocket 연결이 설정되었습니다.",
   "ws_disconnected_log": "WebSocket 연결이 끊어졌습니다.",
   "server_health_ok": "서버 상태 확인 정상.",
   "supported_formats": "지원되는 파일 형식: {{formats}}",
   "server_unavailable": "{{url}}에서 서버를 사용할 수 없습니다. Python 서버가 실행 중인지 확인하세요. {{error}}",
   "server_connect_failed_log": "서버 연결 또는 설정 로드 실패: {{error}}",
-
   "server_restart_detected": "서버 재시작이 감지되었습니다. 활성 번역 상태를 초기화합니다.",
   "server_session_check_failed": "서버 세션 상태를 확인할 수 없습니다",
   "state_desync_syncing": "상태 비동기화 감지: 서버에서는 작업이 {{status}} 상태이지만 UI는 여전히 활성 상태입니다. 동기화 중...",
   "translation_job_missing": "서버에 번역 작업이 더 이상 존재하지 않습니다. UI를 초기화합니다.",
   "checkpoint_created_default": "체크포인트가 생성되었습니다",
-
   "sending": "전송 중...",
   "test_sent_default": "테스트가 전송되었습니다.",
   "notification_test_sent": "{{event}} 테스트 알림이 전송되었습니다",
   "notification_test_failed": "알림 테스트 실패: {{error}}",
   "notifications_preset_applied": "알림 프리셋 적용됨: {{name}}",
-
-  "endpoint_reset_log": "엔드포인트가 서버 기본값으로 초기화되었습니다"
+  "endpoint_reset_log": "엔드포인트가 서버 기본값으로 초기화되었습니다",
+  "brand_name": "VerbaLoom",
+  "brand_logo_alt": "VerbaLoom 로고",
+  "brand_version_title": "VerbaLoom 버전"
 }

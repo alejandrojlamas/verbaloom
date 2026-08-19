@@ -6,7 +6,7 @@ from lxml import etree
 from PIL import Image
 
 from src.core.epub.professionalize import (
-    TBL_CSS_MARKER,
+    VERBALOOM_CSS_MARKER,
     apply_professional_epub_layer,
 )
 
@@ -55,16 +55,16 @@ def test_declares_existing_probable_cover_and_augments_only_minimal_css(tmp_path
     assert report.cover_page_declared is True
     assert opf.xpath("string(//*[local-name()='meta' and @name='cover']/@content)") == "image-one"
     assert opf.xpath("string(//*[local-name()='reference' and @type='cover']/@href)") == "chapter.xhtml"
-    assert "tbl-book" in doc.xpath("string(//*[local-name()='body']/@class)")
-    assert "tbl-cover-page" in doc.xpath("string(//*[local-name()='img']/../@class)")
-    assert "tbl-scene-break" in doc.xpath("string(//*[local-name()='p'][2]/@class)")
+    assert "verbaloom-book" in doc.xpath("string(//*[local-name()='body']/@class)")
+    assert "verbaloom-cover-page" in doc.xpath("string(//*[local-name()='img']/../@class)")
+    assert "verbaloom-scene-break" in doc.xpath("string(//*[local-name()='p'][2]/@class)")
     generated_css = css_path.read_text(encoding="utf-8")
-    assert TBL_CSS_MARKER in generated_css
+    assert VERBALOOM_CSS_MARKER in generated_css
     assert "overflow-wrap: anywhere" in generated_css
     assert "overflow-x: hidden" in generated_css
     assert "width: 90%" in generated_css
     assert "object-fit: contain" in generated_css
-    assert ".tbl-furniture" in generated_css
+    assert ".verbaloom-furniture" in generated_css
     assert report.viewport_documents == 1
     assert doc.xpath(
         "string(//*[local-name()='meta' and @name='viewport']/@content)"
@@ -118,15 +118,15 @@ def test_preserves_rich_publisher_css_byte_for_byte(tmp_path: Path):
     assert report.css_augmented == 0
     assert report.css_created == 1
     assert css_path.read_text(encoding="utf-8") == rich
-    assert (tmp_path / "tbl-professional.css").exists()
+    assert (tmp_path / "verbaloom-professional.css").exists()
     assert opf.xpath(
-        "string(//*[local-name()='item' and @id='tbl-professional-css']/@href)"
-    ) == "tbl-professional.css"
+        "string(//*[local-name()='item' and @id='verbaloom-professional-css']/@href)"
+    ) == "verbaloom-professional.css"
     assert doc.xpath(
-        "string(//*[local-name()='head']/*[local-name()='link'][@href='tbl-professional.css']/@href)"
-    ) == "tbl-professional.css"
-    reading_css = (tmp_path / "tbl-professional.css").read_text(encoding="utf-8")
-    assert "body.tbl-book table p" in reading_css
+        "string(//*[local-name()='head']/*[local-name()='link'][@href='verbaloom-professional.css']/@href)"
+    ) == "verbaloom-professional.css"
+    reading_css = (tmp_path / "verbaloom-professional.css").read_text(encoding="utf-8")
+    assert "body.verbaloom-book table p" in reading_css
     assert "word-spacing: normal" in reading_css
     assert "@media (max-width: 42em)" in reading_css
     assert "table-layout: fixed" in reading_css
@@ -147,9 +147,9 @@ def test_creates_namespaced_stylesheet_when_source_has_none(tmp_path: Path):
     )
 
     assert report.css_created == 1
-    assert (tmp_path / "tbl-professional.css").exists()
-    assert opf.xpath("string(//*[local-name()='item' and @id='tbl-professional-css']/@href)") == "tbl-professional.css"
-    assert doc.xpath("string(//*[local-name()='head']/*[local-name()='link']/@href)") == "tbl-professional.css"
+    assert (tmp_path / "verbaloom-professional.css").exists()
+    assert opf.xpath("string(//*[local-name()='item' and @id='verbaloom-professional-css']/@href)") == "verbaloom-professional.css"
+    assert doc.xpath("string(//*[local-name()='head']/*[local-name()='link']/@href)") == "verbaloom-professional.css"
 
 
 def test_created_stylesheet_uses_relative_href_for_nested_chapter(tmp_path: Path):
@@ -170,7 +170,7 @@ def test_created_stylesheet_uses_relative_href_for_nested_chapter(tmp_path: Path
         target_language="Spanish",
     )
 
-    assert doc.xpath("string(//*[local-name()='head']/*[local-name()='link']/@href)") == "../tbl-professional.css"
+    assert doc.xpath("string(//*[local-name()='head']/*[local-name()='link']/@href)") == "../verbaloom-professional.css"
 
 
 def test_existing_cover_declaration_gets_missing_guide_and_cover_class(tmp_path: Path):
@@ -194,7 +194,7 @@ def test_existing_cover_declaration_gets_missing_guide_and_cover_class(tmp_path:
     assert report.cover_declared is True
     assert report.cover_page_declared is True
     assert opf.xpath("string(//*[local-name()='reference' and @type='cover']/@href)") == "chapter.xhtml"
-    assert "tbl-cover-page" in doc.xpath("string(//*[local-name()='img']/../@class)")
+    assert "verbaloom-cover-page" in doc.xpath("string(//*[local-name()='img']/../@class)")
 
 
 def test_existing_svg_cover_gets_missing_guide_and_cover_class(tmp_path: Path):
@@ -232,7 +232,7 @@ def test_existing_svg_cover_gets_missing_guide_and_cover_class(tmp_path: Path):
     assert opf.xpath(
         "string(//*[local-name()='reference' and @type='cover']/@href)"
     ) == "chapter.xhtml"
-    assert "tbl-cover-page" in doc.xpath(
+    assert "verbaloom-cover-page" in doc.xpath(
         "string(//*[local-name()='image']/ancestor::*[local-name()='div'][1]/@class)"
     )
 
@@ -377,8 +377,8 @@ def test_marks_metadata_proven_running_page_headers_without_hiding_real_years(tm
     )
 
     assert report.furniture_markers == 1
-    assert "tbl-furniture" in str(running.get("class") or "")
-    assert "tbl-furniture" not in str(year.get("class") or "")
+    assert "verbaloom-furniture" in str(running.get("class") or "")
+    assert "verbaloom-furniture" not in str(year.get("class") or "")
 
 
 def test_normalizes_only_structurally_proven_ocr_scene_break(tmp_path: Path):
@@ -410,7 +410,7 @@ def test_normalizes_only_structurally_proven_ocr_scene_break(tmp_path: Path):
     )
 
     assert artifact.text == "* * *"
-    assert "tbl-scene-break" in str(artifact.get("class") or "")
+    assert "verbaloom-scene-break" in str(artifact.get("class") or "")
     assert ordinary.text == "1. ."
 
 
@@ -433,7 +433,7 @@ def test_normalizes_punctuation_only_heading_as_scene_break(tmp_path: Path):
     )
 
     assert damaged.text == "* * *"
-    assert "tbl-scene-break" in str(damaged.get("class") or "")
+    assert "verbaloom-scene-break" in str(damaged.get("class") or "")
 
 
 def test_hides_only_commercial_inserts_around_reading_matter(tmp_path: Path):
@@ -465,9 +465,9 @@ def test_hides_only_commercial_inserts_around_reading_matter(tmp_path: Path):
         target_language="Spanish",
     )
 
-    assert "tbl-furniture" in str(front_ad.get("class") or "")
-    assert "tbl-furniture" not in str(heading.get("class") or "")
-    assert "tbl-furniture" not in str(acknowledgments.get("class") or "")
-    assert "tbl-furniture" not in str(thanks.get("class") or "")
-    assert "tbl-furniture" in str(back_ad.get("class") or "")
-    assert "tbl-furniture" in str(prices.get("class") or "")
+    assert "verbaloom-furniture" in str(front_ad.get("class") or "")
+    assert "verbaloom-furniture" not in str(heading.get("class") or "")
+    assert "verbaloom-furniture" not in str(acknowledgments.get("class") or "")
+    assert "verbaloom-furniture" not in str(thanks.get("class") or "")
+    assert "verbaloom-furniture" in str(back_ad.get("class") or "")
+    assert "verbaloom-furniture" in str(prices.get("class") or "")

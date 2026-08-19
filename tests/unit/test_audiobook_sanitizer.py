@@ -115,7 +115,7 @@ def test_audiobook_text_can_be_written_as_epub_companion(tmp_path):
         "Capitulo uno\n\nTexto limpio para escuchar.",
         target_language="Spanish",
     )
-    epub_path = tmp_path / "Libro (Audiolibro).epub"
+    epub_path = tmp_path / "Libro (Audiobook).epub"
 
     write_text_as_output(artifact.text, epub_path, "epub")
     extracted = extract_readable_text(Path(epub_path))

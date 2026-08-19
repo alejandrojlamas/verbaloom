@@ -9,19 +9,16 @@
   "open_folder_title": "Übersetzungsordner öffnen",
   "refresh": "Aktualisieren",
   "refresh_list_title": "Dateiliste aktualisieren",
-
   "name_column": "Name",
   "filename_column": "Dateiname",
   "size_column": "Größe",
   "modified_column": "Geändert",
   "actions_column": "Aktionen",
-
   "no_files": "Noch keine Dateien.",
   "confirm_delete_one": "Diese Datei löschen?",
   "confirm_delete_many": "{{count}} Dateien löschen?",
   "confirm_delete_named": "Möchten Sie „{{name}}“ wirklich löschen?",
   "confirm_delete_selected": "Möchten Sie {{count}} Datei(en) wirklich löschen?",
-
   "no_selection_download": "Keine Dateien zum Herunterladen ausgewählt",
   "no_selection_delete": "Keine Dateien zum Löschen ausgewählt",
   "downloading": "{{name}} wird heruntergeladen...",
@@ -37,7 +34,6 @@
   "delete_failed": "Löschen fehlgeschlagen: {{error}}",
   "download_failed": "Herunterladen fehlgeschlagen: {{error}}",
   "load_failed": "Fehler beim Laden der Dateiliste: {{error}}",
-
   "open_action": "Datei öffnen",
   "open_log": "📂 Datei geöffnet: {{name}}",
   "open_error": "Fehler beim Öffnen der Datei: {{error}}",
@@ -51,11 +47,9 @@
   "folder_opened_log_with_path": "📁 Übersetzungsordner geöffnet: {{path}}",
   "folder_open_error": "Fehler beim Öffnen des Ordners: {{error}}",
   "delete_default_msg": "{{name}} gelöscht",
-
   "file_too_large": "Datei zu groß: {{name}} ({{size}})",
   "unsupported_format": "Nicht unterstütztes Format: {{name}}",
   "upload_failed": "Hochladen fehlgeschlagen: {{error}}",
-
   "quality_action": "Vor Download prüfen",
   "quality_title": "Prüfung vor dem Download",
   "quality_subtitle": "Prüfen Sie redaktionelle Qualität und EPUB-Struktur vor dem Download.",
@@ -84,7 +78,6 @@
   "quality_epub_nav": "Navigation",
   "quality_epub_title": "Titel",
   "quality_epub_language": "Sprache",
-
   "total_label": "Gesamt:",
   "files_unit": "Dateien"
 }

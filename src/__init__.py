@@ -1,5 +1,5 @@
 """
-TranslateBookWithLLM - Main package
+VerbaLoom - Main package
 """
 from .__version__ import __version__
 

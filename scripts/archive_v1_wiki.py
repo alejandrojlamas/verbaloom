@@ -35,7 +35,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_WIKI_URL = os.getenv(
     "WIKI_REPO_URL",
-    "https://github.com/hydropix/TranslateBookWithLLM.wiki.git",
+    "https://github.com/alejandrojlamas/verbaloom.wiki.git",
 )
 CLONE_DIR = REPO_ROOT / ".wiki_repo_archive"
 
@@ -127,7 +127,7 @@ def build_index(archived: list[str]) -> str:
     lines: list[str] = [
         "# Archived Benchmark (v1)",
         "",
-        "These pages are the previous version of the TranslateBookWithLLM benchmark,",
+        "These pages are the previous version of the VerbaLoom benchmark,",
         "kept here for historical reference.",
         "",
         "## What changed in v2",

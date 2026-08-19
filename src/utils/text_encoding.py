@@ -258,7 +258,7 @@ def strip_markdown_link_artifacts(text: str) -> str:
     placeholders: dict[str, str] = {}
 
     def protect_placeholder(match: re.Match) -> str:
-        sentinel = f"\ufff0TBLPH{len(placeholders)}\ufff1"
+        sentinel = f"\ufff0VERBALOOMPH{len(placeholders)}\ufff1"
         placeholders[sentinel] = match.group(0)
         return sentinel
 
@@ -572,9 +572,9 @@ def derive_identifier_urn() -> str:
     Derive a URN-shaped identifier for use in document identifier fields.
 
     Returns:
-        URN string of the form 'urn:tbl:{12-char-hex}'.
+        URN string of the form 'urn:verbaloom:{12-char-hex}'.
     """
-    return f"urn:tbl:{derive_identifier_suffix()}"
+    return f"urn:verbaloom:{derive_identifier_suffix()}"
 
 
 def extract_signature(text: str) -> Optional[str]:

@@ -181,7 +181,7 @@ _GOALS: dict[str, ProfileGoalRules] = {
     ),
     "audiobook": ProfileGoalRules(
         key="audiobook",
-        label="Audiolibro fiel",
+        label="Faithful audiobook",
         description="Traducción fiel optimizada para escucha: continuidad, limpieza auditiva, notas manejables y pies de imagen integrables.",
         glossary_goal="Preparar una traducción fiel que se escuche bien: nombres consistentes, términos traducibles, notas/captions/rótulos tratados sin romper la narración.",
         discovery_focus=(

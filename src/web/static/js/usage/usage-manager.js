@@ -30,7 +30,7 @@ function clockTime() {
 }
 
 function shortName(name) {
-    const raw = String(name || 'Sin libro');
+    const raw = String(name || 'No book');
     return raw.length > 86 ? `${raw.slice(0, 83)}...` : raw;
 }
 
@@ -107,7 +107,7 @@ export const UsageManager = {
             this._summary = await ApiClient.getUsageSummary(120);
             this.render(this._summary);
         } catch (error) {
-            if (!silent) MessageLogger.showMessage(`No se pudo cargar el uso de tokens: ${error.message}`, 'error');
+            if (!silent) MessageLogger.showMessage(`Could not load token usage: ${error.message}`, 'error');
         } finally {
             if (!silent && loading) loading.classList.add('hidden');
             if (!silent && content) content.classList.remove('usage-dimmed');
@@ -120,10 +120,10 @@ export const UsageManager = {
         if (btn) btn.disabled = true;
         try {
             const result = await ApiClient.backfillUsageFromCheckpoints();
-            MessageLogger.showMessage(`Uso histórico estimado: ${result.created || 0} job(s), ${result.skipped || 0} omitido(s).`, 'success');
+            MessageLogger.showMessage(`Estimated historical usage: ${result.created || 0} job(s), ${result.skipped || 0} skipped.`, 'success');
             await this.refresh();
         } catch (error) {
-            MessageLogger.showMessage(`No se pudo reconstruir uso histórico: ${error.message}`, 'error');
+            MessageLogger.showMessage(`Could not reconstruct historical usage: ${error.message}`, 'error');
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -137,7 +137,7 @@ export const UsageManager = {
         DomHelpers.setText('usageCompletionTokens', number(totals.completion_tokens));
         DomHelpers.setText('usageCallCount', number(totals.calls));
         DomHelpers.setText('usageEstimatedEvents', number(totals.estimated_events));
-        DomHelpers.setText('usageLiveStatus', `Actualizado ${clockTime()} · cada 3s`);
+        DomHelpers.setText('usageLiveStatus', `Updated ${clockTime()} · every 3s`);
 
         this.renderLiveJobs(summary?.live_jobs || []);
         this.renderBooks(summary?.by_book || []);
@@ -178,7 +178,7 @@ export const UsageManager = {
                     <div>
                         <div class="usage-book-title" title="${DomHelpers.escapeHtml(row.book_name || '')}">${DomHelpers.escapeHtml(shortName(row.book_name))}</div>
                         <div class="usage-book-meta">
-                            ${DomHelpers.escapeHtml(row.status || 'activo')} · ${DomHelpers.escapeHtml(row.process_type || 'proceso')} · ${DomHelpers.escapeHtml(row.provider || '')} ${DomHelpers.escapeHtml(row.model || '')}
+                            ${DomHelpers.escapeHtml(row.status || 'active')} · ${DomHelpers.escapeHtml(row.process_type || 'process')} · ${DomHelpers.escapeHtml(row.provider || '')} ${DomHelpers.escapeHtml(row.model || '')}
                         </div>
                     </div>
                     <div class="usage-book-values">
@@ -187,18 +187,18 @@ export const UsageManager = {
                     </div>
                 </div>
                 <div class="usage-live-stats">
-                    <span>${number(row.calls)} llamadas</span>
-                    <span>Entrada ${number(row.prompt_tokens)}</span>
-                    <span>Salida ${number(row.completion_tokens)}</span>
+                    <span>${number(row.calls)} calls</span>
+                    <span>Input ${number(row.prompt_tokens)}</span>
+                    <span>Output ${number(row.completion_tokens)}</span>
                     ${cache ? `<span>${DomHelpers.escapeHtml(cache)}</span>` : ''}
-                    ${totalChunks ? `<span>${number(completed)}/${number(totalChunks)} fragmentos</span>` : ''}
-                    ${failed ? `<span>${number(failed)} fallidos</span>` : ''}
-                    ${Number(row.estimated_events || 0) ? '<span>incluye estimados</span>' : ''}
+                    ${totalChunks ? `<span>${number(completed)}/${number(totalChunks)} chunks</span>` : ''}
+                    ${failed ? `<span>${number(failed)} failed</span>` : ''}
+                    ${Number(row.estimated_events || 0) ? '<span>includes estimates</span>' : ''}
                 </div>
                 ${projectionChips ? `<div class="usage-live-stats usage-live-projections">${projectionChips}</div>` : ''}
                 <div class="usage-bar usage-live-progress"><span style="width:${Math.max(3, progress)}%"></span></div>
                 <div class="usage-live-progress-label">${progress.toFixed(1)}%</div>
-                ${phaseChips ? `<div class="usage-phase-chips">${phaseChips}</div>` : '<div class="usage-book-meta">Esperando la primera llamada registrada del modelo.</div>'}
+                ${phaseChips ? `<div class="usage-phase-chips">${phaseChips}</div>` : '<div class="usage-book-meta">Waiting for the first recorded model call.</div>'}
             `;
             host.appendChild(item);
         });
@@ -214,15 +214,15 @@ export const UsageManager = {
         const recentTokensPerMinute = Number(row.recent_tokens_per_minute || 0);
         const costPer1k = Number(row.cost_per_1k_tokens_usd || 0);
 
-        if (projectedCost > 0) chips.push(`Proyección ${money(projectedCost)}`);
-        if (remainingCost > 0) chips.push(`Restante ${money(remainingCost)}`);
-        if (costPerChunk > 0) chips.push(`${money(costPerChunk)} / fragmento`);
-        if (tokensPerChunk > 0) chips.push(`${number(tokensPerChunk)} tokens / fragmento`);
+        if (projectedCost > 0) chips.push(`Projected ${money(projectedCost)}`);
+        if (remainingCost > 0) chips.push(`Remaining ${money(remainingCost)}`);
+        if (costPerChunk > 0) chips.push(`${money(costPerChunk)} / chunk`);
+        if (tokensPerChunk > 0) chips.push(`${number(tokensPerChunk)} tokens / chunk`);
         if (recentCostPerMinute > 0 || recentTokensPerMinute > 0) {
-            chips.push(`Últimos 5 min: ${money(recentCostPerMinute)}/min · ${number(recentTokensPerMinute)} tok/min`);
+            chips.push(`Last 5 min: ${money(recentCostPerMinute)}/min · ${number(recentTokensPerMinute)} tok/min`);
         }
         if (costPer1k > 0) chips.push(`${money(costPer1k)} / 1k tokens`);
-        if (!chips.length && Number(row.calls || 0) === 0) chips.push('Sin gasto registrado todavía');
+        if (!chips.length && Number(row.calls || 0) === 0) chips.push('No recorded usage yet');
 
         return chips.map((chip) => `<span>${DomHelpers.escapeHtml(chip)}</span>`).join('');
     },
@@ -248,8 +248,8 @@ export const UsageManager = {
                 <div class="usage-book-main">
                     <div class="usage-book-title" title="${DomHelpers.escapeHtml(row.book_name || '')}">${DomHelpers.escapeHtml(shortName(row.book_name))}</div>
                     <div class="usage-book-meta">
-                        ${DomHelpers.escapeHtml(row.process_type || 'unknown')} · ${number(row.calls)} llamadas · ${shortDate(row.last_seen)}
-                        ${Number(row.estimated_events || 0) > 0 ? ' · estimado' : ''}
+                        ${DomHelpers.escapeHtml(row.process_type || 'unknown')} · ${number(row.calls)} calls · ${shortDate(row.last_seen)}
+                        ${Number(row.estimated_events || 0) > 0 ? ' · estimated' : ''}
                         ${cache ? ` · ${DomHelpers.escapeHtml(cache)}` : ''}
                     </div>
                 </div>
@@ -305,7 +305,7 @@ export const UsageManager = {
                 <td class="col-right">${number(event.prompt_tokens)}</td>
                 <td class="col-right">${number(event.completion_tokens)}</td>
                 <td class="col-right">${money(event.total_cost_usd)}</td>
-                <td>${event.estimated_tokens ? 'estimado' : DomHelpers.escapeHtml(event.status || 'ok')}${cacheLabel(event) ? ` · ${DomHelpers.escapeHtml(cacheLabel(event))}` : ''}</td>
+                <td>${event.estimated_tokens ? 'estimated' : DomHelpers.escapeHtml(event.status || 'ok')}${cacheLabel(event) ? ` · ${DomHelpers.escapeHtml(cacheLabel(event))}` : ''}</td>
             `;
             body.appendChild(tr);
         });
@@ -324,7 +324,7 @@ export const UsageManager = {
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted-light') || '#8b949e';
         ctx.font = '12px Inter, sans-serif';
         if (!rows.length) {
-            ctx.fillText('Sin datos todavía', 16, 94);
+            ctx.fillText('No data yet', 16, 94);
             return;
         }
         const pad = 24;

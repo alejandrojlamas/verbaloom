@@ -9,7 +9,7 @@ export class ThemeManager {
         this.htmlElement = document.documentElement;
         this.themeIcon = document.getElementById('themeIcon');
         this.themeColorMeta = document.getElementById('themeColorMeta');
-        this.STORAGE_KEY = 'tbl-theme-preference';
+        this.STORAGE_KEY = 'verbaloom-theme-preference';
         this.themeChrome = {
             dark: '#080c12',
             light: '#f5f7fb'
@@ -23,12 +23,18 @@ export class ThemeManager {
      * Initialize theme based on saved preference or system default
      */
     initializeTheme() {
-        const savedTheme = localStorage.getItem(this.STORAGE_KEY);
+        const legacyKey = 'tbl-theme-preference';
+        const legacyTheme = localStorage.getItem(legacyKey);
+        const savedTheme = localStorage.getItem(this.STORAGE_KEY) || legacyTheme;
+        if (legacyTheme && !localStorage.getItem(this.STORAGE_KEY)) {
+            localStorage.setItem(this.STORAGE_KEY, legacyTheme);
+        }
+        localStorage.removeItem(legacyKey);
 
         if (savedTheme) {
             this.setTheme(savedTheme);
         } else {
-            // TBL is optimized for long mobile reading sessions; default to
+            // VerbaLoom is optimized for long mobile reading sessions; default to
             // the dark product theme while still preserving explicit user choice.
             this.setTheme('dark');
         }

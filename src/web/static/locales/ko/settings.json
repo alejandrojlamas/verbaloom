@@ -96,7 +96,7 @@
   "notifications_test": "테스트 알림 보내기",
   "notifications_test_sent": "{{event}} 테스트 알림이 성공적으로 전송되었습니다.",
   "notifications_test_failed": "테스트 실패: {{error}}",
-  "notifications_intro": "번역이 종료 상태에 도달하면 휴대폰, Discord 채널 또는 모든 HTTP 엔드포인트로 알림을 받습니다. 로컬 모델로 장시간 실행되는 작업에 유용합니다. <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong> 또는 사용자 지정 웹훅과 호환됩니다. 전체 참조는 <a href=\"https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a>를 참조하세요.",
+  "notifications_intro": "번역이 종료 상태에 도달하면 휴대폰, Discord 채널 또는 모든 HTTP 엔드포인트로 알림을 받습니다. 로컬 모델로 장시간 실행되는 작업에 유용합니다. <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong> 또는 사용자 지정 웹훅과 호환됩니다. 전체 참조는 <a href=\"https://github.com/alejandrojlamas/verbaloom/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a>를 참조하세요.",
   "notifications_presets_label": "빠른 프리셋",
   "notifications_presets_help": "URL과 페이로드를 미리 채울 서비스를 선택한 다음 계정에 맞게 값을 편집하세요.",
   "notifications_preset_reset": "초기화 (비활성화)",

@@ -509,7 +509,7 @@ def normalize_document_structure(
     lines, table_blocks = _normalize_table_blocks(lines)
     existing_table_titles = {block.title for block in report.blocks if block.type == "table"}
     for block in table_blocks:
-        block.block_id = f"tbl_{len([b for b in report.blocks if b.type == 'table']) + 1:03d}"
+        block.block_id = f"verbaloom_{len([b for b in report.blocks if b.type == 'table']) + 1:03d}"
         block.policy = "reconstruct"
         if not any(
             existing.startswith(block.title) or block.title.startswith(existing)

@@ -1,6 +1,6 @@
 @echo off
 REM ============================================
-REM TranslateBookWithLLM - Start Application
+REM VerbaLoom - Start Application
 REM Quick Launch Script (with auto-update + restart loop)
 REM ============================================
 
@@ -12,7 +12,7 @@ REM ========================================
 REM BANNER
 REM ========================================
 echo.
-echo TranslateBook with LLMs
+echo VerbaLoom
 echo --------------------------
 echo.
 

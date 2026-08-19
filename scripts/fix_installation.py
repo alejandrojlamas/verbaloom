@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Fix common installation issues for TranslateBookWithLLM
+Fix common installation issues for VerbaLoom
 This script checks and fixes known issues that can occur on fresh installations.
 """
 import sys
@@ -209,7 +209,7 @@ def test_import():
 def main():
     """Main function"""
     print("\n" + "="*70)
-    print("  TranslateBookWithLLM - Installation Fix Tool")
+    print("  VerbaLoom - Installation Fix Tool")
     print("="*70)
     print("\nThis tool will check and fix common installation issues.\n")
 

@@ -647,7 +647,7 @@ async function showTTSModal(filename, filepath) {
                         <div class="form-group" style="margin-bottom: 0;">
                             <label style="font-size: 13px;">TTS Provider</label>
                             <select id="ttsModalProvider" class="form-control" style="font-size: 13px;">
-                                <option value="edge-tts">Edge TTS (Cloud)</option>
+                                <option value="edge-tts">Edge TTS</option>
                                 <option value="chatterbox" ${!isChatterboxAvailable ? 'disabled' : ''}>
                                     Chatterbox TTS ${!isChatterboxAvailable ? '(Not Available)' : '(Local GPU)'}
                                 </option>
@@ -671,51 +671,51 @@ async function showTTSModal(filename, filepath) {
                                 <label style="font-size: 13px;">Target Language</label>
                                 <select id="ttsModalLanguage" class="form-control" style="font-size: 13px;">
                                     <!-- Most Common -->
-                                    <option value="Chinese">Chinese (中文)</option>
+                                    <option value="Chinese">Chinese</option>
                                     <option value="English">English</option>
-                                    <option value="French">French (Français)</option>
-                                    <option value="Spanish">Spanish (Español)</option>
-                                    <option value="German">German (Deutsch)</option>
-                                    <option value="Japanese">Japanese (日本語)</option>
-                                    <option value="Korean">Korean (한국어)</option>
-                                    <option value="Portuguese">Portuguese (Português)</option>
-                                    <option value="Russian">Russian (Русский)</option>
-                                    <option value="Arabic">Arabic (العربية)</option>
+                                    <option value="French">French</option>
+                                    <option value="Spanish">Spanish</option>
+                                    <option value="German">German</option>
+                                    <option value="Japanese">Japanese</option>
+                                    <option value="Korean">Korean</option>
+                                    <option value="Portuguese">Portuguese</option>
+                                    <option value="Russian">Russian</option>
+                                    <option value="Arabic">Arabic</option>
                                     <!-- European -->
-                                    <option value="Italian">Italian (Italiano)</option>
-                                    <option value="Dutch">Dutch (Nederlands)</option>
-                                    <option value="Polish">Polish (Polski)</option>
-                                    <option value="Swedish">Swedish (Svenska)</option>
-                                    <option value="Norwegian">Norwegian (Norsk)</option>
-                                    <option value="Danish">Danish (Dansk)</option>
-                                    <option value="Finnish">Finnish (Suomi)</option>
-                                    <option value="Greek">Greek (Ελληνικά)</option>
-                                    <option value="Czech">Czech (Čeština)</option>
-                                    <option value="Hungarian">Hungarian (Magyar)</option>
-                                    <option value="Romanian">Romanian (Română)</option>
-                                    <option value="Turkish">Turkish (Türkçe)</option>
-                                    <option value="Ukrainian">Ukrainian (Українська)</option>
-                                    <option value="Bulgarian">Bulgarian (Български)</option>
-                                    <option value="Croatian">Croatian (Hrvatski)</option>
-                                    <option value="Slovak">Slovak (Slovenčina)</option>
-                                    <option value="Slovenian">Slovenian (Slovenščina)</option>
-                                    <option value="Lithuanian">Lithuanian (Lietuvių)</option>
-                                    <option value="Latvian">Latvian (Latviešu)</option>
-                                    <option value="Estonian">Estonian (Eesti)</option>
+                                    <option value="Italian">Italian</option>
+                                    <option value="Dutch">Dutch</option>
+                                    <option value="Polish">Polish</option>
+                                    <option value="Swedish">Swedish</option>
+                                    <option value="Norwegian">Norwegian</option>
+                                    <option value="Danish">Danish</option>
+                                    <option value="Finnish">Finnish</option>
+                                    <option value="Greek">Greek</option>
+                                    <option value="Czech">Czech</option>
+                                    <option value="Hungarian">Hungarian</option>
+                                    <option value="Romanian">Romanian</option>
+                                    <option value="Turkish">Turkish</option>
+                                    <option value="Ukrainian">Ukrainian</option>
+                                    <option value="Bulgarian">Bulgarian</option>
+                                    <option value="Croatian">Croatian</option>
+                                    <option value="Slovak">Slovak</option>
+                                    <option value="Slovenian">Slovenian</option>
+                                    <option value="Lithuanian">Lithuanian</option>
+                                    <option value="Latvian">Latvian</option>
+                                    <option value="Estonian">Estonian</option>
                                     <!-- Asian -->
-                                    <option value="Hindi">Hindi (हिन्दी)</option>
-                                    <option value="Vietnamese">Vietnamese (Tiếng Việt)</option>
-                                    <option value="Thai">Thai (ไทย)</option>
-                                    <option value="Indonesian">Indonesian (Bahasa Indonesia)</option>
-                                    <option value="Malay">Malay (Bahasa Melayu)</option>
-                                    <option value="Filipino">Filipino (Tagalog)</option>
-                                    <option value="Bengali">Bengali (বাংলা)</option>
-                                    <option value="Tamil">Tamil (தமிழ்)</option>
-                                    <option value="Telugu">Telugu (తెలుగు)</option>
+                                    <option value="Hindi">Hindi</option>
+                                    <option value="Vietnamese">Vietnamese</option>
+                                    <option value="Thai">Thai</option>
+                                    <option value="Indonesian">Indonesian</option>
+                                    <option value="Malay">Malay</option>
+                                    <option value="Filipino">Filipino</option>
+                                    <option value="Bengali">Bengali</option>
+                                    <option value="Tamil">Tamil</option>
+                                    <option value="Telugu">Telugu</option>
                                     <!-- Middle Eastern -->
-                                    <option value="Hebrew">Hebrew (עברית)</option>
-                                    <option value="Persian">Persian/Farsi (فارسی)</option>
-                                    <option value="Urdu">Urdu (اردو)</option>
+                                    <option value="Hebrew">Hebrew</option>
+                                    <option value="Persian">Persian/Farsi</option>
+                                    <option value="Urdu">Urdu</option>
                                 </select>
                             </div>
 
@@ -729,12 +729,12 @@ async function showTTSModal(filename, filepath) {
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label style="font-size: 13px;">Speech Rate</label>
                                     <select id="ttsModalRate" class="form-control" style="font-size: 13px;">
-                                        <option value="-20%">Slower (-20%)</option>
-                                        <option value="-10%">Slightly slower (-10%)</option>
+                                        <option value="-20%">Slower</option>
+                                        <option value="-10%">Slightly slower</option>
                                         <option value="+0%" selected>Normal</option>
-                                        <option value="+10%">Slightly faster (+10%)</option>
-                                        <option value="+20%">Faster (+20%)</option>
-                                        <option value="+30%">Much faster (+30%)</option>
+                                        <option value="+10%">Slightly faster</option>
+                                        <option value="+20%">Faster</option>
+                                        <option value="+30%">Much faster</option>
                                     </select>
                                 </div>
 
@@ -796,39 +796,39 @@ async function showTTSModal(filename, filepath) {
                                 <select id="ttsModalChatterboxLang" class="form-control" style="font-size: 13px;">
                                     <!-- Most Common -->
                                     <option value="en">English</option>
-                                    <option value="zh">Chinese (中文)</option>
-                                    <option value="es">Spanish (Español)</option>
-                                    <option value="fr">French (Français)</option>
-                                    <option value="de">German (Deutsch)</option>
-                                    <option value="it">Italian (Italiano)</option>
-                                    <option value="ja">Japanese (日本語)</option>
-                                    <option value="ko">Korean (한국어)</option>
-                                    <option value="pt">Portuguese (Português)</option>
-                                    <option value="ru">Russian (Русский)</option>
-                                    <option value="ar">Arabic (العربية)</option>
+                                    <option value="zh">Chinese</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                    <option value="de">German</option>
+                                    <option value="it">Italian</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="ko">Korean</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="ru">Russian</option>
+                                    <option value="ar">Arabic</option>
                                     <!-- European -->
-                                    <option value="pl">Polish (Polski)</option>
-                                    <option value="tr">Turkish (Türkçe)</option>
-                                    <option value="nl">Dutch (Nederlands)</option>
-                                    <option value="cs">Czech (Čeština)</option>
-                                    <option value="sv">Swedish (Svenska)</option>
-                                    <option value="da">Danish (Dansk)</option>
-                                    <option value="fi">Finnish (Suomi)</option>
-                                    <option value="hu">Hungarian (Magyar)</option>
+                                    <option value="pl">Polish</option>
+                                    <option value="tr">Turkish</option>
+                                    <option value="nl">Dutch</option>
+                                    <option value="cs">Czech</option>
+                                    <option value="sv">Swedish</option>
+                                    <option value="da">Danish</option>
+                                    <option value="fi">Finnish</option>
+                                    <option value="hu">Hungarian</option>
                                     <!-- Asian -->
-                                    <option value="hi">Hindi (हिन्दी)</option>
-                                    <option value="vi">Vietnamese (Tiếng Việt)</option>
-                                    <option value="id">Indonesian (Bahasa Indonesia)</option>
+                                    <option value="hi">Hindi</option>
+                                    <option value="vi">Vietnamese</option>
+                                    <option value="id">Indonesian</option>
                                     <!-- Other -->
-                                    <option value="el">Greek (Ελληνικά)</option>
+                                    <option value="el">Greek</option>
                                 </select>
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-size: 13px;">Audio Format</label>
                                 <select id="ttsModalChatterboxFormat" class="form-control" style="font-size: 13px;">
-                                    <option value="wav">WAV (lossless)</option>
+                                    <option value="wav">WAV</option>
                                     <option value="mp3" selected>MP3 (compatible)</option>
-                                    <option value="opus">Opus (compact)</option>
+                                    <option value="opus">Opus</option>
                                 </select>
                             </div>
                         </div>

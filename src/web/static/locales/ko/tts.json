@@ -14,7 +14,6 @@
   "gpu_cpu": "CPU 모드",
   "gpu_cpu_no_cuda": "CPU 모드 (CUDA 없음)",
   "gpu_na": "해당 없음",
-
   "target_language": "대상 언어",
   "voice_optional": "음성 (선택)",
   "voice_placeholder": "예: zh-CN-XiaoxiaoNeural",
@@ -40,7 +39,6 @@
   "bitrate_64": "64k (균형)",
   "bitrate_96": "96k (더 높은 품질)",
   "bitrate_128": "128k (최고 품질)",
-
   "voice_cloning": "음성 복제",
   "voice_cloning_heading": "🎤 음성 복제",
   "voice_prompt": "음성 프롬프트",
@@ -50,11 +48,9 @@
   "exaggeration_hint": "높을수록 더 표현적",
   "cfg_weight": "CFG 가중치",
   "cfg_weight_hint": "프롬프트 준수도",
-
   "generate_audio": "오디오 생성",
   "generate_audio_with_icon": "🎧 오디오 생성",
   "starting": "⏳ 시작 중...",
-
   "progress_title": "오디오 생성",
   "waiting": "시작 대기 중...",
   "starting_log": "🔊 TTS 생성이 시작되었습니다",
@@ -66,7 +62,6 @@
   "failed_log": "❌ TTS 실패: {{error}}",
   "failed_label": "실패",
   "audio_file_default": "오디오 파일",
-
   "ffmpeg_required": "오디오 인코딩에 FFmpeg이 필요합니다",
   "ffmpeg_install": "FFmpeg 설치 (winget)",
   "ffmpeg_manual": "수동 다운로드",
@@ -78,7 +73,6 @@
   "ffmpeg_install_error": "설치 오류: {{error}}",
   "ffmpeg_install_error_log": "❌ FFmpeg 설치 오류: {{error}}",
   "ffmpeg_restart_needed": "TTS를 사용하려면 애플리케이션을 재시작하세요.",
-
   "tts_started": "{{filename}}에 대한 TTS 생성이 시작되었습니다",
   "tts_started_log": "🎧 오디오북 생성 시작 ({{provider}}): {{filename}} (작업 ID: {{jobId}})",
   "tts_error": "TTS 시작 오류: {{error}}",

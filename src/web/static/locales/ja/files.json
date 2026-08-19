@@ -9,19 +9,16 @@
   "open_folder_title": "翻訳フォルダを開く",
   "refresh": "更新",
   "refresh_list_title": "ファイルリストを更新",
-
   "name_column": "名前",
   "filename_column": "ファイル名",
   "size_column": "サイズ",
   "modified_column": "更新日時",
   "actions_column": "操作",
-
   "no_files": "ファイルはまだありません。",
   "confirm_delete_one": "このファイルを削除しますか?",
   "confirm_delete_many": "{{count}} 個のファイルを削除しますか?",
   "confirm_delete_named": "「{{name}}」を削除してもよろしいですか?",
   "confirm_delete_selected": "{{count}} 個のファイルを削除してもよろしいですか?",
-
   "no_selection_download": "ダウンロードするファイルが選択されていません",
   "no_selection_delete": "削除するファイルが選択されていません",
   "downloading": "{{name}} をダウンロード中...",
@@ -37,7 +34,6 @@
   "delete_failed": "削除に失敗しました: {{error}}",
   "download_failed": "ダウンロードに失敗しました: {{error}}",
   "load_failed": "ファイルリストの読み込みエラー: {{error}}",
-
   "open_action": "ファイルを開く",
   "open_log": "📂 ファイルを開きました: {{name}}",
   "open_error": "ファイルを開く際にエラーが発生しました: {{error}}",
@@ -51,11 +47,9 @@
   "folder_opened_log_with_path": "📁 翻訳フォルダを開きました: {{path}}",
   "folder_open_error": "フォルダを開く際にエラーが発生しました: {{error}}",
   "delete_default_msg": "{{name}} を削除しました",
-
   "file_too_large": "ファイルサイズが大きすぎます: {{name}} ({{size}})",
   "unsupported_format": "未対応の形式です: {{name}}",
   "upload_failed": "アップロードに失敗しました: {{error}}",
-
   "quality_action": "ダウンロード前に確認",
   "quality_title": "ダウンロード前の確認",
   "quality_subtitle": "ダウンロード前に編集品質と EPUB 構造を確認します。",
@@ -84,7 +78,6 @@
   "quality_epub_nav": "ナビゲーション",
   "quality_epub_title": "タイトル",
   "quality_epub_language": "言語",
-
   "total_label": "合計:",
   "files_unit": "個のファイル"
 }

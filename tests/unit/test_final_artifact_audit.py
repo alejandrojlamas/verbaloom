@@ -124,7 +124,7 @@ def test_final_artifact_audit_cleans_epub_source_links_and_repeated_page_toc(tmp
     paragraphs = chapter_root.xpath("//*[local-name()='p']")
     assert len(paragraphs) == 4
     assert sum(
-        "tbl-sanitized-artifact" in str(node.get("class") or "").split()
+        "verbaloom-sanitized-artifact" in str(node.get("class") or "").split()
         for node in paragraphs
     ) == 2
 
@@ -180,7 +180,7 @@ def test_final_artifact_audit_preserves_legitimate_epub_url(tmp_path):
 
     chapter = _epub_text(epub, "OEBPS/chap-001.xhtml")
     assert report.source_artifacts_removed == 0
-    assert "tbl-sanitized-artifact" not in chapter
+    assert "verbaloom-sanitized-artifact" not in chapter
     assert 'href="https://www.wiley.com/college/block"' in chapter
     assert ">www.wiley.com/college/block<" in chapter
 
@@ -309,7 +309,7 @@ def test_final_artifact_audit_reflows_source_proven_page_split_paragraphs(tmp_pa
     assert second.paragraph_continuations_reflowed == 0
     assert "todavía estaban esperando allí" in chapter
     assert "recordar aquel viaje" in chapter
-    assert "tbl-merged-continuation" in chapter
+    assert "verbaloom-merged-continuation" in chapter
 
 
 def test_final_artifact_audit_applies_only_approved_exact_profile_terms(

@@ -1,6 +1,6 @@
 # Docker Testing Guide
 
-This guide explains how to test the Docker deployment of TranslateBookWithLLM.
+This guide explains how to test the Docker deployment of VerbaLoom.
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ cd deployment
 docker-compose build
 ```
 
-Expected output: `deployment-translatebook Built`
+Expected output: `deployment-verbaloom Built`
 
 ### 2. Start the Container
 
@@ -56,7 +56,7 @@ Expected output: `deployment-translatebook Built`
 docker-compose up -d
 ```
 
-Expected output: `Container translatebook-llm Started`
+Expected output: `Container verbaloom Started`
 
 ### 3. Check Container Status
 
@@ -123,7 +123,7 @@ docker-compose up -d
 ### Shell Access
 
 ```bash
-docker-compose exec translatebook bash
+docker-compose exec verbaloom bash
 ```
 
 Type `exit` to leave the container shell.
@@ -256,7 +256,7 @@ docker-compose logs
 
 3. Verify Ollama is accessible from container:
    ```bash
-   docker-compose exec translatebook curl http://host.docker.internal:11434/api/tags
+   docker-compose exec verbaloom curl http://host.docker.internal:11434/api/tags
    ```
 
 ---
@@ -266,7 +266,7 @@ docker-compose logs
 ### Check Resource Usage
 
 ```bash
-docker stats translatebook-llm
+docker stats verbaloom
 ```
 
 Displays CPU, memory, network, and disk I/O in real-time.
@@ -292,7 +292,8 @@ curl -X POST http://localhost:5000/api/translate \
 
 ## CI/CD Integration
 
-The GitHub Actions workflow ([.github/workflows/docker-test.yml](.github/workflows/docker-test.yml)) automatically tests:
+The GitHub Actions workflow
+([.github/workflows/docker-test.yml](../.github/workflows/docker-test.yml)) automatically tests:
 
 ✅ Docker image builds successfully
 ✅ Container starts without errors
@@ -317,12 +318,12 @@ The GitHub Actions workflow ([.github/workflows/docker-test.yml](.github/workflo
 3. Start container again: `docker-compose up -d`
 4. Check if data persists:
    ```bash
-   docker-compose exec translatebook ls -la /app/data
+   docker-compose exec verbaloom ls -la /app/data
    ```
 
 ### Test Checkpoint/Resume Feature
 
-See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md#checkpoint-and-resume-system) for checkpoint testing procedures.
+See [DOCKER_DEPLOYMENT.md](../docs/DOCKER_DEPLOYMENT.md#checkpoint-and-resume-system) for checkpoint testing procedures.
 
 ---
 
@@ -359,7 +360,7 @@ If tests fail or you encounter issues:
 
 After successful testing:
 
-- ✅ Deploy to production (see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md#production-deployment))
+- ✅ Deploy to production (see [DOCKER_DEPLOYMENT.md](../docs/DOCKER_DEPLOYMENT.md#production-deployment))
 - ✅ Configure environment variables
 - ✅ Set up reverse proxy (nginx/Traefik)
 - ✅ Enable HTTPS

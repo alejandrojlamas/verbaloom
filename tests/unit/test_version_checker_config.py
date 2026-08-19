@@ -27,15 +27,15 @@ def test_version_checker_defaults_to_custom_fork(tmp_path):
         text=True,
     ).strip().splitlines()
 
-    assert output == ["alejandrojlamas", "Traductor-y-estilizador-de-libros"]
+    assert output == ["alejandrojlamas", "verbaloom"]
 
 
 def test_version_checker_repo_can_be_overridden(tmp_path):
     env = {
         "PATH": os.environ.get("PATH", ""),
         "PYTHONPATH": str(REPO_ROOT),
-        "TBL_UPDATE_REPO_OWNER": "hydropix",
-        "TBL_UPDATE_REPO_NAME": "TranslateBooksWithLLMs",
+        "VERBALOOM_UPDATE_REPO_OWNER": "example-owner",
+        "VERBALOOM_UPDATE_REPO_NAME": "example-repo",
     }
     output = subprocess.check_output(
         [
@@ -52,7 +52,32 @@ def test_version_checker_repo_can_be_overridden(tmp_path):
         text=True,
     ).strip().splitlines()
 
-    assert output == ["hydropix", "TranslateBooksWithLLMs"]
+    assert output == ["example-owner", "example-repo"]
+
+
+def test_version_checker_accepts_legacy_repo_environment_aliases(tmp_path):
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONPATH": str(REPO_ROOT),
+        "TBL_UPDATE_REPO_OWNER": "legacy-owner",
+        "TBL_UPDATE_REPO_NAME": "legacy-repo",
+    }
+    output = subprocess.check_output(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import src.utils.version_checker as v; "
+                "print(v.GITHUB_REPO_OWNER); "
+                "print(v.GITHUB_REPO_NAME)"
+            ),
+        ],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+    ).strip().splitlines()
+
+    assert output == ["legacy-owner", "legacy-repo"]
 
 
 def test_version_checker_handles_repo_without_releases(monkeypatch):

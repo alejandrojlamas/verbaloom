@@ -278,7 +278,7 @@ async def test_structure_recovery_rejects_marker_only_candidate(monkeypatch):
     events = []
 
     async def fake_request(_text, **_kwargs):
-        return "[[[TBLBLOCK000]]]\n[[[/TBLBLOCK000]]]"
+        return "[[[VERBALOOMBLOCK000]]]\n[[[/VERBALOOMBLOCK000]]]"
 
     monkeypatch.setattr(xhtml_translator, "generate_translation_request", fake_request)
 
@@ -833,14 +833,14 @@ async def test_alignment_fallback_repairs_one_fidelity_rejection(monkeypatch):
             return "El título publicado quedó mal."
         if "# FIDELITY RETRY" in requests[-1][1]:
             return (
-                "[[[TBLBLOCK000]]]\n"
+                "[[[VERBALOOMBLOCK000]]]\n"
                 "El título del artículo publicado se conserva exactamente.\n"
-                "[[[/TBLBLOCK000]]]"
+                "[[[/VERBALOOMBLOCK000]]]"
             )
         return (
-            "[[[TBLBLOCK000]]]\n"
+            "[[[VERBALOOMBLOCK000]]]\n"
             "El título publicado se alteró y perdió contenido.\n"
-            "[[[/TBLBLOCK000]]]"
+            "[[[/VERBALOOMBLOCK000]]]"
         )
 
     async def fake_supervise(_source, _candidate, **kwargs):
@@ -1083,7 +1083,7 @@ async def test_structure_recovery_presplits_oversized_batches(monkeypatch):
     )
 
     assert 1 < len(calls) <= block_count
-    assert max(call.count("[[[TBLBLOCK") for call in calls) <= 2
+    assert max(call.count("[[[VERBALOOMBLOCK") for call in calls) <= 2
     assert "Párrafo 0." in result
     assert "Párrafo 7." in result
     assert structure_signature(result, tag_map) == structure_signature(source, tag_map)

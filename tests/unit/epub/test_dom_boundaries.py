@@ -101,7 +101,7 @@ def test_marked_source_artifact_can_be_hidden_without_changing_dom_shape():
         '<p><a href="https://example.com">www.example.com</a></p>'
     )
     output_root = _root(
-        '<p class="tbl-sanitized-artifact" style="display: none"><a></a></p>'
+        '<p class="verbaloom-sanitized-artifact" style="display: none"><a></a></p>'
     )
 
     report = compare_xhtml_boundaries(source_root, output_root, repair=False)

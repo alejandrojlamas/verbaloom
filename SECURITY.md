@@ -17,7 +17,7 @@ rotate any credential that may have been disclosed.
 
 ## Operating boundary
 
-TBL is a local-first, single-user research application. It does not implement
+VerbaLoom is a local-first, single-user research application. It does not implement
 accounts or application-level authentication.
 
 - Keep the Flask service bound to loopback.

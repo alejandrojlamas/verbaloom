@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import Optional
 from dotenv import load_dotenv
 
+from src.utils.branding import GENERATOR_NAME, REPOSITORY_URL
+
 # Setup debug logger for configuration
 _config_logger = logging.getLogger('config')
 
@@ -434,8 +436,7 @@ SRT_LINES_PER_BLOCK = int(os.getenv('SRT_LINES_PER_BLOCK', '10'))
 # Please consider keeping this enabled to support the project and help others discover this free tool!
 # The attribution is non-intrusive and placed at the end of files. Thank you for your support!
 ATTRIBUTION_ENABLED = os.getenv('ATTRIBUTION_ENABLED', os.getenv('SIGNATURE_ENABLED', 'true')).lower() == 'true'
-GENERATOR_NAME = "TranslateBook with LLM (TBL)"
-GENERATOR_SOURCE = "https://github.com/hydropix/TranslateBookWithLLM"
+GENERATOR_SOURCE = REPOSITORY_URL
 METADATA_VERSION = "1.0"
 
 # Default languages from environment (optional)

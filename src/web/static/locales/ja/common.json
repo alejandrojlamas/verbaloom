@@ -1,10 +1,9 @@
 {
-  "app_subtitle": "LLM で書籍を翻訳",
+  "app_subtitle": "ローカルファーストのAI翻訳。編集メモリと忠実度チェックを搭載。",
   "llm_checking": "LLM: 確認中...",
   "llm_connected": "LLM: 接続済み",
   "llm_offline": "LLM: オフライン",
   "theme_toggle_title": "ダーク/ライトモードを切り替え",
-
   "tab_translate": "翻訳",
   "tab_transform": "変換",
   "tab_profile_prep": "プロファイル",
@@ -13,7 +12,6 @@
   "tab_glossaries": "用語集",
   "tab_usage": "Tokens",
   "tab_files": "ファイル",
-
   "update_available": "更新があります",
   "update_release_notes": "リリースノート",
   "update_now": "今すぐ更新",
@@ -33,7 +31,6 @@
   "update_download_title": "新しいビルドをダウンロードできる GitHub のリリースページを開きます。",
   "update_status_failed": "更新に失敗しました。",
   "update_version_available": "v{{latest}} が利用可能です（現在 v{{current}}）。",
-
   "refresh": "更新",
   "cancel": "キャンセル",
   "close": "閉じる",
@@ -42,7 +39,6 @@
   "ok": "OK",
   "loading": "読み込み中...",
   "no_data": "データなし",
-
   "usage_title": "Token usage and costs",
   "usage_backfill": "Estimate history",
   "usage_loading": "Loading usage...",
@@ -72,37 +68,33 @@
   "usage_date": "Date",
   "usage_book": "Book",
   "usage_status": "Status",
-
   "toast_dismiss": "閉じる",
-
   "activity_log": "アクティビティログ",
   "activity_log_clear": "ログをクリア",
   "activity_log_cleared": "ユーザーによってアクティビティログがクリアされました",
-
   "footer_github": "GitHub",
   "footer_report_bug": "バグを報告",
   "footer_report_bug_title": "バグを報告する",
   "footer_suggest_feature": "機能を提案",
   "footer_suggest_feature_title": "機能を提案する",
-
   "ws_connected_log": "サーバーへの WebSocket 接続が確立されました。",
   "ws_disconnected_log": "WebSocket 接続が切断されました。",
   "server_health_ok": "サーバーのヘルスチェックは OK です。",
   "supported_formats": "対応ファイル形式: {{formats}}",
   "server_unavailable": "{{url}} にサーバーが見つかりません。Python サーバーが起動していることを確認してください。{{error}}",
   "server_connect_failed_log": "サーバーへの接続または設定の読み込みに失敗しました: {{error}}",
-
   "server_restart_detected": "サーバーの再起動を検出しました。アクティブな翻訳の状態をクリアします。",
   "server_session_check_failed": "サーバーのセッション状態を確認できませんでした",
   "state_desync_syncing": "状態の不整合を検出しました: サーバーではジョブが {{status}} ですが、UI ではアクティブのままです。同期しています...",
   "translation_job_missing": "翻訳ジョブはサーバー上に存在しません。UI をリセットします。",
   "checkpoint_created_default": "チェックポイントを作成しました",
-
   "sending": "送信中...",
   "test_sent_default": "テストを送信しました。",
   "notification_test_sent": "テスト {{event}} 通知を送信しました",
   "notification_test_failed": "通知テストに失敗しました: {{error}}",
   "notifications_preset_applied": "通知プリセットを適用しました: {{name}}",
-
-  "endpoint_reset_log": "エンドポイントをサーバーのデフォルトにリセットしました"
+  "endpoint_reset_log": "エンドポイントをサーバーのデフォルトにリセットしました",
+  "brand_name": "VerbaLoom",
+  "brand_logo_alt": "VerbaLoomのロゴ",
+  "brand_version_title": "VerbaLoomのバージョン"
 }

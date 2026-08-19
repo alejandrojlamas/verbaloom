@@ -9,19 +9,16 @@
   "open_folder_title": "打开翻译文件夹",
   "refresh": "刷新",
   "refresh_list_title": "刷新文件列表",
-
   "name_column": "名称",
   "filename_column": "文件名",
   "size_column": "大小",
   "modified_column": "修改时间",
   "actions_column": "操作",
-
   "no_files": "尚无文件。",
   "confirm_delete_one": "删除此文件？",
   "confirm_delete_many": "删除 {{count}} 个文件？",
   "confirm_delete_named": "确定要删除 \"{{name}}\" 吗？",
   "confirm_delete_selected": "确定要删除 {{count}} 个文件吗？",
-
   "no_selection_download": "未选择要下载的文件",
   "no_selection_delete": "未选择要删除的文件",
   "downloading": "正在下载 {{name}}...",
@@ -37,7 +34,6 @@
   "delete_failed": "删除失败：{{error}}",
   "download_failed": "下载失败：{{error}}",
   "load_failed": "加载文件列表出错：{{error}}",
-
   "open_action": "打开文件",
   "open_log": "📂 已打开文件：{{name}}",
   "open_error": "打开文件出错：{{error}}",
@@ -51,11 +47,9 @@
   "folder_opened_log_with_path": "📁 已打开翻译文件夹：{{path}}",
   "folder_open_error": "打开文件夹出错：{{error}}",
   "delete_default_msg": "已删除 {{name}}",
-
   "file_too_large": "文件过大：{{name}}（{{size}}）",
   "unsupported_format": "不支持的格式：{{name}}",
   "upload_failed": "上传失败：{{error}}",
-
   "quality_action": "下载前检查",
   "quality_title": "下载前检查",
   "quality_subtitle": "下载前检查编辑质量和 EPUB 结构。",
@@ -84,7 +78,6 @@
   "quality_epub_nav": "导航",
   "quality_epub_title": "标题",
   "quality_epub_language": "语言",
-
   "total_label": "总计：",
   "files_unit": "个文件"
 }

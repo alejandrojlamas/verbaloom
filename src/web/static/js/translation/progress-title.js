@@ -80,7 +80,7 @@ export function renderTranslationTitle(file) {
     translatingText.id = 'progressOperationLabel';
     let titleText;
     if (file.transformLabel || file.transformMode || file.operation === 'transform') {
-        titleText = file.transformLabel ? `Transformando · ${file.transformLabel}` : 'Transformando';
+        titleText = file.transformLabel ? `Transforming · ${file.transformLabel}` : 'Transforming';
     } else if (file.operation === 'refine') {
         titleText = t('translation:refining');
     } else {
@@ -182,7 +182,7 @@ export function renderTranslationTitle(file) {
     }
 
     if (file.transformLabel || file.transformMode || file.operation === 'transform') {
-        const transformParts = ['Transformar'];
+        const transformParts = ['Transform'];
         if (file.transformLabel || file.transformMode) {
             transformParts.push(file.transformLabel || file.transformMode);
         }
@@ -190,7 +190,7 @@ export function renderTranslationTitle(file) {
             const profileText = file.profileId.length > 34
                 ? `${file.profileId.slice(0, 34)}…`
                 : file.profileId;
-            transformParts.push(`perfil ${profileText}`);
+            transformParts.push(`profile ${profileText}`);
         }
         const transformSpan = document.createElement('div');
         transformSpan.textContent = transformParts.join(' · ');

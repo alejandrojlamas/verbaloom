@@ -9,19 +9,16 @@
   "open_folder_title": "번역 폴더 열기",
   "refresh": "새로 고침",
   "refresh_list_title": "파일 목록 새로 고침",
-
   "name_column": "이름",
   "filename_column": "파일명",
   "size_column": "크기",
   "modified_column": "수정됨",
   "actions_column": "작업",
-
   "no_files": "아직 파일이 없습니다.",
   "confirm_delete_one": "이 파일을 삭제하시겠습니까?",
   "confirm_delete_many": "{{count}}개의 파일을 삭제하시겠습니까?",
   "confirm_delete_named": "\"{{name}}\"을(를) 삭제하시겠습니까?",
   "confirm_delete_selected": "{{count}}개의 파일을 삭제하시겠습니까?",
-
   "no_selection_download": "다운로드할 파일이 선택되지 않았습니다",
   "no_selection_delete": "삭제할 파일이 선택되지 않았습니다",
   "downloading": "{{name}} 다운로드 중...",
@@ -37,7 +34,6 @@
   "delete_failed": "삭제 실패: {{error}}",
   "download_failed": "다운로드 실패: {{error}}",
   "load_failed": "파일 목록 로드 오류: {{error}}",
-
   "open_action": "파일 열기",
   "open_log": "📂 파일 열림: {{name}}",
   "open_error": "파일 열기 오류: {{error}}",
@@ -51,11 +47,9 @@
   "folder_opened_log_with_path": "📁 번역 폴더가 열렸습니다: {{path}}",
   "folder_open_error": "폴더 열기 오류: {{error}}",
   "delete_default_msg": "{{name}} 삭제됨",
-
   "file_too_large": "파일이 너무 큽니다: {{name}} ({{size}})",
   "unsupported_format": "지원되지 않는 형식: {{name}}",
   "upload_failed": "업로드 실패: {{error}}",
-
   "quality_action": "다운로드 전 검토",
   "quality_title": "다운로드 전 검토",
   "quality_subtitle": "다운로드하기 전에 편집 품질과 EPUB 구조를 검토합니다.",
@@ -84,7 +78,6 @@
   "quality_epub_nav": "탐색",
   "quality_epub_title": "제목",
   "quality_epub_language": "언어",
-
   "total_label": "합계:",
   "files_unit": "파일"
 }

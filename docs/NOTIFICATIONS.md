@@ -76,11 +76,11 @@ The `title` and `message` keys are the convention used by gotify, and ntfy also 
 ### ntfy.sh — push to phone (recommended for personal use)
 
 1. Install the [ntfy app](https://ntfy.sh/) on your phone (iOS / Android).
-2. Subscribe to a **unique** topic name (avoid common words — topics are public, anyone who guesses the name can send notifications to it). Example: `tbl-username-K8x9p2`.
+2. Subscribe to a **unique** topic name (avoid common words — topics are public, anyone who guesses the name can send notifications to it). Example: `verbaloom-username-K8x9p2`.
 3. In `.env`:
 
 ```bash
-NOTIFY_WEBHOOK_URL=https://ntfy.sh/tbl-username-K8x9p2
+NOTIFY_WEBHOOK_URL=https://ntfy.sh/verbaloom-username-K8x9p2
 NOTIFY_ON_SUCCESS=true
 NOTIFY_ON_FAILURE=true
 ```
@@ -91,14 +91,16 @@ That is enough. You will receive a notification each time a translation complete
 
 ```bash
 NOTIFY_WEBHOOK_URL=https://ntfy.sh
-NOTIFY_WEBHOOK_PAYLOAD={"topic":"tbl-username-K8x9p2","title":"{event}","message":"{file} in {duration_seconds:.0f}s","priority":4,"tags":["white_check_mark"]}
+NOTIFY_WEBHOOK_PAYLOAD={"topic":"verbaloom-username-K8x9p2","title":"{event}","message":"{file} in {duration_seconds:.0f}s","priority":4,"tags":["white_check_mark"]}
 ```
 
 See the [ntfy publishing docs](https://docs.ntfy.sh/publish/) for the full list of fields (priority levels, click action, attach files, etc.).
 
 ### gotify — self-hosted notification server
 
-The original use case from [issue #167](https://github.com/hydropix/TranslateBookWithLLM/issues/167). Run gotify in Docker:
+The original use case came from
+[historical upstream issue #167](https://github.com/hydropix/TranslateBooksWithLLMs/issues/167).
+Run gotify in Docker:
 
 ```bash
 docker run -d -p 8080:80 --name gotify gotify/server
@@ -159,7 +161,7 @@ For any service that needs a Bearer token or custom auth header:
 
 ```bash
 NOTIFY_WEBHOOK_URL=https://api.example.com/notify
-NOTIFY_WEBHOOK_HEADERS={"Authorization":"Bearer YOUR_TOKEN_HERE","X-Source":"TBL"}
+NOTIFY_WEBHOOK_HEADERS={"Authorization":"Bearer YOUR_TOKEN_HERE","X-Source":"VerbaLoom"}
 NOTIFY_WEBHOOK_PAYLOAD={"event":"{event}","file":"{file}","duration":{duration_seconds:.1f}}
 ```
 

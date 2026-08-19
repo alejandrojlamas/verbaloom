@@ -11,12 +11,14 @@ Features:
     - Automatic context size detection
 """
 
-from typing import List, Optional, Dict, Any, Callable, Union
-import httpx
 import asyncio
 import json
+from typing import List, Optional, Dict, Any, Callable, Union
+
+import httpx
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS
+from src.utils.branding import DISPLAY_NAME, REPOSITORY_URL
 from ..base import LLMProvider, LLMResponse
 from ..exceptions import ContextOverflowError
 from ..rate_limit_handler import handle_rate_limit
@@ -246,8 +248,8 @@ class OpenRouterProvider(LLMProvider):
             headers = {
                 "Authorization": f"Bearer {current_key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/hydropix/TranslateBookWithLLM",
-                "X-Title": "TranslateBookWithLLM",
+                "HTTP-Referer": REPOSITORY_URL,
+                "X-Title": DISPLAY_NAME,
             }
             try:
                 response = await client.post(

@@ -35,13 +35,13 @@ def create_mock_llm_response(content: str) -> LLMResponse:
 def create_marker_aware_mock_response(prompt: str, default_response: str) -> LLMResponse:
     """Honor the structural-recovery batch contract used by the real prompt."""
     pattern = re.compile(
-        r"\[\[\[TBLBLOCK(?P<index>\d{3})\]\]\].*?"
-        r"\[\[\[/TBLBLOCK(?P=index)\]\]\]",
+        r"\[\[\[VERBALOOMBLOCK(?P<index>\d{3})\]\]\].*?"
+        r"\[\[\[/VERBALOOMBLOCK(?P=index)\]\]\]",
         re.DOTALL,
     )
     blocks = [
-        f"[[[TBLBLOCK{match.group('index')}]]]\n{default_response}\n"
-        f"[[[/TBLBLOCK{match.group('index')}]]]"
+        f"[[[VERBALOOMBLOCK{match.group('index')}]]]\n{default_response}\n"
+        f"[[[/VERBALOOMBLOCK{match.group('index')}]]]"
         for match in pattern.finditer(str(prompt or ""))
     ]
     return create_mock_llm_response("\n\n".join(blocks) if blocks else default_response)

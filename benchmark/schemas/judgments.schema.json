@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hydropix/TranslateBookWithLLM/schemas/judgments.schema.json",
-  "title": "TBL Benchmark Judgments (per-judge)",
+  "$id": "https://github.com/alejandrojlamas/verbaloom/blob/main/benchmark/schemas/judgments.schema.json",
+  "title": "VerbaLoom Benchmark Judgments (per-judge)",
   "description": "All scores produced by one judge configuration. One file per judge_id. Joined to translations/ by (model_id, text_id, target_lang); output_hash carries integrity check.",
   "type": "object",
   "required": ["schema_version", "judge", "run", "scores"],

@@ -12,7 +12,7 @@ The three supported root entrypoints are:
 - `translate.py`: runs translation workflows from the command line.
 - `launcher.py`: desktop-friendly launcher.
 
-The persistent macOS service calls `scripts/run_translatebooks_server.sh`, which
+The persistent macOS service calls `scripts/run_verbaloom_server.sh`, which
 starts `translation_api.py` with the project virtual environment and suppresses
 automatic browser opening.
 
@@ -194,7 +194,7 @@ For Tailscale, verify both the declared Serve handler and the final HTTPS path:
 ```bash
 tailscale status --json
 tailscale serve status --json
-curl --fail https://<tailnet-host>/tbl/api/health
+curl --fail https://<tailnet-host>/verbaloom/api/health
 ```
 
 If MagicDNS is unavailable on the Mac, use `curl --resolve` with the tailnet IP

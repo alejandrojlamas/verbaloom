@@ -14,7 +14,6 @@
   "gpu_cpu": "CPU モード",
   "gpu_cpu_no_cuda": "CPU モード (CUDA なし)",
   "gpu_na": "N/A",
-
   "target_language": "翻訳先の言語",
   "voice_optional": "音声 (任意)",
   "voice_placeholder": "例 zh-CN-XiaoxiaoNeural",
@@ -40,7 +39,6 @@
   "bitrate_64": "64k (バランス型)",
   "bitrate_96": "96k (高音質)",
   "bitrate_128": "128k (最高音質)",
-
   "voice_cloning": "音声クローン",
   "voice_cloning_heading": "🎤 音声クローン",
   "voice_prompt": "ボイスプロンプト",
@@ -50,11 +48,9 @@
   "exaggeration_hint": "高いほど表現が豊かに",
   "cfg_weight": "CFG ウェイト",
   "cfg_weight_hint": "プロンプト準拠度",
-
   "generate_audio": "音声を生成",
   "generate_audio_with_icon": "🎧 音声を生成",
   "starting": "⏳ 開始中...",
-
   "progress_title": "音声生成",
   "waiting": "開始を待機中...",
   "starting_log": "🔊 TTS 生成を開始しました",
@@ -66,7 +62,6 @@
   "failed_log": "❌ TTS に失敗しました: {{error}}",
   "failed_label": "失敗",
   "audio_file_default": "音声ファイル",
-
   "ffmpeg_required": "音声エンコードには FFmpeg が必要です",
   "ffmpeg_install": "FFmpeg をインストール (winget)",
   "ffmpeg_manual": "手動ダウンロード",
@@ -78,7 +73,6 @@
   "ffmpeg_install_error": "インストールエラー: {{error}}",
   "ffmpeg_install_error_log": "❌ FFmpeg のインストールエラー: {{error}}",
   "ffmpeg_restart_needed": "TTS を使用するにはアプリケーションを再起動してください。",
-
   "tts_started": "{{filename}} の TTS 生成を開始しました",
   "tts_started_log": "🎧 オーディオブック生成を開始 ({{provider}}): {{filename}} (Job ID: {{jobId}})",
   "tts_error": "TTS の開始エラー: {{error}}",
