@@ -1,5 +1,5 @@
 """
-Prompts module for TranslateBookWithLLM
+Prompts module for VerbaLoom
 """
 from src.prompts.prompts import (
     PromptPair,

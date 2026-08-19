@@ -72,7 +72,7 @@ async def test_selective_missing_block_repair_skips_sanitized_artifacts(tmp_path
     )
     _write_epub(
         output,
-        '<p class="tbl-sanitized-artifact" style="display: none"><a></a></p>',
+        '<p class="verbaloom-sanitized-artifact" style="display: none"><a></a></p>',
     )
 
     report = await repair_epub_missing_blocks_with_llm(

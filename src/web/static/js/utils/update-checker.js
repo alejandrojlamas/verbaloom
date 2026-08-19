@@ -11,7 +11,8 @@
 import { MessageLogger } from '../ui/message-logger.js';
 import { t } from '../i18n/i18n.js';
 
-const DISMISS_STORAGE_KEY = 'tbl_update_dismissed_version';
+const DISMISS_STORAGE_KEY = 'verbaloom_update_dismissed_version';
+const LEGACY_DISMISS_STORAGE_KEY = 'tbl_update_dismissed_version';
 const POLL_INTERVAL_MS = 1500;
 const RESTART_WAIT_MAX_MS = 90_000;
 
@@ -91,7 +92,14 @@ export const UpdateChecker = {
             return;
         }
 
-        const dismissed = localStorage.getItem(DISMISS_STORAGE_KEY);
+        let dismissed = localStorage.getItem(DISMISS_STORAGE_KEY);
+        if (!dismissed) {
+            dismissed = localStorage.getItem(LEGACY_DISMISS_STORAGE_KEY);
+            if (dismissed) {
+                localStorage.setItem(DISMISS_STORAGE_KEY, dismissed);
+                localStorage.removeItem(LEGACY_DISMISS_STORAGE_KEY);
+            }
+        }
         if (dismissed && dismissed === String(data.latest)) {
             banner.classList.add('hidden');
             return;

@@ -19,7 +19,9 @@ _TRANSFORM_LABEL_TO_MODE = {
     "explicar": ("simplify", "Explicar"),
     "humanizar": ("humanize", "Humanizar"),
     "adaptar a mexicano": ("mexican_spanish", "Adaptar a mexicano"),
-    "audiolibro": ("audiobook", "Audiolibro"),
+    # Keep recognizing legacy Spanish filenames while exposing the canonical
+    # English label to current clients.
+    "audiolibro": ("audiobook", "Audiobook"),
 }
 
 

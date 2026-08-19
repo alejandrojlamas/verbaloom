@@ -14,7 +14,6 @@
   "gpu_cpu": "CPU 模式",
   "gpu_cpu_no_cuda": "CPU 模式（无 CUDA）",
   "gpu_na": "无",
-
   "target_language": "目标语言",
   "voice_optional": "语音（可选）",
   "voice_placeholder": "例如 zh-CN-XiaoxiaoNeural",
@@ -40,7 +39,6 @@
   "bitrate_64": "64k（均衡）",
   "bitrate_96": "96k（较高质量）",
   "bitrate_128": "128k（最佳质量）",
-
   "voice_cloning": "语音克隆",
   "voice_cloning_heading": "🎤 语音克隆",
   "voice_prompt": "语音样本",
@@ -50,11 +48,9 @@
   "exaggeration_hint": "数值越高越富有表现力",
   "cfg_weight": "CFG 权重",
   "cfg_weight_hint": "提示词遵循度",
-
   "generate_audio": "生成音频",
   "generate_audio_with_icon": "🎧 生成音频",
   "starting": "⏳ 启动中...",
-
   "progress_title": "音频生成",
   "waiting": "等待开始...",
   "starting_log": "🔊 TTS 生成已开始",
@@ -66,7 +62,6 @@
   "failed_log": "❌ TTS 失败：{{error}}",
   "failed_label": "失败",
   "audio_file_default": "音频文件",
-
   "ffmpeg_required": "音频编码需要 FFmpeg",
   "ffmpeg_install": "安装 FFmpeg（winget）",
   "ffmpeg_manual": "手动下载",
@@ -78,7 +73,6 @@
   "ffmpeg_install_error": "安装出错：{{error}}",
   "ffmpeg_install_error_log": "❌ FFmpeg 安装出错：{{error}}",
   "ffmpeg_restart_needed": "请重启应用以使用 TTS。",
-
   "tts_started": "已为 {{filename}} 启动 TTS 生成",
   "tts_started_log": "🎧 已启动有声书生成（{{provider}}）：{{filename}}（任务 ID：{{jobId}}）",
   "tts_error": "启动 TTS 出错：{{error}}",

@@ -1,6 +1,6 @@
 # Contributing benchmark results
 
-The TranslateBookWithLLM benchmark v2 is **community-driven**. You can
+The VerbaLoom benchmark v2 is **community-driven**. You can
 contribute results for any model the project doesn't already track by
 opening a Pull Request that adds your translations to the split layout.
 
@@ -55,7 +55,8 @@ Pair sets:
 ```bash
 python -m benchmark.cli add-translations benchmark_results/<run_id>.json \
   --by github:<your-username> \
-  --provider openrouter
+  --provider openrouter \
+  --engine-version v1.2.4
 ```
 
 This writes/merges into
@@ -131,7 +132,7 @@ Minimal example:
 {
   "schema_version": "2.0",
   "model": {"provider": "openrouter", "id": "anthropic/claude-haiku-4-5"},
-  "environment": {"tbl_version": "v1.2.4", "prompt_version": "v1"},
+  "environment": {"engine_version": "v1.2.4", "prompt_version": "v1"},
   "contributors": [
     {"by": "github:hydropix", "at": "2026-05-10T16:01:28Z"}
   ],
@@ -214,4 +215,4 @@ Yes. Re-run `python -m benchmark.cli add-translations ...` with the same
 model and provider. The merge keeps the most recent entries by date.
 
 **Where to report bugs?**
-[github.com/hydropix/TranslateBookWithLLM/issues](https://github.com/hydropix/TranslateBookWithLLM/issues).
+[VerbaLoom issues](https://github.com/alejandrojlamas/verbaloom/issues).

@@ -18,6 +18,7 @@ def test_setup_web_logger_does_not_share_callbacks_between_jobs():
 
 
 def test_debug_console_llm_logs_omit_raw_prompt_and_response_by_default(monkeypatch):
+    monkeypatch.delenv("VERBALOOM_VERBOSE_LLM_LOGS", raising=False)
     monkeypatch.delenv("TBL_VERBOSE_LLM_LOGS", raising=False)
     logger = UnifiedLogger(console_output=False, min_level=LogLevel.DEBUG)
 

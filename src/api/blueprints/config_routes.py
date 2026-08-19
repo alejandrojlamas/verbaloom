@@ -86,6 +86,8 @@ def create_config_blueprint(server_session_id=None):
     register_provider_model_routes(bp, config=_config, logger=logger)
 
     @bp.route('/')
+    @bp.route('/verbaloom')
+    @bp.route('/verbaloom/')
     def serve_interface():
         """Serve the main translation interface.
 
@@ -118,13 +120,13 @@ def create_config_blueprint(server_session_id=None):
         This is intentionally a tiny HTML response so it works from Android
         Chrome even when the main app's module graph is stuck in an old page.
         """
-        target = f"/?sample_reset={startup_time}"
+        target = f"/verbaloom?sample_reset={startup_time}"
         response = make_response(f"""<!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Restableciendo muestra...</title>
+  <title>Resetting sample...</title>
   <style>
     body {{ font-family: system-ui, -apple-system, sans-serif; background:#07111d; color:#eef4ff; display:grid; min-height:100vh; place-items:center; margin:0; }}
     main {{ max-width:28rem; padding:2rem; line-height:1.45; }}
@@ -133,14 +135,16 @@ def create_config_blueprint(server_session_id=None):
 </head>
 <body>
   <main>
-    <h1>Restableciendo muestra...</h1>
-    <p>Limpiando el estado local de <strong>Muestra</strong> y recargando la app.</p>
+    <h1>Resetting sample...</h1>
+    <p>Clearing local <strong>Sample &amp; Compare</strong> state and reloading the app.</p>
   </main>
   <script>
     (async () => {{
       try {{
         Object.keys(localStorage || {{}}).forEach((key) => {{
-          if (key.startsWith('tbl.sample.')) localStorage.removeItem(key);
+          if (key.startsWith('verbaloom.sample.') || key.startsWith('tbl.sample.')) {{
+            localStorage.removeItem(key);
+          }}
         }});
         if (window.caches && caches.keys) {{
           const keys = await caches.keys();

@@ -7,7 +7,7 @@ This guide explains how to use the official Docker images published to GitHub Co
 ### Pull the Latest Image
 
 ```bash
-docker pull ghcr.io/hydropix/translatebookswithllms:latest
+docker pull ghcr.io/alejandrojlamas/verbaloom:latest
 ```
 
 ### Run the Container
@@ -19,7 +19,7 @@ docker run -d \
   -v $(pwd)/logs:/app/logs \
   -e API_ENDPOINT=http://host.docker.internal:11434/api/generate \
   -e DEFAULT_MODEL=qwen3:14b \
-  ghcr.io/hydropix/translatebookswithllms:latest
+  ghcr.io/alejandrojlamas/verbaloom:latest
 ```
 
 Access the web interface at: `http://localhost:5000`
@@ -57,8 +57,8 @@ REQUEST_TIMEOUT=900
 version: '3.8'
 
 services:
-  translate-book:
-    image: ghcr.io/hydropix/translatebookswithllms:latest
+  verbaloom:
+    image: ghcr.io/alejandrojlamas/verbaloom:latest
     ports:
       - "127.0.0.1:5000:5000"
     volumes:
@@ -90,8 +90,8 @@ If your Ollama server is on a different machine in your local network:
 version: '3.8'
 
 services:
-  translate-book:
-    image: ghcr.io/hydropix/translatebookswithllms:latest
+  verbaloom:
+    image: ghcr.io/alejandrojlamas/verbaloom:latest
     ports:
       - "127.0.0.1:5000:5000"
     environment:
@@ -159,7 +159,7 @@ docker run -d \
   -p 127.0.0.1:5000:5000 \
   -e API_ENDPOINT=http://host.docker.internal:11434/api/generate \
   -e DEFAULT_MODEL=qwen3:14b \
-  ghcr.io/hydropix/translatebookswithllms:latest
+  ghcr.io/alejandrojlamas/verbaloom:latest
 ```
 
 **Note**: `host.docker.internal` allows the container to access services on the host.
@@ -177,8 +177,8 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
-  translate-book:
-    image: ghcr.io/hydropix/translatebookswithllms:latest
+  verbaloom:
+    image: ghcr.io/alejandrojlamas/verbaloom:latest
     ports:
       - "127.0.0.1:5000:5000"
     environment:
@@ -201,7 +201,7 @@ docker run -d \
   -e LLM_PROVIDER=gemini \
   -e GEMINI_API_KEY=your_api_key_here \
   -e DEFAULT_MODEL=gemini-2.0-flash \
-  ghcr.io/hydropix/translatebookswithllms:latest
+  ghcr.io/alejandrojlamas/verbaloom:latest
 ```
 
 ### OpenAI
@@ -213,7 +213,7 @@ docker run -d \
   -e OPENAI_API_KEY=your_api_key_here \
   -e API_ENDPOINT=https://api.openai.com/v1/chat/completions \
   -e DEFAULT_MODEL=gpt-4o \
-  ghcr.io/hydropix/translatebookswithllms:latest
+  ghcr.io/alejandrojlamas/verbaloom:latest
 ```
 
 ## Health Check
@@ -266,8 +266,8 @@ If you need to build a custom image:
 
 ```bash
 # Clone the repository
-git clone https://github.com/hydropix/TranslateBookWithLLM.git
-cd TranslateBookWithLLM
+git clone https://github.com/alejandrojlamas/verbaloom.git
+cd verbaloom
 
 # Build the image
 docker build -f deployment/Dockerfile -t my-custom-translator .
@@ -293,13 +293,13 @@ Images are automatically built and published to GitHub Container Registry when:
 
 ```bash
 # Latest version
-docker pull ghcr.io/hydropix/translatebookswithllms:latest
+docker pull ghcr.io/alejandrojlamas/verbaloom:latest
 
 # Specific version
-docker pull ghcr.io/hydropix/translatebookswithllms:v1.2.3
+docker pull ghcr.io/alejandrojlamas/verbaloom:v1.2.3
 
 # Specific commit
-docker pull ghcr.io/hydropix/translatebookswithllms:main-abc1234
+docker pull ghcr.io/alejandrojlamas/verbaloom:main-abc1234
 ```
 
 ## CI/CD Integration
@@ -315,4 +315,4 @@ The project uses GitHub Actions to automatically build and publish Docker images
 For issues related to Docker deployment:
 1. Check this documentation
 2. Review container logs
-3. Open an issue at: https://github.com/hydropix/TranslateBookWithLLM/issues
+3. Open an issue at: https://github.com/alejandrojlamas/verbaloom/issues

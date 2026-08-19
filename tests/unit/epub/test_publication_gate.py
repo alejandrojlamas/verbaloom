@@ -168,7 +168,7 @@ def test_publication_gate_records_explicitly_sanitized_source_artifacts(tmp_path
         ],
         paragraph_attributes=[
             "",
-            ' class="tbl-sanitized-artifact" style="display: none"',
+            ' class="verbaloom-sanitized-artifact" style="display: none"',
         ],
     )
 
@@ -836,8 +836,8 @@ def test_publication_gate_accepts_source_proven_marked_pagination_reflow(tmp_pat
             "",
         ],
         paragraph_attributes=[
-            ' class="tbl-reflowed-paragraph"',
-            ' class="tbl-merged-continuation"',
+            ' class="verbaloom-reflowed-paragraph"',
+            ' class="verbaloom-merged-continuation"',
         ],
     )
 

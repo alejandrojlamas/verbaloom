@@ -83,16 +83,16 @@ python scripts/glossary_approve.py --profile my_book_mx --min-confidence 0.95
 
 The web UI can create a book profile before the main run:
 
-1. Select files in **Transformar texto**.
+1. Select files in **Transform text**.
 2. Choose the main purpose: faithful translation, audiobook, modernization,
    explanation, or literary polish.
-3. Click **Analizar con DeepSeek Flash**.
+3. Click **Analyze with DeepSeek Flash**.
 4. The server extracts readable text, scans the full document locally, and runs
    distributed discovery chunks through `deepseek-v4-flash`.
 5. A generated profile is written under `profiles/auto_<book>/`.
 6. Mechanically safe entries go to `glossary/terms.yml`.
 7. Context-sensitive discoveries go to `glossary/pending_suggestions.yml`.
-8. The new profile is selected in the **Perfil editorial** dropdown before the
+8. The new profile is selected in the **Editorial profile** dropdown before the
    main process starts.
 
 Profile preparation uses goal-specific business rules. A faithful translation

@@ -13,7 +13,7 @@ import { t } from '../i18n/i18n.js';
 
 // Storage configuration with versioning
 const STORAGE_VERSION = 1;
-const STORAGE_KEY_PREFIX = 'tbl_user_preferences';
+const STORAGE_KEY_PREFIX = 'verbaloom_user_preferences';
 const STORAGE_KEY = `${STORAGE_KEY_PREFIX}_v${STORAGE_VERSION}`;
 
 /**
@@ -79,22 +79,22 @@ export const SettingsManager = {
      */
     cleanupOldStorageVersions() {
         try {
-            // Remove old non-versioned key
-            const oldKey = 'tbl_user_preferences';
-            if (localStorage.getItem(oldKey)) {
-                // Migrate data from old key before removing
-                const oldData = localStorage.getItem(oldKey);
+            // Silently carry pre-VerbaLoom preferences forward.
+            const legacyKeys = ['tbl_user_preferences_v1', 'tbl_user_preferences'];
+            for (const legacyKey of legacyKeys) {
+                const oldData = localStorage.getItem(legacyKey);
                 if (oldData) {
                     try {
                         const parsed = JSON.parse(oldData);
-                        // Add version and save to new key
                         parsed.version = STORAGE_VERSION;
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+                        if (!localStorage.getItem(STORAGE_KEY)) {
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+                        }
                     } catch (e) {
                         console.warn('Could not migrate old preferences:', e);
                     }
                 }
-                localStorage.removeItem(oldKey);
+                localStorage.removeItem(legacyKey);
             }
 
             // Remove any other versions (future-proofing)

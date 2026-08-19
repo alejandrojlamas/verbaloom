@@ -67,8 +67,8 @@ class OpenRouterConfig:
     timeout: int = 120
 
     # Request headers
-    site_url: str = "https://github.com/yourusername/TranslateBookWithLLM"
-    site_name: str = "TranslateBookWithLLM Benchmark"
+    site_url: str = "https://github.com/alejandrojlamas/verbaloom"
+    site_name: str = "VerbaLoom Benchmark"
 
 
 @dataclass
@@ -117,7 +117,7 @@ class PathConfig:
     wiki_repo_url: str = field(
         default_factory=lambda: os.getenv(
             "WIKI_REPO_URL",
-            "https://github.com/hydropix/TranslateBookWithLLM.wiki.git"
+            "https://github.com/alejandrojlamas/verbaloom.wiki.git"
         )
     )
 

@@ -48,7 +48,7 @@ function isTransformFile(file) {
 }
 
 function transformLabelForFile(file) {
-    return file?.transformLabel || file?.transformMode || 'Transformar';
+    return file?.transformLabel || file?.transformMode || 'Transform';
 }
 
 const PROVIDER_ENDPOINT_DEFAULTS = {

@@ -15,8 +15,15 @@ def setup_working_directory():
         # Running as compiled executable
         exe_dir = Path(sys.executable).parent
 
-        # Create a data directory next to the executable
-        app_data_dir = exe_dir / 'TranslateBook_Data'
+        # Migrate the legacy sibling data directory once, then use the
+        # canonical VerbaLoom location for every new write.
+        app_data_dir = exe_dir / 'VerbaLoom_Data'
+        legacy_data_dir = exe_dir / 'TranslateBook_Data'
+        if not app_data_dir.exists() and legacy_data_dir.exists():
+            try:
+                legacy_data_dir.rename(app_data_dir)
+            except OSError:
+                shutil.copytree(legacy_data_dir, app_data_dir)
         app_data_dir.mkdir(exist_ok=True)
 
         # Change working directory to app data folder
@@ -51,7 +58,7 @@ def setup_working_directory():
             print("\nCreating default configuration file...")
 
             # Create a minimal .env with defaults
-            default_env = """# TranslateBook with LLM Configuration
+            default_env = """# VerbaLoom Configuration
 # This file was auto-generated on first run
 
 # === LLM PROVIDER ===

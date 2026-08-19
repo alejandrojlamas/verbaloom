@@ -1,7 +1,7 @@
 version: '3.8'
 
 # =============================================================================
-# TranslateBookWithLLM — Docker Compose
+# VerbaLoom — Docker Compose
 # =============================================================================
 # All runtime configuration lives in the `environment:` block below.
 # Uncomment and edit only the variables you need; defaults are sensible.
@@ -9,12 +9,12 @@ version: '3.8'
 # =============================================================================
 
 services:
-  translate-book:
+  verbaloom:
     build:
       context: .
       dockerfile: deployment/Dockerfile
-    image: tbl-personal-lab:local
-    container_name: translate-book
+    image: verbaloom:local
+    container_name: verbaloom
     restart: unless-stopped
     ports:
       - "127.0.0.1:5000:5000"
@@ -34,7 +34,7 @@ services:
       # -----------------------------------------------------------------------
       - PORT=5000
       - HOST=0.0.0.0
-      - TBL_ALLOW_NETWORK_BIND=true
+      - VERBALOOM_ALLOW_NETWORK_BIND=true
       - OUTPUT_DIR=/app/translated_files
       - OUTPUT_FILENAME_PATTERN={originalName} ({targetLang}).{ext}
       - DEBUG_MODE=false

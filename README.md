@@ -1,6 +1,11 @@
 <p align="center">
-  <strong>TBL</strong><br>
-  <span>Long-book translation, literary modernization, editorial refinement, and source-faithfulness auditing with LLMs.</span>
+  <img src="src/web/static/verbaloom-logo-512.png" alt="VerbaLoom logo" width="176">
+</p>
+
+<h1 align="center">VerbaLoom</h1>
+
+<p align="center">
+  <strong>Local-first AI translation with editorial memory and fidelity gates.</strong>
 </p>
 
 <p align="center">
@@ -12,7 +17,7 @@
 
 ---
 
-TBL is a local, browser-based system for processing entire books with LLMs. It is designed for long literary and academic documents where a simple "translate this file" loop is not enough: the app chunks the book, keeps continuity memory, prepares book-specific editorial profiles, audits output against the source, repairs weak chunks, and rebuilds downloadable files.
+VerbaLoom is a local, browser-based system for processing entire books with LLMs. It is designed for long literary and academic documents where a simple "translate this file" loop is not enough: the app chunks the book, keeps continuity memory, prepares book-specific editorial profiles, audits output against the source, repairs weak chunks, and rebuilds downloadable files.
 
 ## Applied AI Lab
 
@@ -24,7 +29,7 @@ translation service or a substitute for professional editorial review.
 
 ## Provenance
 
-TBL is a personal derivative of
+VerbaLoom is a personal derivative of
 [hydropix/TranslateBooksWithLLMs](https://github.com/hydropix/TranslateBooksWithLLMs).
 The upstream project established the translation application and provider
 ecosystem; this lab extends that foundation with book-scoped editorial
@@ -32,6 +37,13 @@ profiles, source-aware audit and repair loops, resumable whole-book quality
 gates, and local-first operational hardening. It is not an official upstream
 release. Upstream and derivative code remain available under the repository's
 [GNU AGPL v3 license](LICENSE).
+
+Historical upstream resources remain available in the
+[source repository](https://github.com/hydropix/TranslateBooksWithLLMs),
+[wiki](https://github.com/hydropix/TranslateBooksWithLLMs/wiki), and
+[issue tracker](https://github.com/hydropix/TranslateBooksWithLLMs/issues).
+New VerbaLoom work is tracked in
+[alejandrojlamas/verbaloom](https://github.com/alejandrojlamas/verbaloom).
 
 The recommended primary model is **DeepSeek Pro** (`deepseek-v4-pro`). It is the main target for the current long-book workflow and offers a strong balance of cost, context, and quality for translation, audit, and repair. **DeepSeek Flash** (`deepseek-v4-flash`) is used for cheaper preflight profile preparation.
 
@@ -154,7 +166,7 @@ The current long-book workflow is:
 
 ## Universal Publication Gates
 
-TBL does not treat "an output file exists" as completion. Every normal web job
+VerbaLoom does not treat "an output file exists" as completion. Every normal web job
 and every strict CLI job now runs a format-neutral whole-book quality contract.
 The required invariant is:
 
@@ -251,12 +263,12 @@ Profile responsibilities:
 
 Automatic profile preparation:
 
-1. Open **Transformar texto**.
+1. Open **Transform text**.
 2. Drop the source book.
 3. Choose the profile goal: faithful translation, audiobook, modernization, explanation, or literary polish.
-4. Click **Analizar con DeepSeek Flash**.
+4. Click **Analyze with DeepSeek Flash**.
 5. Watch the progress bar while extraction, local scan, reviewer batches, and Flash discovery chunks run.
-6. The generated profile is saved automatically and selected in **Perfil editorial**.
+6. The generated profile is saved automatically and selected in **Editorial profile**.
 7. Start the transformation or translation flow with that profile active.
 
 This keeps the engine generic: DeepSeek Flash performs cheap discovery, but
@@ -323,13 +335,13 @@ The included `audiobook_faithful` profile keeps the translation faithful while p
 
 When this profile is active, the normal translated output is still produced. After the final artifact hygiene audit, the app also creates:
 
-- `(... Audiolibro).txt`: clean text for TTS.
-- `(... Audiolibro).epub`: structured visual companion when the main requested output is EPUB. It is cloned from the translated publication rather than rebuilt from plain text, so the cover, illustrations, captions, navigation, fonts, and image placement remain intact.
-- `(... Audiolibro report).json`: counts of removed links, moved notes/references, integrated image captions, and structurally preserved visual resources.
+- `(... Audiobook).txt`: clean text for TTS.
+- `(... Audiobook).epub`: structured visual companion when the main requested output is EPUB. It is cloned from the translated publication rather than rebuilt from plain text, so the cover, illustrations, captions, navigation, fonts, and image placement remain intact.
+- `(... Audiobook report).json`: counts of removed links, moved notes/references, integrated image captions, and structurally preserved visual resources.
 
 The audiobook sanitizer is deterministic and profile-scoped. It removes page furniture, source-download watermarks, raw links, EPUB note anchors, and inline note calls from the TXT listening flow. Notes, references, and credit-only captions move to an appendix. Informative image captions are kept near the text as concise image descriptions, without inventing visual details. The EPUB companion follows a separate preservation contract: every XHTML document and visual resource remains byte-identical, while a blocking local gate proves the cover declaration, image hashes, references, DOM positions, captions, and spine before publication.
 
-For image-heavy books such as film histories, use **Perfil → Preparar perfil editorial → Uso principal: Audiolibro** before translating. The generated book profile keeps its own glossary and editorial map while enabling the same audiobook companion policy.
+For image-heavy books such as film histories, use **Profiles → Prepare editorial profile → Primary use: Audiobook** before translating. The generated book profile keeps its own glossary and editorial map while enabling the same audiobook companion policy.
 
 ## Quality Reports
 
@@ -384,12 +396,16 @@ Security defaults are intentionally local-first: the server binds to
 `127.0.0.1`, REST and WebSocket traffic is same-origin, uploads are bounded,
 and JSON file references must stay inside app-managed storage. A custom
 OpenAI-compatible endpoint never receives a key loaded from `.env` unless its
-origin is explicitly listed in `TBL_TRUSTED_KEY_ENDPOINTS`; pass a key for that
+origin is explicitly listed in `VERBALOOM_TRUSTED_KEY_ENDPOINTS`; pass a key for that
 request instead. Network binding requires the separate
-`TBL_ALLOW_NETWORK_BIND=true` opt-in and should sit behind a trusted proxy.
+`VERBALOOM_ALLOW_NETWORK_BIND=true` opt-in and should sit behind a trusted proxy.
 The application does not implement user authentication: the opt-in changes
 reachability only. Do not expose Flask directly to a LAN, tailnet, or the
 Internet; use an identity-aware authenticated proxy for any remote access.
+
+Existing installations that still define the legacy `TBL_*` environment names
+are read as compatibility inputs during migration. `VERBALOOM_*` is the
+canonical prefix and the only prefix used in new configuration examples.
 
 ### 3. Run the app
 
@@ -445,7 +461,7 @@ itself do not count as phone verification.
 An optional proxied application route can look like:
 
 ```text
-https://<device>.<tailnet>.ts.net/tbl
+https://<device>.<tailnet>.ts.net/verbaloom
 ```
 
 If the phone cannot resolve MagicDNS, use the `recommended_url` returned by

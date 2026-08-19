@@ -1,6 +1,6 @@
 # Docker Deployment Guide
 
-This guide explains how to deploy TranslateBookWithLLM using Docker.
+This guide explains how to deploy VerbaLoom using Docker.
 
 ## Prerequisites
 
@@ -61,7 +61,8 @@ API_ENDPOINT=http://192.168.1.100:11434/api/generate  # Replace with your host I
 DEFAULT_MODEL=qwen3:14b
 ```
 
-Option 2: Uncomment `extra_hosts` in [docker-compose.yml](docker-compose.yml:64-66):
+Option 2: Uncomment `extra_hosts` in the
+[root Compose file](../docker-compose.yml):
 
 ```yaml
 extra_hosts:
@@ -117,7 +118,7 @@ These folders are created automatically and persist between container restarts.
 
 ### Checkpoint and Resume System
 
-TranslateBookWithLLM includes a checkpoint system that allows you to resume interrupted translations. This requires the `data` volume to be properly configured.
+VerbaLoom includes a checkpoint system that allows you to resume interrupted translations. This requires the `data` volume to be properly configured.
 
 **How it works:**
 
@@ -165,11 +166,12 @@ curl http://localhost:5000/api/status/<translation_id>
 
 ### Resource Limits
 
-To add memory/CPU limits, edit [docker-compose.yml](docker-compose.yml):
+To add memory/CPU limits, edit the
+[root Compose file](../docker-compose.yml):
 
 ```yaml
 services:
-  translatebook:
+  verbaloom:
     # ... other settings ...
     deploy:
       resources:
@@ -205,7 +207,7 @@ docker-compose logs -f
 docker-compose logs --tail=100
 
 # View logs for specific service
-docker-compose logs translatebook
+docker-compose logs verbaloom
 ```
 
 ### Rebuild After Code Changes
@@ -223,10 +225,10 @@ docker-compose up -d
 
 ```bash
 # Open bash shell inside container
-docker-compose exec translatebook bash
+docker-compose exec verbaloom bash
 
 # Run Python commands
-docker-compose exec translatebook python translate.py --help
+docker-compose exec verbaloom python translate.py --help
 ```
 
 ## Using CLI Mode in Docker
@@ -237,7 +239,7 @@ While the Docker container runs the web interface by default, you can also use t
 
 **View help:**
 ```bash
-docker-compose exec translatebook python translate.py --help
+docker-compose exec verbaloom python translate.py --help
 ```
 
 **Translate a text file:**
@@ -246,7 +248,7 @@ docker-compose exec translatebook python translate.py --help
 cp my_book.txt ./translated_files/
 
 # Then translate it
-docker-compose exec translatebook python translate.py \
+docker-compose exec verbaloom python translate.py \
   -i /app/translated_files/my_book.txt \
   -o /app/translated_files/my_book_fr.txt \
   -sl English -tl French
@@ -255,7 +257,7 @@ docker-compose exec translatebook python translate.py \
 ### EPUB Translation via CLI
 
 ```bash
-docker-compose exec translatebook python translate.py \
+docker-compose exec verbaloom python translate.py \
   -i /app/translated_files/input.epub \
   -o /app/translated_files/output_fr.epub \
   -sl English -tl French \
@@ -265,7 +267,7 @@ docker-compose exec translatebook python translate.py \
 ### SRT Subtitle Translation via CLI
 
 ```bash
-docker-compose exec translatebook python translate.py \
+docker-compose exec verbaloom python translate.py \
   -i /app/translated_files/movie.srt \
   -o /app/translated_files/movie_es.srt \
   -sl English -tl Spanish
@@ -275,7 +277,7 @@ docker-compose exec translatebook python translate.py \
 
 **Gemini:**
 ```bash
-docker-compose exec translatebook python translate.py \
+docker-compose exec verbaloom python translate.py \
   -i /app/translated_files/book.txt \
   -o /app/translated_files/book_fr.txt \
   --provider gemini \
@@ -285,7 +287,7 @@ docker-compose exec translatebook python translate.py \
 
 **OpenAI:**
 ```bash
-docker-compose exec translatebook python translate.py \
+docker-compose exec verbaloom python translate.py \
   -i /app/translated_files/book.txt \
   -o /app/translated_files/book_fr.txt \
   --provider openai \
@@ -310,7 +312,7 @@ FILES=(
 
 for file in "${FILES[@]}"; do
   echo "Translating $file..."
-  docker-compose exec -T translatebook python translate.py \
+  docker-compose exec -T verbaloom python translate.py \
     -i "/app/translated_files/$file" \
     -o "/app/translated_files/${file%.txt}_fr.txt" \
     -sl English -tl French
@@ -339,7 +341,7 @@ volumes:
 **Then use:**
 ```bash
 docker-compose up -d
-docker-compose exec translatebook python translate.py \
+docker-compose exec verbaloom python translate.py \
   -i /app/books/input.epub \
   -o /app/books/output_fr.epub \
   -sl English -tl French
@@ -354,7 +356,7 @@ The container includes a health check that verifies the API is responding:
 docker-compose ps
 
 # View detailed health status
-docker inspect --format='{{json .State.Health}}' translatebook-llm | python -m json.tool
+docker inspect --format='{{json .State.Health}}' verbaloom | python -m json.tool
 ```
 
 Health check endpoint: `http://localhost:5000/api/health`
@@ -420,7 +422,7 @@ Connection refused to localhost:11434
 curl http://localhost:11434/api/tags
 
 # Pull a model if needed
-docker-compose exec translatebook curl -X POST http://host.docker.internal:11434/api/pull \
+docker-compose exec verbaloom curl -X POST http://host.docker.internal:11434/api/pull \
   -d '{"name": "qwen3:14b"}'
 ```
 
@@ -428,7 +430,7 @@ docker-compose exec translatebook curl -X POST http://host.docker.internal:11434
 
 ```bash
 # Check environment variables inside container
-docker-compose exec translatebook env | grep -E "LLM_PROVIDER|API_ENDPOINT|DEFAULT_MODEL"
+docker-compose exec verbaloom env | grep -E "LLM_PROVIDER|API_ENDPOINT|DEFAULT_MODEL"
 ```
 
 ### Health Check Failing
@@ -436,13 +438,13 @@ docker-compose exec translatebook env | grep -E "LLM_PROVIDER|API_ENDPOINT|DEFAU
 **View health check logs:**
 
 ```bash
-docker inspect translatebook-llm | grep -A 10 Health
+docker inspect verbaloom | grep -A 10 Health
 ```
 
 **Test health endpoint manually:**
 
 ```bash
-docker-compose exec translatebook curl http://localhost:5000/api/health
+docker-compose exec verbaloom curl http://localhost:5000/api/health
 ```
 
 ### File Permissions (Linux)
@@ -454,7 +456,7 @@ If you encounter permission errors with translated files:
 sudo chown -R $USER:$USER ./translated_files
 
 # Or run with user mapping
-docker-compose exec -u $(id -u):$(id -g) translatebook bash
+docker-compose exec -u $(id -u):$(id -g) verbaloom bash
 ```
 
 ## Production Deployment
@@ -529,7 +531,7 @@ SIGNATURE_ENABLED=true
 SIGNATURE_ENABLED=false
 ```
 
-See [TRANSLATION_SIGNATURE.md](../TRANSLATION_SIGNATURE.md) for details.
+See the attribution settings in [.env.example](../.env.example) for details.
 
 ## Performance Optimization
 
@@ -570,7 +572,7 @@ It's important to regularly backup your translation data, especially the checkpo
 ```bash
 # Create timestamped backup
 DATE=$(date +%Y%m%d_%H%M%S)
-tar -czf backup_translatebook_$DATE.tar.gz \
+tar -czf backup_verbaloom_$DATE.tar.gz \
   ./data \
   ./translated_files \
   ./logs
@@ -606,7 +608,7 @@ docker-compose start
 docker-compose down
 
 # Extract backup
-tar -xzf backup_translatebook_20250114.tar.gz
+tar -xzf backup_verbaloom_20250114.tar.gz
 
 # Restart container
 docker-compose up -d
@@ -630,20 +632,20 @@ docker-compose start
 ```bash
 # Create full backup
 docker-compose down
-tar -czf translatebook_migration.tar.gz \
+tar -czf verbaloom_migration.tar.gz \
   data \
   translated_files \
   .env \
   docker-compose.yml
 
 # Transfer file to new server
-scp translatebook_migration.tar.gz user@newserver:/path/to/destination/
+scp verbaloom_migration.tar.gz user@newserver:/path/to/destination/
 ```
 
 **On new server:**
 ```bash
 # Extract backup
-tar -xzf translatebook_migration.tar.gz
+tar -xzf verbaloom_migration.tar.gz
 
 # Verify .env configuration (update API endpoints if needed)
 nano .env
@@ -659,7 +661,7 @@ curl http://localhost:5000/api/jobs
 
 **Check database size:**
 ```bash
-docker-compose exec translatebook du -sh /app/data/jobs.db
+docker-compose exec verbaloom du -sh /app/data/jobs.db
 ```
 
 **Clean up completed jobs older than 30 days:**
@@ -668,7 +670,7 @@ Currently, there's no automatic cleanup. Monitor disk space and manually manage 
 
 ```bash
 # View database content
-docker-compose exec translatebook sqlite3 /app/data/jobs.db "SELECT id, status, created_at FROM jobs ORDER BY created_at DESC LIMIT 20;"
+docker-compose exec verbaloom sqlite3 /app/data/jobs.db "SELECT id, status, created_at FROM jobs ORDER BY created_at DESC LIMIT 20;"
 
 # Manually backup and clean if needed
 docker-compose stop
@@ -698,7 +700,7 @@ docker-compose down
 docker-compose down -v
 
 # Remove images
-docker rmi translatebookwithllm_translatebook
+docker rmi verbaloom:local
 ```
 
 **Important:** Before removing volumes, ensure you have backups of:
@@ -720,4 +722,4 @@ docker image prune -a
 
 - [Docker Documentation](https://docs.docker.com/)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Project README](README.md)
+- [Project README](../README.md)

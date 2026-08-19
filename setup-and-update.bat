@@ -1,6 +1,6 @@
 @echo off
 REM ============================================
-REM TranslateBookWithLLM - Setup & Update
+REM VerbaLoom - Setup & Update
 REM Installation and Update Script
 REM ============================================
 
@@ -12,7 +12,7 @@ REM ========================================
 REM BANNER
 REM ========================================
 echo.
-echo TranslateBook with LLMs - Setup ^& Update
+echo VerbaLoom - Setup ^& Update
 echo ─────────────────────────────────────────
 echo.
 

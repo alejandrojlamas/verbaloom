@@ -20,9 +20,16 @@ from lxml import etree
 from .dom_boundaries import _parse_xhtml, _serialize_xhtml, _write_member
 
 
-REFLOW_ANCHOR_CLASS = "tbl-reflowed-paragraph"
-REFLOW_CONTINUATION_CLASS = "tbl-merged-continuation"
-_REFLOW_CLASSES = {REFLOW_ANCHOR_CLASS, REFLOW_CONTINUATION_CLASS}
+REFLOW_ANCHOR_CLASS = "verbaloom-reflowed-paragraph"
+REFLOW_CONTINUATION_CLASS = "verbaloom-merged-continuation"
+_LEGACY_REFLOW_ANCHOR_CLASS = "tbl-reflowed-paragraph"
+_LEGACY_REFLOW_CONTINUATION_CLASS = "tbl-merged-continuation"
+_REFLOW_ANCHOR_CLASSES = {REFLOW_ANCHOR_CLASS, _LEGACY_REFLOW_ANCHOR_CLASS}
+_REFLOW_CONTINUATION_CLASSES = {
+    REFLOW_CONTINUATION_CLASS,
+    _LEGACY_REFLOW_CONTINUATION_CLASS,
+}
+_REFLOW_CLASSES = _REFLOW_ANCHOR_CLASSES | _REFLOW_CONTINUATION_CLASSES
 _TEXT_SUFFIXES = {".xhtml", ".html", ".htm"}
 _TERMINAL_PUNCTUATION = ".!?…:;"
 _CLOSING_PUNCTUATION = "\"'’”»)]}"
@@ -67,6 +74,14 @@ def _local_name(element: etree._Element) -> str:
 
 def _classes(element: etree._Element) -> set[str]:
     return {item for item in str(element.get("class") or "").split() if item}
+
+
+def _has_reflow_anchor_class(element: etree._Element) -> bool:
+    return bool(_REFLOW_ANCHOR_CLASSES & _classes(element))
+
+
+def _has_reflow_continuation_class(element: etree._Element) -> bool:
+    return bool(_REFLOW_CONTINUATION_CLASSES & _classes(element))
 
 
 def _add_class(element: etree._Element, class_name: str) -> None:
@@ -213,7 +228,7 @@ def _source_proves_translated_word_split(
 
 def _find_reflow_anchor(element: etree._Element) -> etree._Element | None:
     current = element
-    while current is not None and REFLOW_CONTINUATION_CLASS in _classes(current):
+    while current is not None and _has_reflow_continuation_class(current):
         current = _direct_previous_paragraph(current)
     if current is None or not _is_safe_anchor_paragraph(current):
         return None
@@ -259,7 +274,7 @@ def is_valid_marked_continuation(
     output_current: etree._Element,
 ) -> bool:
     """Validate a reflow marker against the corresponding source boundary."""
-    if REFLOW_CONTINUATION_CLASS not in _classes(output_current):
+    if not _has_reflow_continuation_class(output_current):
         return False
     if normalized_text(output_current):
         return False
@@ -282,7 +297,7 @@ def is_valid_marked_continuation(
     anchor = _find_reflow_anchor(output_previous)
     return bool(
         anchor is not None
-        and REFLOW_ANCHOR_CLASS in _classes(anchor)
+        and _has_reflow_anchor_class(anchor)
         and normalized_text(anchor)
     )
 
@@ -297,7 +312,7 @@ def is_valid_marked_anchor(
         return False
     output_anchor = output_blocks[block_index]
     if (
-        REFLOW_ANCHOR_CLASS not in _classes(output_anchor)
+        not _has_reflow_anchor_class(output_anchor)
         or not _is_safe_anchor_paragraph(output_anchor)
         or not normalized_text(output_anchor)
     ):
@@ -306,7 +321,7 @@ def is_valid_marked_anchor(
     index = block_index + 1
     while index < len(output_blocks):
         output_current = output_blocks[index]
-        if REFLOW_CONTINUATION_CLASS not in _classes(output_current):
+        if not _has_reflow_continuation_class(output_current):
             break
         if not is_valid_marked_continuation(
             source_blocks[index - 1],
@@ -359,7 +374,7 @@ def reflow_split_paragraphs(
         ):
             continue
         report.scanned_boundaries += 1
-        if REFLOW_CONTINUATION_CLASS in _classes(output_current):
+        if _has_reflow_continuation_class(output_current):
             continue
         if (
             not _is_safe_anchor_paragraph(source_previous)

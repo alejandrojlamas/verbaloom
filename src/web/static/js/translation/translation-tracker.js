@@ -19,15 +19,15 @@ import { t } from '../i18n/i18n.js';
 
 // Storage configuration with versioning
 const STORAGE_VERSION = 1;
-const STORAGE_KEY_PREFIX = 'tbl_translation_state';
+const STORAGE_KEY_PREFIX = 'verbaloom_translation_state';
 const TRANSLATION_STATE_STORAGE_KEY = `${STORAGE_KEY_PREFIX}_v${STORAGE_VERSION}`;
 const TERMINAL_STATUSES = new Set(['completed', 'error', 'interrupted', 'rate_limited', 'partial']);
 const TRANSFORM_MODE_LABELS = {
-    modernize: 'Modernizar',
-    simplify: 'Explicar',
-    humanize: 'Humanizar',
-    mexican_spanish: 'Adaptar a mexicano',
-    audiobook: 'Audiolibro',
+    modernize: 'Modernize',
+    simplify: 'Explain',
+    humanize: 'Humanize',
+    mexican_spanish: 'Adapt to Mexican Spanish',
+    audiobook: 'Audiobook',
 };
 
 function inferTransformMetadata(job = {}) {
@@ -187,10 +187,20 @@ export const TranslationTracker = {
      */
     cleanupOldStorageVersions() {
         try {
-            // Remove old non-versioned key
-            const oldKey = 'tbl_translation_state';
-            if (localStorage.getItem(oldKey)) {
-                localStorage.removeItem(oldKey);
+            // Silently carry an active pre-VerbaLoom session forward.
+            const legacyKeys = ['tbl_translation_state_v1', 'tbl_translation_state'];
+            for (const legacyKey of legacyKeys) {
+                const legacyState = localStorage.getItem(legacyKey);
+                if (legacyState && !localStorage.getItem(TRANSLATION_STATE_STORAGE_KEY)) {
+                    try {
+                        const parsed = JSON.parse(legacyState);
+                        parsed.version = STORAGE_VERSION;
+                        localStorage.setItem(TRANSLATION_STATE_STORAGE_KEY, JSON.stringify(parsed));
+                    } catch (error) {
+                        console.warn('Could not migrate legacy translation state:', error);
+                    }
+                }
+                localStorage.removeItem(legacyKey);
             }
 
             // Remove any other versions (future-proofing)
@@ -645,7 +655,7 @@ export const TranslationTracker = {
             this._applyPolledJobProgress(job, currentJob.fileRef);
         } catch (error) {
             ProgressManager.updateLiveStatus({
-                live_status: 'Sincronización de progreso pendiente; el proceso puede seguir activo.',
+                live_status: 'Progress synchronization is pending; the process may still be active.',
                 live_status_kind: 'stale',
             });
         } finally {
@@ -711,25 +721,25 @@ export const TranslationTracker = {
         const total = Number(job.total_chunks || 0);
         const nextChunk = total > 0 ? Math.min(completed + 1, total) : null;
         const activity = this._recentLiveActivity(job.translation_id);
-        const chunkText = total > 0 ? `fragmento ${nextChunk}/${total}` : 'fragmento actual';
+        const chunkText = total > 0 ? `chunk ${nextChunk}/${total}` : 'current chunk';
 
         if (job.status === 'queued') {
-            return `En cola · ${chunkText}`;
+            return `Queued · ${chunkText}`;
         }
 
         const lastChange = this._liveProgressLastChangeAt.get(job.translation_id) || Date.now();
         const secondsSinceChange = Math.floor((Date.now() - lastChange) / 1000);
         const syncText = secondsSinceChange > 20
-            ? `sin nuevo fragmento desde ${secondsSinceChange}s`
-            : 'sincronizado ahora';
+            ? `no new chunk for ${secondsSinceChange}s`
+            : 'synced now';
 
         if (activity) {
             return `${activity.label} · ${chunkText} · ${syncText}`;
         }
         if (secondsSinceChange > 20) {
-            return `Trabajando en ${chunkText}; auditoría o reparación puede tardar · ${syncText}`;
+            return `Working on ${chunkText}; audit or repair may take a while · ${syncText}`;
         }
-        return `Trabajando en ${chunkText} · ${syncText}`;
+        return `Working on ${chunkText} · ${syncText}`;
     },
 
     _deriveLiveStatusKind(job) {
@@ -759,26 +769,26 @@ export const TranslationTracker = {
         const entryType = String(data.log_entry?.type || '');
         const text = `${entryType} ${data.log || ''}`.toLowerCase();
 
-        if (text.includes('fidelity supervisor')) return 'Auditando fidelidad';
-        if (text.includes('profile repair')) return 'Reparando perfil editorial';
-        if (text.includes('profile audit')) return 'Auditando perfil editorial';
+        if (text.includes('fidelity supervisor')) return 'Auditing fidelity';
+        if (text.includes('profile repair')) return 'Repairing editorial profile';
+        if (text.includes('profile audit')) return 'Auditing editorial profile';
         if (text.includes('post-run repair') || text.includes('postprocess_repair')) {
-            return 'Reprocesando chunks observados';
+            return 'Reprocessing flagged chunks';
         }
-        if (text.includes('glossary')) return 'Aplicando glosario';
+        if (text.includes('glossary')) return 'Applying glossary';
         if (text.includes('modernize') || text.includes('refinement_request')) {
-            return 'Modernizando fragmento';
+            return 'Modernizing chunk';
         }
-        if (text.includes('refinement_response')) return 'Revisando respuesta editorial';
+        if (text.includes('refinement_response')) return 'Reviewing editorial response';
         if (text.includes('llm_request') || text.includes('sending request to llm')) {
-            return 'Consultando modelo';
+            return 'Querying model';
         }
         if (text.includes('llm_response') || text.includes('response received')) {
-            return 'Procesando respuesta';
+            return 'Processing response';
         }
-        if (text.includes('checkpoint')) return 'Guardando avance';
-        if (text.includes('rate limited')) return 'Esperando al proveedor';
-        if (data.status === 'running') return 'Procesando';
+        if (text.includes('checkpoint')) return 'Saving progress';
+        if (text.includes('rate limited')) return 'Waiting for provider';
+        if (data.status === 'running') return 'Processing';
         return '';
     },
 

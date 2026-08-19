@@ -32,7 +32,7 @@ _TEXT_EXTENSIONS = {".txt", ".text", ".md", ".markdown", ".log", ".srt"}
 _HTML_EXTENSIONS = {".html", ".htm", ".xhtml"}
 _EPUB_BODY_EXTENSIONS = (".xhtml", ".html", ".htm")
 _EPUB_TEXT_EXTENSIONS = (".xhtml", ".html", ".htm", ".opf", ".ncx", ".xml", ".txt")
-_SANITIZED_ARTIFACT_CLASS = "tbl-sanitized-artifact"
+_SANITIZED_ARTIFACT_CLASS = "verbaloom-sanitized-artifact"
 
 _SOURCE_DOMAIN_RE = re.compile(
     r"(?i)(?<![a-z0-9])(?:oceanofpdf\.com|z-library\.sk|1lib\.sk|z-lib\.sk)(?![a-z0-9])"

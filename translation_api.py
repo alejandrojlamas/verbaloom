@@ -186,7 +186,7 @@ def validate_configuration():
         issues.append("API_ENDPOINT must be configured")
     if not network_bind_is_explicitly_allowed(HOST):
         issues.append(
-            "Non-loopback HOST requires TBL_ALLOW_NETWORK_BIND=true. "
+            "Non-loopback HOST requires VERBALOOM_ALLOW_NETWORK_BIND=true. "
             "Keep the default 127.0.0.1 unless a trusted reverse proxy is in use."
         )
 
@@ -393,7 +393,7 @@ def start_server():
 
         logger.info("")
         logger.info("=" * 50)
-        logger.info("  TranslateBook with LLMs - Server")
+        logger.info("  VerbaLoom - Server")
         logger.info("=" * 50)
         logger.info("")
         logger.info(f"  LLM Provider: {LLM_PROVIDER}")

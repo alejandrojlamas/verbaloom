@@ -121,11 +121,11 @@ function updateProgressBar(percent) {
 }
 
 const TRANSFORM_LABEL_TO_MODE = [
-    ['explicar', 'simplify', 'Explicar'],
-    ['modernizar', 'modernize', 'Modernizar'],
-    ['humanizar', 'humanize', 'Humanizar'],
-    ['adaptar a mexicano', 'mexican_spanish', 'Adaptar a mexicano'],
-    ['audiolibro', 'audiobook', 'Audiolibro'],
+    ['explicar', 'simplify', 'Explain'],
+    ['modernizar', 'modernize', 'Modernize'],
+    ['humanizar', 'humanize', 'Humanize'],
+    ['adaptar a mexicano', 'mexican_spanish', 'Adapt to Mexican Spanish'],
+    ['audiolibro', 'audiobook', 'Audiobook'],
 ];
 
 function labelForTransformMode(mode) {
@@ -165,7 +165,7 @@ export function resolveOperationLabel(stats) {
         || ''
     ).trim();
     if (transformMode || transformLabel || stats.operation === 'transform') {
-        return transformLabel ? `Transformando · ${transformLabel}` : 'Transformando';
+        return transformLabel ? `Transforming · ${transformLabel}` : 'Transforming';
     }
 
     if (stats.inline_refinement) {
@@ -207,7 +207,7 @@ function resolveLiveStatusText(stats) {
     const total = Number(stats.total_chunks || 0);
     if (total > 0) {
         const next = Math.min(completed + 1, total);
-        return `Fragmento ${next}/${total}`;
+        return `Chunk ${next}/${total}`;
     }
     return '';
 }

@@ -19,12 +19,25 @@ from lxml import etree
 OPF_NS = "http://www.idpf.org/2007/opf"
 XHTML_NS = "http://www.w3.org/1999/xhtml"
 XLINK_NS = "http://www.w3.org/1999/xlink"
-TBL_CSS_NAME = "tbl-professional.css"
-TBL_CSS_MARKER = "TBL professional reading layer"
+VERBALOOM_CSS_NAME = "verbaloom-professional.css"
+VERBALOOM_CSS_MARKER = "VerbaLoom professional reading layer"
+
+# Deprecated import aliases for integrations that imported the old constant
+# names.  Their values are canonical, so they cannot generate legacy output.
+TBL_CSS_NAME = VERBALOOM_CSS_NAME
+TBL_CSS_MARKER = VERBALOOM_CSS_MARKER
+
+_BODY_CLASS = "verbaloom-book"
+_COVER_CLASS = "verbaloom-cover-page"
+_FURNITURE_CLASS = "verbaloom-furniture"
+_SCENE_BREAK_CLASS = "verbaloom-scene-break"
+_SECTION_MARKER_CLASS = "verbaloom-section-marker"
+_MERGED_CONTINUATION_CLASS = "verbaloom-merged-continuation"
+_LEGACY_COVER_CLASS = "tbl-cover-page"
 
 _PROFESSIONAL_CSS = f"""
-/* {TBL_CSS_MARKER} */
-body.tbl-book {{
+/* {VERBALOOM_CSS_MARKER} */
+body.verbaloom-book {{
   margin: 5%;
   width: 90%;
   min-width: 0;
@@ -37,58 +50,58 @@ body.tbl-book {{
   widows: 2;
   orphans: 2;
 }}
-body.tbl-book p,
-body.tbl-book li,
-body.tbl-book blockquote,
-body.tbl-book th,
-body.tbl-book td {{
+body.verbaloom-book p,
+body.verbaloom-book li,
+body.verbaloom-book blockquote,
+body.verbaloom-book th,
+body.verbaloom-book td {{
   overflow-wrap: anywhere;
 }}
-body.tbl-book pre,
-body.tbl-book code {{
+body.verbaloom-book pre,
+body.verbaloom-book code {{
   white-space: pre-wrap;
 }}
-body.tbl-book .tbl-furniture {{
+body.verbaloom-book .verbaloom-furniture {{
   display: none !important;
 }}
-body.tbl-book .tbl-merged-continuation {{
+body.verbaloom-book .verbaloom-merged-continuation {{
   display: none !important;
 }}
-body.tbl-book p {{
+body.verbaloom-book p {{
   margin: 0;
   text-indent: 1.25em;
 }}
-body.tbl-book h1,
-body.tbl-book h2,
-body.tbl-book h3,
-body.tbl-book h4,
-body.tbl-book h5,
-body.tbl-book h6 {{
+body.verbaloom-book h1,
+body.verbaloom-book h2,
+body.verbaloom-book h3,
+body.verbaloom-book h4,
+body.verbaloom-book h5,
+body.verbaloom-book h6 {{
   margin: 2.5em 0 1.25em;
   text-align: center;
   text-indent: 0;
   page-break-after: avoid;
   break-after: avoid;
 }}
-body.tbl-book h1,
-body.tbl-book h2 {{
+body.verbaloom-book h1,
+body.verbaloom-book h2 {{
   page-break-before: always;
   break-before: page;
 }}
-body.tbl-book h1 + p,
-body.tbl-book h2 + p,
-body.tbl-book h3 + p,
-body.tbl-book .tbl-scene-break + p,
-body.tbl-book .tbl-section-marker + p {{
+body.verbaloom-book h1 + p,
+body.verbaloom-book h2 + p,
+body.verbaloom-book h3 + p,
+body.verbaloom-book .verbaloom-scene-break + p,
+body.verbaloom-book .verbaloom-section-marker + p {{
   text-indent: 0;
 }}
-body.tbl-book img {{
+body.verbaloom-book img {{
   display: block;
   max-width: 100%;
   height: auto;
   margin: 1em auto;
 }}
-body.tbl-book .tbl-cover-page {{
+body.verbaloom-book .verbaloom-cover-page {{
   margin: 0;
   padding: 0;
   width: 100%;
@@ -99,32 +112,32 @@ body.tbl-book .tbl-cover-page {{
   page-break-after: always;
   break-after: page;
 }}
-body.tbl-book .tbl-cover-page img {{
+body.verbaloom-book .verbaloom-cover-page img {{
   width: 100%;
   max-width: 100%;
   object-fit: contain;
   max-height: 95vh;
   margin: 0 auto;
 }}
-body.tbl-book .tbl-scene-break,
-body.tbl-book .tbl-section-marker {{
+body.verbaloom-book .verbaloom-scene-break,
+body.verbaloom-book .verbaloom-section-marker {{
   margin: 1.75em 0;
   text-align: center;
   text-indent: 0;
   page-break-after: avoid;
 }}
-body.tbl-book blockquote {{
+body.verbaloom-book blockquote {{
   margin: 1em 8%;
 }}
-body.tbl-book table {{
+body.verbaloom-book table {{
   width: 100%;
   max-width: 100%;
   table-layout: auto;
   border-collapse: collapse;
   margin: 1em 0;
 }}
-body.tbl-book th,
-body.tbl-book td {{
+body.verbaloom-book th,
+body.verbaloom-book td {{
   padding: .35em .5em;
   vertical-align: top;
   text-align: left;
@@ -133,8 +146,8 @@ body.tbl-book td {{
   word-break: normal;
   hyphens: auto;
 }}
-body.tbl-book table p,
-body.tbl-book table div {{
+body.verbaloom-book table p,
+body.verbaloom-book table div {{
   margin: 0;
   text-align: left;
   text-indent: 0;
@@ -143,14 +156,14 @@ body.tbl-book table div {{
   word-break: normal;
 }}
 @media (max-width: 42em) {{
-  body.tbl-book table {{
+  body.verbaloom-book table {{
     width: 100% !important;
     table-layout: fixed !important;
   }}
-  body.tbl-book th,
-  body.tbl-book td,
-  body.tbl-book table p,
-  body.tbl-book table div {{
+  body.verbaloom-book th,
+  body.verbaloom-book td,
+  body.verbaloom-book table p,
+  body.verbaloom-book table div {{
     min-width: 0;
     white-space: normal !important;
     overflow-wrap: anywhere;
@@ -256,7 +269,7 @@ def _mark_running_furniture(body: etree._Element, identities: set[str]) -> int:
                 identity = _normalized_identity(match.group(1))
                 break
         if identity in identities:
-            marked += int(_add_class(element, "tbl-furniture"))
+            marked += int(_add_class(element, _FURNITURE_CLASS))
     return marked
 
 
@@ -305,7 +318,8 @@ def _mark_commercial_furniture(body: etree._Element) -> int:
         (
             index
             for index, child in enumerate(children)
-            if "tbl-cover-page" in str(child.get("class") or "").split()
+            if {_COVER_CLASS, _LEGACY_COVER_CLASS}
+            & set(str(child.get("class") or "").split())
         ),
         None,
     )
@@ -325,7 +339,7 @@ def _mark_commercial_furniture(body: etree._Element) -> int:
             )
             if _commercial_signal_score(between) >= 4:
                 for child in children[cover_index + 1:title_index]:
-                    marked += int(_add_class(child, "tbl-furniture"))
+                    marked += int(_add_class(child, _FURNITURE_CLASS))
 
     acknowledgment_index = next(
         (
@@ -351,7 +365,7 @@ def _mark_commercial_furniture(body: etree._Element) -> int:
             )
             if promo_index is not None:
                 for child in children[promo_index:]:
-                    marked += int(_add_class(child, "tbl-furniture"))
+                    marked += int(_add_class(child, _FURNITURE_CLASS))
     return marked
 
 
@@ -579,7 +593,7 @@ def _ensure_stylesheet(
             has_rich_css = True
             continue
         css = path.read_text(encoding="utf-8", errors="replace")
-        if TBL_CSS_MARKER in css:
+        if VERBALOOM_CSS_MARKER in css or "TBL professional reading layer" in css:
             return 0, 0
         if _css_is_minimal(css):
             path.write_text(css.rstrip() + "\n\n" + _PROFESSIONAL_CSS, encoding="utf-8")
@@ -592,20 +606,20 @@ def _ensure_stylesheet(
     # Rich publisher styles are publication content: never rewrite them. Add a
     # separate, namespaced reading layer after the source links so mobile table
     # layout and overflow rules can take effect without mutating the original.
-    css_path = opf_dir / TBL_CSS_NAME
+    css_path = opf_dir / VERBALOOM_CSS_NAME
     css_path.write_text(_PROFESSIONAL_CSS, encoding="utf-8")
     manifest = next(iter(opf_root.xpath("//*[local-name()='manifest']")))
     existing_item = next(
         (
             item for item in _manifest_items(opf_root)
-            if str(item.get("href") or "") == TBL_CSS_NAME
+            if str(item.get("href") or "") == VERBALOOM_CSS_NAME
         ),
         None,
     )
     if existing_item is None:
         item = etree.SubElement(manifest, _qname(OPF_NS, "item"))
-        item.set("id", "tbl-professional-css")
-        item.set("href", TBL_CSS_NAME)
+        item.set("id", "verbaloom-professional-css")
+        item.set("href", VERBALOOM_CSS_NAME)
         item.set("media-type", "text/css")
     for doc_path, root in parsed_xhtml_docs.items():
         head = next(iter(root.xpath("//*[local-name()='head']")), None)
@@ -641,7 +655,7 @@ def apply_professional_epub_layer(
         body = next(iter(doc.xpath("//*[local-name()='body']")), None)
         if body is None:
             continue
-        if _add_class(body, "tbl-book"):
+        if _add_class(body, _BODY_CLASS):
             report.styled_documents += 1
         report.furniture_markers += _mark_running_furniture(
             body,
@@ -663,9 +677,9 @@ def apply_professional_epub_layer(
                     element.text = "* * *"
                     text = "* * *"
             if text and _SCENE_BREAK_RE.fullmatch(text):
-                report.semantic_markers += int(_add_class(element, "tbl-scene-break"))
+                report.semantic_markers += int(_add_class(element, _SCENE_BREAK_CLASS))
             elif text and len(text) <= 80 and _SECTION_MARKER_RE.fullmatch(text):
-                report.semantic_markers += int(_add_class(element, "tbl-section-marker"))
+                report.semantic_markers += int(_add_class(element, _SECTION_MARKER_CLASS))
 
     cover_id = _existing_cover_id(root)
     cover_item = next(
@@ -704,7 +718,7 @@ def apply_professional_epub_layer(
             container = cover_element
             while container.getparent() is not None and _local_name(container.getparent()) != "body":
                 container = container.getparent()
-            _add_class(container, "tbl-cover-page")
+            _add_class(container, _COVER_CLASS)
 
     for doc in parsed_xhtml_docs.values():
         body = next(iter(doc.xpath("//*[local-name()='body']")), None)

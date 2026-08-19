@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================
-# TranslateBookWithLLM - Smart Launcher
+# VerbaLoom - Smart Launcher
 # Installation + Update + Launch All-in-One
 # ============================================
 
 echo ""
 echo "============================================"
-echo "TranslateBookWithLLM - Smart Launcher"
+echo "VerbaLoom - Smart Launcher"
 echo "============================================"
 echo ""
 

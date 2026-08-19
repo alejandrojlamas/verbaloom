@@ -235,7 +235,13 @@ def _epub_standalone_page_marker_count(file_path: Path) -> int | None:
                     }
                     if local_names & {"h1", "h2", "h3", "h4", "h5", "h6", "sup"}:
                         continue
-                    if classes & {"tbl-section-marker", "footnote", "endnote", "noteref"}:
+                    if classes & {
+                        "verbaloom-section-marker",
+                        "tbl-section-marker",
+                        "footnote",
+                        "endnote",
+                        "noteref",
+                    }:
                         continue
                     count += 1
             return count

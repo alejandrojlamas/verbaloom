@@ -96,7 +96,7 @@
   "notifications_test": "テスト通知を送信",
   "notifications_test_sent": "テスト {{event}} 通知を正常に送信しました。",
   "notifications_test_failed": "テストに失敗しました: {{error}}",
-  "notifications_intro": "翻訳が終了状態に達したときに、スマートフォン、Discord チャンネル、または任意の HTTP エンドポイントに通知を受け取れます。ローカルモデルでの長時間ジョブに便利です。<strong>ntfy</strong>、<strong>gotify</strong>、<strong>Discord</strong>、<strong>Slack</strong>、<strong>Healthchecks.io</strong>、その他カスタム Webhook に対応しています。詳細は <a href=\"https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a> を参照してください。",
+  "notifications_intro": "翻訳が終了状態に達したときに、スマートフォン、Discord チャンネル、または任意の HTTP エンドポイントに通知を受け取れます。ローカルモデルでの長時間ジョブに便利です。<strong>ntfy</strong>、<strong>gotify</strong>、<strong>Discord</strong>、<strong>Slack</strong>、<strong>Healthchecks.io</strong>、その他カスタム Webhook に対応しています。詳細は <a href=\"https://github.com/alejandrojlamas/verbaloom/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a> を参照してください。",
   "notifications_presets_label": "クイックプリセット",
   "notifications_presets_help": "サービスを選択して URL とペイロードを事前入力し、お使いのアカウントに合わせて値を編集してください。",
   "notifications_preset_reset": "リセット (無効化)",

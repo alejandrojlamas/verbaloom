@@ -79,7 +79,7 @@ def print_banner() -> None:
     """Print CLI banner."""
     banner = """
 +---------------------------------------------------------------+
-|          TranslateBookWithLLM - Benchmark System              |
+|                VerbaLoom - Benchmark System                   |
 |                                                               |
 |  Test translation quality across 40+ languages and models     |
 +---------------------------------------------------------------+
@@ -705,7 +705,7 @@ def cmd_wiki_publish(args: argparse.Namespace) -> int:
             return 1
 
         print(colored("\nWiki published successfully!", Colors.GREEN))
-        print(colored(f"View at: https://github.com/hydropix/TranslateBookWithLLM/wiki", Colors.CYAN))
+        print(colored("View at: https://github.com/alejandrojlamas/verbaloom/wiki", Colors.CYAN))
 
         return 0
 
@@ -731,10 +731,14 @@ def _sha256_text(text: str) -> str:
     return f"sha256:{digest}"
 
 
-def _detect_tbl_version() -> str:
-    """Best-effort TBL version: env var > git short SHA > 'dev'."""
+def _detect_engine_version() -> str:
+    """Best-effort VerbaLoom engine version: env var > git SHA > ``dev``."""
     import os
-    env = os.getenv("TBL_VERSION")
+    env = (
+        os.getenv("ENGINE_VERSION")
+        or os.getenv("VERBALOOM_VERSION")
+        or os.getenv("TBL_VERSION")
+    )
     if env:
         return env
     try:
@@ -804,7 +808,7 @@ def _extract_translations_from_run(run: BenchmarkRun, source_lang_default: str) 
 
 def _merge_translations(existing: Optional[TranslationsFile],
                         model_id: str, provider: str,
-                        tbl_version: str, prompt_version: str,
+                        engine_version: str, prompt_version: str,
                         contributor: dict,
                         new_entries: list[TranslationEntry]) -> TranslationsFile:
     """Merge new entries into an existing TranslationsFile (or create a fresh one)."""
@@ -813,7 +817,7 @@ def _merge_translations(existing: Optional[TranslationsFile],
             schema_version=_SCHEMA_VERSION_V2,
             model_provider=provider,
             model_id=model_id,
-            tbl_version=tbl_version,
+            engine_version=engine_version,
             prompt_version=prompt_version,
             contributors=[contributor],
             translations=new_entries,
@@ -829,7 +833,7 @@ def _merge_translations(existing: Optional[TranslationsFile],
         schema_version=_SCHEMA_VERSION_V2,
         model_provider=provider,
         model_id=model_id,
-        tbl_version=existing.tbl_version or tbl_version,
+        engine_version=existing.engine_version or engine_version,
         prompt_version=existing.prompt_version or prompt_version,
         contributors=contribs,
         translations=merged_entries,
@@ -858,7 +862,7 @@ def cmd_add_translations(args: argparse.Namespace) -> int:
 
     run = BenchmarkRun.from_dict(payload)
     provider = args.provider
-    tbl_version = args.tbl_version or _detect_tbl_version()
+    engine_version = args.engine_version or _detect_engine_version()
     prompt_version = args.prompt_version or "v1"
 
     try:
@@ -889,7 +893,7 @@ def cmd_add_translations(args: argparse.Namespace) -> int:
     if args.notes:
         contributor["notes"] = args.notes
 
-    merged = _merge_translations(existing, model_id, provider, tbl_version, prompt_version,
+    merged = _merge_translations(existing, model_id, provider, engine_version, prompt_version,
                                  contributor, new_entries)
     doc = merged.to_dict()
 
@@ -978,7 +982,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
         prog="benchmark",
-        description="TranslateBookWithLLM Benchmark System - Test translation quality across languages and models",
+        description="VerbaLoom Benchmark System - Test translation quality across languages and models",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1212,7 +1216,7 @@ Examples:
     add_t_parser.add_argument(
         "--by",
         required=True,
-        help="GitHub identity, e.g. github:hydropix",
+        help="GitHub identity, e.g. github:your-username",
     )
     add_t_parser.add_argument(
         "--provider",
@@ -1221,8 +1225,14 @@ Examples:
         help="Provider used to produce the translations.",
     )
     add_t_parser.add_argument(
+        "--engine-version",
+        dest="engine_version",
+        help="Engine version label (defaults to ENGINE_VERSION or the git short SHA).",
+    )
+    add_t_parser.add_argument(
         "--tbl-version",
-        help="TBL version label (defaults to git short SHA or 'dev').",
+        dest="engine_version",
+        help=argparse.SUPPRESS,
     )
     add_t_parser.add_argument(
         "--prompt-version",

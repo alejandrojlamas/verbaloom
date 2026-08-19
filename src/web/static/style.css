@@ -966,7 +966,7 @@ select.form-control {
     border: 1px solid var(--border-light);
     border-radius: 2rem;
     padding: 2rem;
-    padding-right: 1.5rem; /* Réduit pour faire de la place à la scrollbar */
+    padding-right: 1.5rem; /* Leave room for the scrollbar. */
     font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
     font-size: 0.875rem;
     margin-top: 1rem;
@@ -979,14 +979,14 @@ select.form-control {
     max-height: var(--preview-height) !important;
 }
 
-/* Scrollbar visible uniquement pour log-container */
+/* Show a scrollbar only for the log container. */
 .log-container::-webkit-scrollbar {
     width: 8px;
 }
 
 .log-container::-webkit-scrollbar-track {
     background: transparent;
-    margin: 1rem 0; /* Décale la scrollbar pour éviter les coins arrondis */
+    margin: 1rem 0; /* Keep the scrollbar clear of the rounded corners. */
 }
 
 .log-container::-webkit-scrollbar-thumb {

@@ -124,10 +124,10 @@ function refreshProfileBulkBar() {
     if (bar) bar.classList.toggle('hidden', selected.length === 0);
     if (label) {
         label.textContent = selected.length === 1
-            ? t('glossary:profile_glossary_bulk_selected_one', { defaultValue: '1 perfil seleccionado' })
+            ? t('glossary:profile_glossary_bulk_selected_one', { defaultValue: '1 profile selected' })
             : t('glossary:profile_glossary_bulk_selected_other', {
                 count: selected.length,
-                defaultValue: `${selected.length} perfiles seleccionados`,
+                defaultValue: `${selected.length} profiles selected`,
             });
     }
     if (deleteBtn) deleteBtn.disabled = selected.length === 0;
@@ -760,10 +760,10 @@ async function loadProfileGlossaryList() {
         rowCheck.disabled = !canDelete;
         rowCheck.checked = canDelete && selectedProfileIds.has(profile.profile_id);
         rowCheck.title = canDelete
-            ? t('glossary:profile_glossary_select_title', { defaultValue: 'Seleccionar este perfil' })
+            ? t('glossary:profile_glossary_select_title', { defaultValue: 'Select this profile' })
             : (profile.in_use
-                ? t('glossary:profile_glossary_in_use_title', { defaultValue: 'Este perfil se está usando en un trabajo activo' })
-                : t('glossary:profile_glossary_protected_title', { defaultValue: 'Este perfil no se puede eliminar' }));
+                ? t('glossary:profile_glossary_in_use_title', { defaultValue: 'This profile is in use by an active job' })
+                : t('glossary:profile_glossary_protected_title', { defaultValue: 'This profile cannot be deleted' }));
         rowCheck.addEventListener('change', () => {
             if (!profile.profile_id) return;
             if (rowCheck.checked) selectedProfileIds.add(profile.profile_id);
@@ -885,11 +885,11 @@ async function handleProfileBulkDelete() {
     if (profileIds.length === 0) return;
     const confirmMsg = profileIds.length === 1
         ? t('glossary:profile_glossary_bulk_confirm_one', {
-            defaultValue: '¿Eliminar 1 perfil editorial seleccionado? Esta acción no se puede deshacer.',
+            defaultValue: 'Delete the selected editorial profile? This action cannot be undone.',
         })
         : t('glossary:profile_glossary_bulk_confirm_other', {
             count: profileIds.length,
-            defaultValue: `¿Eliminar ${profileIds.length} perfiles editoriales seleccionados? Esta acción no se puede deshacer.`,
+            defaultValue: `Delete ${profileIds.length} selected editorial profiles? This action cannot be undone.`,
         });
     if (!confirm(confirmMsg)) return;
 
@@ -909,10 +909,10 @@ async function handleProfileBulkDelete() {
         }
         if (deleted > 0) {
             toast.success(deleted === 1
-                ? t('glossary:profile_glossary_bulk_deleted_one', { defaultValue: '1 perfil editorial eliminado.' })
+                ? t('glossary:profile_glossary_bulk_deleted_one', { defaultValue: '1 editorial profile deleted.' })
                 : t('glossary:profile_glossary_bulk_deleted_other', {
                     count: deleted,
-                    defaultValue: `${deleted} perfiles editoriales eliminados.`,
+                    defaultValue: `${deleted} editorial profiles deleted.`,
                 }));
             window.dispatchEvent(new CustomEvent('bookProfilesChanged'));
         }
@@ -923,7 +923,7 @@ async function handleProfileBulkDelete() {
                 count: failures.length,
                 profile: first.profileId,
                 error,
-                defaultValue: `No se pudieron eliminar ${failures.length} perfil(es). Primero falló "${first.profileId}": ${error}`,
+                defaultValue: `Could not delete ${failures.length} profile(s). The first failure was "${first.profileId}": ${error}`,
             }));
         }
         await loadProfileGlossaryList();

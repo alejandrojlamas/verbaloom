@@ -475,6 +475,16 @@ class SubmissionResult:
         )
 
 
+def _read_engine_version(environment: dict) -> str:
+    """Read the canonical engine version with legacy schema compatibility."""
+    return str(
+        environment.get("engine_version")
+        or environment.get("verbaloom_version")
+        or environment.get("tbl_version")
+        or ""
+    )
+
+
 @dataclass
 class Submission:
     """
@@ -486,7 +496,7 @@ class Submission:
     schema_version: str
     submitted_by: str
     submitted_at: str
-    tbl_version: str
+    engine_version: str
     prompt_version: str
     judge_id: str
     model_provider: str
@@ -503,7 +513,7 @@ class Submission:
 
     def to_dict(self) -> dict:
         env = {
-            "tbl_version": self.tbl_version,
+            "engine_version": self.engine_version,
             "prompt_version": self.prompt_version,
             "judge_id": self.judge_id,
         }
@@ -550,7 +560,7 @@ class Submission:
             submitted_by=sub.get("submitted_by", ""),
             submitted_at=sub.get("submitted_at", ""),
             notes=sub.get("notes"),
-            tbl_version=env.get("tbl_version", ""),
+            engine_version=_read_engine_version(env),
             prompt_version=env.get("prompt_version", ""),
             judge_id=env.get("judge_id", ""),
             judge_seed=env.get("judge_seed"),
@@ -566,6 +576,11 @@ class Submission:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+    @property
+    def tbl_version(self) -> str:
+        """Compatibility accessor for callers using the v1 attribute name."""
+        return self.engine_version
 
     @classmethod
     def from_json(cls, json_str: str) -> "Submission":
@@ -629,7 +644,7 @@ class TranslationsFile:
     schema_version: str
     model_provider: str
     model_id: str
-    tbl_version: str
+    engine_version: str
     prompt_version: str
     contributors: list[dict]
     translations: list[TranslationEntry]
@@ -642,7 +657,7 @@ class TranslationsFile:
             "schema_version": self.schema_version,
             "model": {"provider": self.model_provider, "id": self.model_id},
             "environment": {
-                "tbl_version": self.tbl_version,
+                "engine_version": self.engine_version,
                 "prompt_version": self.prompt_version,
             },
             "contributors": list(self.contributors),
@@ -655,7 +670,7 @@ class TranslationsFile:
             schema_version=data.get("schema_version", "2.0"),
             model_provider=data["model"]["provider"],
             model_id=data["model"]["id"],
-            tbl_version=data["environment"]["tbl_version"],
+            engine_version=_read_engine_version(data["environment"]),
             prompt_version=data["environment"]["prompt_version"],
             contributors=list(data.get("contributors", [])),
             translations=[TranslationEntry.from_dict(t) for t in data["translations"]],
@@ -663,6 +678,11 @@ class TranslationsFile:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+    @property
+    def tbl_version(self) -> str:
+        """Compatibility accessor for callers using the v2 legacy attribute name."""
+        return self.engine_version
 
     @classmethod
     def from_json(cls, json_str: str) -> "TranslationsFile":

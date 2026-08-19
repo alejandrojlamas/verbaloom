@@ -1,224 +1,224 @@
 @echo off
 REM ============================================================================
-REM Script d'installation robuste pour Chatterbox TTS
-REM Inclut PyTorch avec CUDA et toutes les dépendances nécessaires
+REM Robust Chatterbox TTS installer
+REM Includes PyTorch with CUDA and all required dependencies
 REM ============================================================================
 
 echo ========================================
-echo Installation de Chatterbox TTS
+echo Installing Chatterbox TTS
 echo ========================================
 echo.
 
-REM Vérifier si Python est installé
+REM Verify that Python is installed
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERREUR] Python n'est pas installe ou n'est pas dans le PATH.
-    echo Veuillez installer Python 3.8+ depuis https://www.python.org/downloads/
-    echo N'oubliez pas de cocher "Add Python to PATH" lors de l'installation.
+    echo [ERROR] Python is not installed or is not available on PATH.
+    echo Install Python 3.8+ from https://www.python.org/downloads/
+    echo Select "Add Python to PATH" during installation.
     echo.
     pause
     exit /b 1
 )
 
-echo [OK] Python est installe:
+echo [OK] Python is installed:
 python --version
 echo.
 
-REM Obtenir le chemin du script
+REM Resolve the script directory
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
-REM Vérifier si l'environnement virtuel existe
+REM Check whether the virtual environment exists
 if not exist "venv\Scripts\python.exe" (
-    echo [INFO] Creation de l'environnement virtuel...
+    echo [INFO] Creating the virtual environment...
     python -m venv venv
     if errorlevel 1 (
-        echo [ERREUR] Impossible de creer l'environnement virtuel.
-        echo Assurez-vous que le module venv est installe.
+        echo [ERROR] Could not create the virtual environment.
+        echo Make sure the venv module is installed.
         echo.
         pause
         exit /b 1
     )
-    echo [OK] Environnement virtuel cree.
+    echo [OK] Virtual environment created.
 ) else (
-    echo [OK] Environnement virtuel detecte.
+    echo [OK] Virtual environment detected.
 )
 echo.
 
-REM Activer l'environnement virtuel
-echo [INFO] Activation de l'environnement virtuel...
+REM Activate the virtual environment
+echo [INFO] Activating the virtual environment...
 call venv\Scripts\activate.bat
 if errorlevel 1 (
-    echo [ERREUR] Impossible d'activer l'environnement virtuel.
+    echo [ERROR] Could not activate the virtual environment.
     echo.
     pause
     exit /b 1
 )
-echo [OK] Environnement virtuel active.
+echo [OK] Virtual environment activated.
 echo.
 
-REM Mettre à jour pip, setuptools et wheel
-echo [INFO] Mise a jour de pip, setuptools et wheel...
+REM Update pip, setuptools, and wheel
+echo [INFO] Updating pip, setuptools, and wheel...
 python -m pip install --upgrade pip setuptools wheel
 if errorlevel 1 (
-    echo [ATTENTION] La mise a jour de pip a echoue, mais on continue...
+    echo [WARNING] The pip update failed; continuing...
 )
 echo.
 
-REM Détecter la présence de CUDA
-echo [INFO] Detection de CUDA...
+REM Detect CUDA
+echo [INFO] Detecting CUDA...
 set CUDA_AVAILABLE=0
 nvidia-smi >nul 2>&1
 if not errorlevel 1 (
     set CUDA_AVAILABLE=1
-    echo [OK] GPU NVIDIA detecte avec CUDA:
+    echo [OK] NVIDIA GPU with CUDA detected:
     nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
     echo.
 ) else (
-    echo [ATTENTION] Aucun GPU NVIDIA/CUDA detecte.
-    echo L'installation se fera en mode CPU (plus lent).
+    echo [WARNING] No NVIDIA/CUDA GPU detected.
+    echo Installation will use CPU mode, which is slower.
     echo.
 )
 
-REM Installer les dépendances de base depuis requirements.txt
-echo [INFO] Installation des dependances de base...
+REM Install base dependencies from requirements.txt
+echo [INFO] Installing base dependencies...
 if exist "requirements.txt" (
     python -m pip install -r requirements.txt
     if errorlevel 1 (
-        echo [ERREUR] Echec de l'installation des dependances de base.
+        echo [ERROR] Failed to install base dependencies.
         echo.
         pause
         exit /b 1
     )
-    echo [OK] Dependances de base installees.
+    echo [OK] Base dependencies installed.
 ) else (
-    echo [ATTENTION] Fichier requirements.txt non trouve, on passe cette etape.
+    echo [WARNING] requirements.txt was not found; skipping this step.
 )
 echo.
 
-REM Désinstaller PyTorch existant pour éviter les conflits
-echo [INFO] Nettoyage des installations PyTorch existantes...
+REM Remove existing PyTorch packages to prevent conflicts
+echo [INFO] Removing existing PyTorch packages...
 python -m pip uninstall -y torch torchaudio torchvision 2>nul
 echo.
 
-REM Installer PyTorch avec CUDA ou CPU selon la disponibilité
+REM Install the CUDA or CPU PyTorch build as available
 if "%CUDA_AVAILABLE%"=="1" (
-    echo [INFO] Installation de PyTorch avec support CUDA 12.1...
-    echo Cette etape peut prendre plusieurs minutes...
+    echo [INFO] Installing PyTorch with CUDA 12.1 support...
+    echo This step may take several minutes...
     python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
     if errorlevel 1 (
-        echo [ERREUR] Echec de l'installation de PyTorch avec CUDA.
-        echo Tentative d'installation de la version CPU...
+        echo [ERROR] Failed to install PyTorch with CUDA.
+        echo Trying the CPU build...
         python -m pip install torch torchaudio
         if errorlevel 1 (
-            echo [ERREUR] Echec de l'installation de PyTorch.
+            echo [ERROR] Failed to install PyTorch.
             echo.
             pause
             exit /b 1
         )
     ) else (
-        echo [OK] PyTorch avec CUDA installe.
+        echo [OK] PyTorch with CUDA installed.
     )
 ) else (
-    echo [INFO] Installation de PyTorch en mode CPU...
-    echo Cette etape peut prendre plusieurs minutes...
+    echo [INFO] Installing PyTorch in CPU mode...
+    echo This step may take several minutes...
     python -m pip install torch torchaudio
     if errorlevel 1 (
-        echo [ERREUR] Echec de l'installation de PyTorch.
+        echo [ERROR] Failed to install PyTorch.
         echo.
         pause
         exit /b 1
     )
-    echo [OK] PyTorch CPU installe.
+    echo [OK] PyTorch CPU installed.
 )
 echo.
 
-REM Vérifier l'installation de PyTorch
-echo [INFO] Verification de l'installation de PyTorch...
+REM Verify the PyTorch installation
+echo [INFO] Verifying the PyTorch installation...
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')" 2>nul
 if errorlevel 1 (
-    echo [ERREUR] PyTorch n'est pas correctement installe.
+    echo [ERROR] PyTorch is not installed correctly.
     echo.
     pause
     exit /b 1
 )
 echo.
 
-REM Vérifier CUDA dans PyTorch
-python -c "import torch; print(f'CUDA disponible: {torch.cuda.is_available()}'); print(f'Nombre de GPU: {torch.cuda.device_count()}') if torch.cuda.is_available() else None" 2>nul
+REM Verify CUDA inside PyTorch
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'GPU count: {torch.cuda.device_count()}') if torch.cuda.is_available() else None" 2>nul
 echo.
 
-REM Installer Chatterbox TTS
-echo [INFO] Installation de Chatterbox TTS...
+REM Install Chatterbox TTS
+echo [INFO] Installing Chatterbox TTS...
 python -m pip install chatterbox-tts
 if errorlevel 1 (
-    echo [ERREUR] Echec de l'installation de Chatterbox TTS.
+    echo [ERROR] Failed to install Chatterbox TTS.
     echo.
-    echo Tentative d'installation alternative avec --no-deps puis resolution des dependances...
+    echo Trying an alternative --no-deps installation, then resolving dependencies...
     python -m pip install --no-deps chatterbox-tts
     python -m pip install gruut-ipa typing_extensions transformers soundfile phonemizer pysbd
     if errorlevel 1 (
-        echo [ERREUR] Echec de l'installation alternative.
+        echo [ERROR] Alternative installation failed.
         echo.
         pause
         exit /b 1
     )
 )
-echo [OK] Chatterbox TTS installe.
+echo [OK] Chatterbox TTS installed.
 echo.
 
-REM Installer ffmpeg si nécessaire (pour Edge TTS)
-echo [INFO] Verification de ffmpeg...
+REM Install ffmpeg if needed for Edge TTS
+echo [INFO] Checking ffmpeg...
 ffmpeg -version >nul 2>&1
 if errorlevel 1 (
-    echo [ATTENTION] ffmpeg n'est pas installe ou n'est pas dans le PATH.
-    echo ffmpeg est recommande pour la conversion audio.
-    echo Telechargez-le depuis: https://ffmpeg.org/download.html
+    echo [WARNING] ffmpeg is not installed or is not available on PATH.
+    echo ffmpeg is recommended for audio conversion.
+    echo Download it from: https://ffmpeg.org/download.html
     echo.
 ) else (
-    echo [OK] ffmpeg est installe.
+    echo [OK] ffmpeg is installed.
     echo.
 )
 
-REM Créer un script de test
-echo [INFO] Creation du script de test...
+REM Create a verification script
+echo [INFO] Creating the verification script...
 echo import sys > test_chatterbox_install.py
 echo import torch >> test_chatterbox_install.py
 echo print("=" * 60) >> test_chatterbox_install.py
-echo print("TEST D'INSTALLATION DE CHATTERBOX TTS") >> test_chatterbox_install.py
+echo print("CHATTERBOX TTS INSTALLATION TEST") >> test_chatterbox_install.py
 echo print("=" * 60) >> test_chatterbox_install.py
 echo print(f"Python version: {sys.version}") >> test_chatterbox_install.py
 echo print(f"PyTorch version: {torch.__version__}") >> test_chatterbox_install.py
-echo print(f"CUDA disponible: {torch.cuda.is_available()}") >> test_chatterbox_install.py
+echo print(f"CUDA available: {torch.cuda.is_available()}") >> test_chatterbox_install.py
 echo if torch.cuda.is_available(): >> test_chatterbox_install.py
-echo     print(f"Nombre de GPU: {torch.cuda.device_count()}") >> test_chatterbox_install.py
+echo     print(f"GPU count: {torch.cuda.device_count()}") >> test_chatterbox_install.py
 echo     for i in range(torch.cuda.device_count()): >> test_chatterbox_install.py
 echo         print(f"  GPU {i}: {torch.cuda.get_device_name(i)}") >> test_chatterbox_install.py
-echo         print(f"    VRAM totale: {torch.cuda.get_device_properties(i).total_memory / 1024**3:.2f} GB") >> test_chatterbox_install.py
+echo         print(f"    Total VRAM: {torch.cuda.get_device_properties(i).total_memory / 1024**3:.2f} GB") >> test_chatterbox_install.py
 echo else: >> test_chatterbox_install.py
-echo     print("Mode CPU uniquement") >> test_chatterbox_install.py
+echo     print("CPU-only mode") >> test_chatterbox_install.py
 echo print() >> test_chatterbox_install.py
 echo try: >> test_chatterbox_install.py
 echo     from chatterbox import ChatterboxTTS >> test_chatterbox_install.py
-echo     print("[OK] Chatterbox TTS importe avec succes") >> test_chatterbox_install.py
+echo     print("[OK] Chatterbox TTS imported successfully") >> test_chatterbox_install.py
 echo     print() >> test_chatterbox_install.py
-echo     print("Installation terminee avec succes!") >> test_chatterbox_install.py
-echo     print("Vous pouvez maintenant utiliser Chatterbox TTS dans l'application.") >> test_chatterbox_install.py
+echo     print("Installation completed successfully!") >> test_chatterbox_install.py
+echo     print("You can now use Chatterbox TTS in VerbaLoom.") >> test_chatterbox_install.py
 echo except Exception as e: >> test_chatterbox_install.py
-echo     print(f"[ERREUR] Impossible d'importer Chatterbox TTS: {e}") >> test_chatterbox_install.py
+echo     print(f"[ERROR] Could not import Chatterbox TTS: {e}") >> test_chatterbox_install.py
 echo     sys.exit(1) >> test_chatterbox_install.py
 echo print("=" * 60) >> test_chatterbox_install.py
 
-echo [OK] Script de test cree.
+echo [OK] Verification script created.
 echo.
 
-REM Exécuter le test
-echo [INFO] Test de l'installation...
+REM Run the verification
+echo [INFO] Testing the installation...
 python test_chatterbox_install.py
 if errorlevel 1 (
     echo.
-    echo [ERREUR] Le test d'installation a echoue.
-    echo Veuillez verifier les messages d'erreur ci-dessus.
+    echo [ERROR] The installation test failed.
+    echo Review the error messages above.
     echo.
     pause
     exit /b 1
@@ -226,22 +226,22 @@ if errorlevel 1 (
 
 echo.
 echo ========================================
-echo Installation terminee avec succes!
+echo Installation completed successfully!
 echo ========================================
 echo.
-echo Pour utiliser Chatterbox TTS:
-echo 1. Lancez l'application avec start.bat
-echo 2. Dans l'interface web, selectionnez "Chatterbox TTS" comme fournisseur TTS
-echo 3. Optionnellement, uploadez un echantillon audio pour le clonage de voix
+echo To use Chatterbox TTS:
+echo 1. Start VerbaLoom with start.bat
+echo 2. Select "Chatterbox TTS" as the TTS provider in the web interface
+echo 3. Optionally upload an audio sample for voice cloning
 echo.
-echo Pour tester manuellement Chatterbox TTS:
+echo To test Chatterbox TTS manually:
 echo   venv\Scripts\activate
 echo   python test_chatterbox_install.py
 echo.
 
 if "%CUDA_AVAILABLE%"=="0" (
-    echo [NOTE] Vous utilisez le mode CPU.
-    echo Pour de meilleures performances, installez un GPU NVIDIA avec CUDA.
+    echo [NOTE] You are using CPU mode.
+    echo For better performance, use an NVIDIA GPU with CUDA.
     echo.
 )
 

@@ -12,8 +12,8 @@ import { t } from '../i18n/i18n.js';
 
 // Storage configuration with versioning
 const STORAGE_VERSION = 1;
-const SERVER_SESSION_KEY = `tbl_server_session_id_v${STORAGE_VERSION}`;
-const TRANSLATION_STATE_STORAGE_KEY = `tbl_translation_state_v${STORAGE_VERSION}`;
+const SERVER_SESSION_KEY = `verbaloom_server_session_id_v${STORAGE_VERSION}`;
+const TRANSLATION_STATE_STORAGE_KEY = `verbaloom_translation_state_v${STORAGE_VERSION}`;
 
 export const LifecycleManager = {
     /**
@@ -35,22 +35,25 @@ export const LifecycleManager = {
      */
     cleanupOldStorageVersions() {
         try {
-            // Remove old non-versioned keys
-            const oldKeys = [
-                'tbl_server_session_id',
-                'tbl_translation_state'
+            const legacyPairs = [
+                ['tbl_server_session_id_v1', SERVER_SESSION_KEY],
+                ['tbl_server_session_id', SERVER_SESSION_KEY],
+                ['tbl_translation_state_v1', TRANSLATION_STATE_STORAGE_KEY],
+                ['tbl_translation_state', TRANSLATION_STATE_STORAGE_KEY],
             ];
 
-            oldKeys.forEach(oldKey => {
-                if (localStorage.getItem(oldKey)) {
-                    localStorage.removeItem(oldKey);
+            legacyPairs.forEach(([legacyKey, currentKey]) => {
+                const value = localStorage.getItem(legacyKey);
+                if (value && !localStorage.getItem(currentKey)) {
+                    localStorage.setItem(currentKey, value);
                 }
+                localStorage.removeItem(legacyKey);
             });
 
             // Remove any other versions (future-proofing)
             for (let i = 0; i < STORAGE_VERSION; i++) {
-                const oldSessionKey = `tbl_server_session_id_v${i}`;
-                const oldTranslationKey = `tbl_translation_state_v${i}`;
+                const oldSessionKey = `verbaloom_server_session_id_v${i}`;
+                const oldTranslationKey = `verbaloom_translation_state_v${i}`;
 
                 if (localStorage.getItem(oldSessionKey)) {
                     localStorage.removeItem(oldSessionKey);

@@ -1,6 +1,6 @@
 {
   "ui_language_label": "Interface language",
-  "ui_language_help": "Native names are never translated — pick the language you read most comfortably.",
+  "ui_language_help": "VerbaLoom's public interface is currently presented in English.",
   "provider_and_defaults": "Provider & Defaults",
   "ai_provider": "AI Provider",
   "api_endpoint": "API Endpoint",
@@ -96,7 +96,7 @@
   "notifications_test": "Send test notification",
   "notifications_test_sent": "Test {{event}} notification sent successfully.",
   "notifications_test_failed": "Test failed: {{error}}",
-  "notifications_intro": "Get pinged on your phone, Discord channel, or any HTTP endpoint when a translation reaches a terminal state. Useful for long-running jobs with local models. Compatible with <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong>, or any custom webhook. See <a href=\"https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a> for the full reference.",
+  "notifications_intro": "Get pinged on your phone, Discord channel, or any HTTP endpoint when a translation reaches a terminal state. Useful for long-running jobs with local models. Compatible with <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong>, or any custom webhook. See <a href=\"https://github.com/alejandrojlamas/verbaloom/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a> for the full reference.",
   "notifications_presets_label": "Quick presets",
   "notifications_presets_help": "Pick a service to pre-fill URL and payload, then edit the values to match your account.",
   "notifications_preset_reset": "Reset (disable)",

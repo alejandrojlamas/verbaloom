@@ -367,7 +367,7 @@ def extract_profile_prep_text_from_bytes(
         if suffix in {".epub", ".docx"}:
             validate_zip_bytes(file_data)
         with tempfile.NamedTemporaryFile(
-            prefix="tbl_profile_prep_",
+            prefix="verbaloom_profile_prep_",
             suffix=suffix if suffix else ".bin",
             delete=False,
         ) as temp:

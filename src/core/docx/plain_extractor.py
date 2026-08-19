@@ -502,7 +502,7 @@ def build_minimal_docx(
     try:
         from src.utils.text_encoding import derive_identifier_suffix
         doc.core_properties.last_modified_by = (
-            f"TranslateBookWithLLM {derive_identifier_suffix()}"
+            f"VerbaLoom {derive_identifier_suffix()}"
         )
     except Exception:
         pass

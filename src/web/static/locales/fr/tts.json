@@ -14,7 +14,6 @@
   "gpu_cpu": "Mode CPU",
   "gpu_cpu_no_cuda": "Mode CPU (pas de CUDA)",
   "gpu_na": "N/D",
-
   "target_language": "Langue cible",
   "voice_optional": "Voix (optionnel)",
   "voice_placeholder": "par ex., zh-CN-XiaoxiaoNeural",
@@ -40,7 +39,6 @@
   "bitrate_64": "64k (équilibré)",
   "bitrate_96": "96k (qualité supérieure)",
   "bitrate_128": "128k (meilleure qualité)",
-
   "voice_cloning": "Clonage de voix",
   "voice_cloning_heading": "🎤 Clonage de voix",
   "voice_prompt": "Prompt vocal",
@@ -50,11 +48,9 @@
   "exaggeration_hint": "Plus élevé = plus expressif",
   "cfg_weight": "Poids CFG",
   "cfg_weight_hint": "Respect du prompt",
-
   "generate_audio": "Générer l'audio",
   "generate_audio_with_icon": "🎧 Générer l'audio",
   "starting": "⏳ Démarrage...",
-
   "progress_title": "Génération audio",
   "waiting": "En attente du démarrage...",
   "starting_log": "🔊 Génération TTS démarrée",
@@ -66,7 +62,6 @@
   "failed_log": "❌ Échec TTS : {{error}}",
   "failed_label": "Échec",
   "audio_file_default": "fichier audio",
-
   "ffmpeg_required": "FFmpeg est requis pour l'encodage audio",
   "ffmpeg_install": "Installer FFmpeg (winget)",
   "ffmpeg_manual": "Téléchargement manuel",
@@ -78,7 +73,6 @@
   "ffmpeg_install_error": "Erreur d'installation : {{error}}",
   "ffmpeg_install_error_log": "❌ Erreur d'installation de FFmpeg : {{error}}",
   "ffmpeg_restart_needed": "Veuillez redémarrer l'application pour utiliser le TTS.",
-
   "tts_started": "Génération TTS démarrée pour {{filename}}",
   "tts_started_log": "🎧 Génération de livre audio démarrée ({{provider}}) : {{filename}} (ID tâche : {{jobId}})",
   "tts_error": "Erreur de démarrage TTS : {{error}}",

@@ -18,9 +18,11 @@ class _ScriptedClient:
     def __init__(self, events):
         self.events = deque(events)
         self.calls = 0
+        self.requests = []
 
     async def post(self, *args, **kwargs):
         self.calls += 1
+        self.requests.append((args, kwargs))
         event = self.events.popleft()
         if isinstance(event, Exception):
             raise event
@@ -49,6 +51,24 @@ def _success() -> httpx.Response:
 
 def _provider():
     return OpenRouterProvider(api_key="test-key", model="anthropic/claude-test")
+
+
+@pytest.mark.asyncio
+async def test_openrouter_identifies_requests_as_verbaloom(monkeypatch):
+    client = _ScriptedClient([_success()])
+    provider = _provider()
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is not None
+    headers = client.requests[0][1]["headers"]
+    assert headers["HTTP-Referer"] == "https://github.com/alejandrojlamas/verbaloom"
+    assert headers["X-Title"] == "VerbaLoom"
+    assert "TranslateBook" not in str(headers)
 
 
 @pytest.mark.asyncio

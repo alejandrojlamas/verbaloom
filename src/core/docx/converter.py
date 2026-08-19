@@ -27,11 +27,12 @@ _XML_NS = 'http://www.w3.org/XML/1998/namespace'
 # Marker injected in place of OMML equations before mammoth runs.
 # Mammoth drops <m:oMath> entirely; we replace each with this text marker so
 # it survives DOCX -> HTML -> DOCX, then we re-inject the original OMML.
-_EQ_MARKER_PREFIX = '__TTBLLEQ'
-_EQ_MARKER_SUFFIX = 'EQTTBLL__'
+_EQ_MARKER_PREFIX = '__VERBALOOMEQ'
+_EQ_MARKER_SUFFIX = 'EQVERBALOOM__'
 _EQ_MARKER_REGEX = re.compile(
     re.escape(_EQ_MARKER_PREFIX) + r'(\d+)' + re.escape(_EQ_MARKER_SUFFIX)
 )
+_LEGACY_EQ_MARKER_REGEX = re.compile(r'__TTBLLEQ(\d+)EQTTBLL__')
 
 # In the HTML returned by to_html(), each equation appears as a self-closing
 # <eq id="N"/> tag. Because TagPreserver groups anything matching <[^>]+>
@@ -84,9 +85,12 @@ class DocxHtmlConverter:
 
             # 1c. Promote raw equation markers to HTML tags so TagPreserver
             # protects them as opaque [idN] placeholders. Without this the
-            # LLM sees the literal text "__TTBLLEQ0EQTTBLL__" and may
+            # LLM sees the literal equation marker and may
             # mangle, translate or drop it.
             if equations:
+                html_content = _LEGACY_EQ_MARKER_REGEX.sub(
+                    r'<eq id="\1"/>', html_content
+                )
                 html_content = _EQ_MARKER_REGEX.sub(
                     r'<eq id="\1"/>', html_content
                 )
@@ -162,7 +166,7 @@ class DocxHtmlConverter:
         try:
             from src.utils.text_encoding import derive_identifier_suffix
             doc.core_properties.last_modified_by = (
-                f"TranslateBookWithLLM {derive_identifier_suffix()}"
+                f"VerbaLoom {derive_identifier_suffix()}"
             )
         except Exception:
             pass

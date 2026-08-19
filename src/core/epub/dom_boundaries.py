@@ -24,7 +24,11 @@ _BLOCK_XPATH = (
 _NAMED_ENTITY_RE = re.compile(rb"&([A-Za-z][A-Za-z0-9]+);")
 _XML_BUILTINS = {b"amp", b"lt", b"gt", b"quot", b"apos"}
 _SCENE_BREAK_RE = re.compile(r"^(?:[*.#~\-–—]\s*){3,}$")
-_SANITIZED_ARTIFACT_CLASS = "tbl-sanitized-artifact"
+_SANITIZED_ARTIFACT_CLASS = "verbaloom-sanitized-artifact"
+_SANITIZED_ARTIFACT_CLASSES = {
+    _SANITIZED_ARTIFACT_CLASS,
+    "tbl-sanitized-artifact",
+}
 
 
 @dataclass(frozen=True)
@@ -199,9 +203,8 @@ def _block_content_mismatch(
         and not output_text
         and not _is_source_furniture(source_text)
         and not valid_reflowed_continuation
-        and _SANITIZED_ARTIFACT_CLASS not in str(
-            output_block.get("class") or ""
-        ).split()
+        and not _SANITIZED_ARTIFACT_CLASSES
+        & set(str(output_block.get("class") or "").split())
     ):
         return "non-empty source block became empty"
     if not source_text or not output_text:
@@ -432,9 +435,9 @@ def find_epub_missing_text_blocks(
                 output_text = _normalized_block_text(output_block)
                 if not source_text or output_text or _is_source_furniture(source_text):
                     continue
-                if _SANITIZED_ARTIFACT_CLASS in str(
-                    output_block.get("class") or ""
-                ).split():
+                if _SANITIZED_ARTIFACT_CLASSES & set(
+                    str(output_block.get("class") or "").split()
+                ):
                     # The final sanitizer deliberately preserves the DOM slot
                     # while hiding reader-facing source furniture such as a
                     # standalone promotional URL. It is an explicit exclusion,

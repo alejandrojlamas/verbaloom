@@ -82,7 +82,7 @@ class ModelBucket:
     """All observations + metadata for one model_id."""
     model_id: str
     provider: str
-    tbl_version: str
+    engine_version: str
     prompt_version: str
     observations: list[Observation]
     contributors: list[dict]  # [{"by": ..., "at": ..., "notes": ...}]
@@ -98,7 +98,12 @@ def parse_submissions(submissions_dir: Path) -> dict[str, ModelBucket]:
             buckets[mid] = ModelBucket(
                 model_id=mid,
                 provider=d["model"]["provider"],
-                tbl_version=d["environment"]["tbl_version"],
+                engine_version=(
+                    d["environment"].get("engine_version")
+                    or d["environment"].get("verbaloom_version")
+                    or d["environment"].get("tbl_version")
+                    or "unknown"
+                ),
                 prompt_version=d["environment"]["prompt_version"],
                 observations=[],
                 contributors=[],
@@ -182,7 +187,7 @@ def bucket_to_doc(b: ModelBucket, kept_obs: list[Observation]) -> dict:
         "schema_version": SCHEMA_VERSION,
         "model": {"provider": b.provider, "id": b.model_id},
         "environment": {
-            "tbl_version": b.tbl_version,
+            "engine_version": b.engine_version,
             "prompt_version": b.prompt_version,
         },
         "contributors": contribs_sorted,

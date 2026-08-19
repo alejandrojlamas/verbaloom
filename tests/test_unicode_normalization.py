@@ -56,8 +56,8 @@ class TestIdentifierHelpers:
 
     def test_urn_format(self):
         urn = derive_identifier_urn()
-        assert urn.startswith("urn:tbl:")
-        assert re.fullmatch(r"urn:tbl:[0-9a-f]{12}", urn)
+        assert urn.startswith("urn:verbaloom:")
+        assert re.fullmatch(r"urn:verbaloom:[0-9a-f]{12}", urn)
 
     def test_suffix_is_stable_across_calls(self):
         assert derive_identifier_suffix() == derive_identifier_suffix()
@@ -359,7 +359,8 @@ class TestDocxIntegration:
             )
             assert m is not None
             value = m.group(1)
-            assert "TranslateBookWithLLM" in value
+            assert "VerbaLoom" in value
+            assert "TranslateBook" not in value
             assert derive_identifier_suffix() in value
 
     def test_html_to_docx_converter_carries_signature(self):
@@ -379,7 +380,8 @@ class TestDocxIntegration:
                 r"<cp:lastModifiedBy[^>]*>([^<]+)</cp:lastModifiedBy>", core_xml
             )
             assert m is not None
-            assert "TranslateBookWithLLM" in m.group(1)
+            assert "VerbaLoom" in m.group(1)
+            assert "TranslateBook" not in m.group(1)
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +389,7 @@ class TestDocxIntegration:
 # ---------------------------------------------------------------------------
 
 class TestEpubMetadataIntegration:
-    """Integration: _update_epub_metadata must add urn:tbl identifier."""
+    """Integration: _update_epub_metadata must add a VerbaLoom identifier."""
 
     def _make_opf(self, tmpdir: Path) -> Path:
         opf_xml = (
@@ -407,7 +409,7 @@ class TestEpubMetadataIntegration:
         path.write_text(opf_xml, encoding="utf-8")
         return path
 
-    def test_urn_tbl_identifier_added(self):
+    def test_verbaloom_identifier_added(self):
         from lxml import etree
         from src.core.epub.translator import _update_epub_metadata
 
@@ -417,7 +419,7 @@ class TestEpubMetadataIntegration:
             _update_epub_metadata(tree, str(opf_path), "French")
             result = opf_path.read_text(encoding="utf-8")
 
-            urns = re.findall(r"urn:tbl:[0-9a-f]+", result)
+            urns = re.findall(r"urn:verbaloom:[0-9a-f]+", result)
             assert len(urns) == 1
             assert urns[0] == derive_identifier_urn()
 
@@ -457,6 +459,37 @@ class TestEpubMetadataIntegration:
             result = opf_path.read_text(encoding="utf-8")
 
             assert "<dc:language>fr</dc:language>" in result
+
+    def test_legacy_application_metadata_is_migrated(self):
+        from lxml import etree
+        from src.core.epub.translator import _update_epub_metadata
+
+        with tempfile.TemporaryDirectory() as tmp:
+            opf_path = self._make_opf(Path(tmp))
+            tree = etree.parse(str(opf_path))
+            metadata = tree.xpath("//*[local-name()='metadata']")[0]
+            contributor = etree.SubElement(
+                metadata,
+                "{http://purl.org/dc/elements/1.1/}contributor",
+            )
+            contributor.text = "TranslateBook with LLM (TBL)"
+            description = etree.SubElement(
+                metadata,
+                "{http://purl.org/dc/elements/1.1/}description",
+            )
+            description.text = (
+                "Translated using TranslateBookWithLLM\n"
+                "https://github.com/hydropix/TranslateBookWithLLM"
+            )
+            tree.write(str(opf_path), encoding="utf-8", xml_declaration=True)
+
+            _update_epub_metadata(tree, str(opf_path), "French")
+            result = opf_path.read_text(encoding="utf-8")
+
+            assert "VerbaLoom" in result
+            assert "https://github.com/alejandrojlamas/verbaloom" in result
+            assert "TranslateBook" not in result
+            assert "(TBL)" not in result
 
 
 # ---------------------------------------------------------------------------

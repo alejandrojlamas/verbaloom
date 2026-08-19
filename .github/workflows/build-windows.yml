@@ -31,13 +31,13 @@ jobs:
 
     - name: Build executable
       run: |
-        pyinstaller --clean build/windows/TranslateBook.spec
+        pyinstaller --clean build/windows/VerbaLoom.spec
 
     - name: Get executable size
       id: exe_info
       shell: pwsh
       run: |
-        $size = (Get-Item dist\TranslateBook.exe).Length
+        $size = (Get-Item dist\VerbaLoom.exe).Length
         $sizeMB = [math]::Round($size / 1MB, 2)
         echo "size_bytes=$size" >> $env:GITHUB_OUTPUT
         echo "size_mb=$sizeMB" >> $env:GITHUB_OUTPUT
@@ -47,16 +47,16 @@ jobs:
       run: |
         # Create a release folder with the executable and readme
         New-Item -ItemType Directory -Path release -Force
-        Copy-Item dist\TranslateBook.exe release\
+        Copy-Item dist\VerbaLoom.exe release\
 
         # Create a simple README for the release
         $readme = @"
-        # TranslateBook Windows Executable
+        # VerbaLoom Windows Executable
 
         ## Quick Start
 
-        1. Extract TranslateBook.exe to a folder of your choice
-        2. Double-click TranslateBook.exe to start the server
+        1. Extract VerbaLoom.exe to a folder of your choice
+        2. Double-click VerbaLoom.exe to start the server
         3. Open your browser to http://localhost:5000
         4. Choose your LLM provider (see below)
 
@@ -81,18 +81,18 @@ jobs:
         Different models perform better for different target languages!
 
         See our comprehensive benchmarks to find the best model:
-        https://github.com/hydropix/TranslateBooksWithLLMs/wiki
+        https://github.com/alejandrojlamas/verbaloom/wiki
 
         ## First Run
 
         On first run, the application will:
-        - Create a TranslateBook_Data folder next to the executable
+        - Create a VerbaLoom_Data folder next to the executable
         - Generate a default .env configuration file
         - Create necessary subdirectories (translated_files, checkpoints)
 
         ## Configuration
 
-        Edit TranslateBook_Data\.env to customize:
+        Edit VerbaLoom_Data\.env to customize:
         - LLM provider and model selection
         - API keys for cloud providers
         - Server port and host
@@ -101,33 +101,33 @@ jobs:
 
         - Web UI: http://localhost:5000
         - Supported formats: .txt, .epub, .srt, .docx, .odt
-        - Output files: TranslateBook_Data\translated_files\
+        - Output files: VerbaLoom_Data\translated_files\
 
         ## Links
 
-        - Full Documentation: https://github.com/hydropix/TranslateBooksWithLLMs
-        - Model Benchmarks: https://github.com/hydropix/TranslateBooksWithLLMs/wiki
-        - Report Issues: https://github.com/hydropix/TranslateBooksWithLLMs/issues
+        - Full Documentation: https://github.com/alejandrojlamas/verbaloom
+        - Model Benchmarks: https://github.com/alejandrojlamas/verbaloom/wiki
+        - Report Issues: https://github.com/alejandrojlamas/verbaloom/issues
         - OpenRouter Models: https://openrouter.ai/models
         "@
 
         $readme | Out-File -FilePath release\README.txt -Encoding UTF8
 
         # Create zip archive
-        Compress-Archive -Path release\* -DestinationPath TranslateBook-Windows.zip
+        Compress-Archive -Path release\* -DestinationPath VerbaLoom-Windows.zip
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: TranslateBook-Windows
-        path: TranslateBook-Windows.zip
+        name: VerbaLoom-Windows
+        path: VerbaLoom-Windows.zip
         retention-days: 90
 
     - name: Upload executable only
       uses: actions/upload-artifact@v4
       with:
-        name: TranslateBook.exe
-        path: dist\TranslateBook.exe
+        name: VerbaLoom.exe
+        path: dist\VerbaLoom.exe
         retention-days: 90
 
     - name: Build summary
@@ -138,21 +138,21 @@ jobs:
         echo "**Executable Size:** ${{ steps.exe_info.outputs.size_mb }} MB" >> $env:GITHUB_STEP_SUMMARY
         echo "" >> $env:GITHUB_STEP_SUMMARY
         echo "**Artifacts:**" >> $env:GITHUB_STEP_SUMMARY
-        echo "- TranslateBook-Windows.zip (executable + README)" >> $env:GITHUB_STEP_SUMMARY
-        echo "- TranslateBook.exe (standalone)" >> $env:GITHUB_STEP_SUMMARY
+        echo "- VerbaLoom-Windows.zip (executable + README)" >> $env:GITHUB_STEP_SUMMARY
+        echo "- VerbaLoom.exe (standalone)" >> $env:GITHUB_STEP_SUMMARY
 
     - name: Create Release (on tag)
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v1
       with:
-        files: TranslateBook-Windows.zip
+        files: VerbaLoom-Windows.zip
         body: |
           ## Windows Executable Release
 
           ### Installation
-          1. Download and extract TranslateBook-Windows.zip
+          1. Download and extract VerbaLoom-Windows.zip
           2. Install [Ollama](https://ollama.ai) (required for local LLM)
-          3. Run TranslateBook.exe
+          3. Run VerbaLoom.exe
           4. Open http://localhost:5000 in your browser
 
           ### What's Included

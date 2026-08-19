@@ -1,6 +1,6 @@
 # Universal Translation Quality Assurance
 
-TBL treats a translated book as publishable only after a deterministic,
+VerbaLoom treats a translated book as publishable only after a deterministic,
 whole-book validation run proves coverage, language, entity, semantic,
 structural, typographic, metadata, and artifact integrity. An LLM audit may add
 evidence, but it never replaces deterministic checks.
@@ -127,7 +127,7 @@ They are cloned atomically from the translated EPUB and pass a dedicated visual
 preservation gate. The gate requires the same archive resources, image bytes,
 image references, DOM positions, nearby captions or credits, cover declaration,
 spine order, and XHTML bytes. Only the package title may receive the
-`(Audiolibro)` suffix. A mismatch aborts companion publication; the clean TXT
+`(Audiobook)` suffix. A mismatch aborts companion publication; the clean TXT
 remains available for TTS.
 
 ## Reports

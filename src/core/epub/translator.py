@@ -1624,6 +1624,36 @@ def _update_epub_metadata(
                 )
             lang_el.text = language_code
 
+        # Migrate attribution created by earlier releases before writing the
+        # canonical identity.  This is intentionally limited to metadata
+        # fields owned by the application; bibliographic content is untouched.
+        legacy_generator_names = {
+            "TranslateBook with LLM (TBL)",
+            "TranslateBookWithLLM",
+            "TranslateBook with LLMs",
+        }
+        legacy_source_urls = {
+            "https://github.com/hydropix/TranslateBookWithLLM",
+            "https://github.com/hydropix/TranslateBooksWithLLMs",
+        }
+        for item in metadata.findall('.//dc:contributor', namespaces=NAMESPACES):
+            if str(item.text or '').strip() in legacy_generator_names:
+                item.text = GENERATOR_NAME
+        desc_el = metadata.find('.//dc:description', namespaces=NAMESPACES)
+        if desc_el is not None and desc_el.text:
+            migrated_description = str(desc_el.text)
+            for legacy_name in legacy_generator_names:
+                migrated_description = migrated_description.replace(
+                    legacy_name,
+                    GENERATOR_NAME,
+                )
+            for legacy_url in legacy_source_urls:
+                migrated_description = migrated_description.replace(
+                    legacy_url,
+                    GENERATOR_SOURCE,
+                )
+            desc_el.text = migrated_description
+
         # Add translation signature if enabled
         if ATTRIBUTION_ENABLED:
             # Add contributor (translator)
@@ -1645,7 +1675,6 @@ def _update_epub_metadata(
             contributor_el.set('{http://www.idpf.org/2007/opf}role', 'trl')
 
             # Add or update description with signature
-            desc_el = metadata.find('.//dc:description', namespaces=NAMESPACES)
             signature_text = f"\n\nTranslated using {GENERATOR_NAME}\n{GENERATOR_SOURCE}"
 
             if desc_el is None:

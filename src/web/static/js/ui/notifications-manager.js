@@ -12,7 +12,7 @@ import { t } from '../i18n/i18n.js';
 
 const PRESETS = {
     ntfy: {
-        url: 'https://ntfy.sh/tbl-CHANGE-ME-K8x9p2',
+        url: 'https://ntfy.sh/verbaloom-CHANGE-ME-K8x9p2',
         method: 'POST',
         headers: '',
         payload: '',

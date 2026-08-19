@@ -61,7 +61,7 @@ def test_custom_endpoint_accepts_only_explicit_or_allowlisted_key(monkeypatch):
             default_endpoint=OPENAI_ENDPOINT,
         )
 
-    monkeypatch.setenv("TBL_TRUSTED_KEY_ENDPOINTS", "https://gateway.example.test")
+    monkeypatch.setenv("VERBALOOM_TRUSTED_KEY_ENDPOINTS", "https://gateway.example.test")
     trusted, source = resolve_api_key_for_endpoint(
         "__USE_ENV__",
         "OPENAI_API_KEY",
@@ -114,9 +114,10 @@ def test_same_origin_and_loopback_are_the_default(monkeypatch):
     ]
     assert network_bind_is_explicitly_allowed("127.0.0.1") is True
 
+    monkeypatch.delenv("VERBALOOM_ALLOW_NETWORK_BIND", raising=False)
     monkeypatch.delenv("TBL_ALLOW_NETWORK_BIND", raising=False)
     assert network_bind_is_explicitly_allowed("0.0.0.0") is False
-    monkeypatch.setenv("TBL_ALLOW_NETWORK_BIND", "true")
+    monkeypatch.setenv("VERBALOOM_ALLOW_NETWORK_BIND", "true")
     assert network_bind_is_explicitly_allowed("0.0.0.0") is True
     assert browser_origin_is_allowed(
         "https://lab.example.test",
@@ -126,6 +127,23 @@ def test_same_origin_and_loopback_are_the_default(monkeypatch):
         "https://attacker.example.test",
         "https://lab.example.test",
     )
+
+
+def test_legacy_security_environment_aliases_remain_readable(monkeypatch):
+    monkeypatch.delenv("VERBALOOM_ALLOW_NETWORK_BIND", raising=False)
+    monkeypatch.setenv("TBL_ALLOW_NETWORK_BIND", "true")
+    assert network_bind_is_explicitly_allowed("0.0.0.0") is True
+
+    monkeypatch.delenv("VERBALOOM_TRUSTED_KEY_ENDPOINTS", raising=False)
+    monkeypatch.setenv("TBL_TRUSTED_KEY_ENDPOINTS", "https://gateway.example.test")
+    monkeypatch.setenv("OPENAI_API_KEY", "legacy-environment-secret")
+    key, source = resolve_api_key_for_endpoint(
+        "__USE_ENV__",
+        "OPENAI_API_KEY",
+        endpoint=CUSTOM_ENDPOINT,
+        default_endpoint=OPENAI_ENDPOINT,
+    )
+    assert (key, source) == ("legacy-environment-secret", "environment")
 
 
 def test_managed_file_resolution_rejects_sibling_prefix_and_arbitrary_absolute(tmp_path):

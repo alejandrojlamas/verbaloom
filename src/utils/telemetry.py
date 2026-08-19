@@ -1,5 +1,5 @@
 """
-Application telemetry and client identification system for TranslateBookWithLLM.
+Application telemetry and client identification system for VerbaLoom.
 
 This module implements client tracking and usage analytics to support:
 1. Diagnostic troubleshooting and performance monitoring
@@ -15,12 +15,13 @@ import platform
 import uuid
 import time
 from typing import Dict, Any, Optional
-from pathlib import Path
+
+from src.utils.branding import GENERATOR_NAME as APP_GENERATOR_NAME, REPOSITORY_URL
 
 
 class TelemetryCollector:
     """
-    Collects telemetry data and client identification for TranslateBookWithLLM.
+    Collects telemetry data and client identification for VerbaLoom.
 
     Collection methods:
     1. Client Identifier: Unique ID for each installation (for support/analytics)
@@ -30,8 +31,8 @@ class TelemetryCollector:
     """
 
     # Application identification
-    GENERATOR_NAME = "TranslateBookWithLLM"
-    SOURCE_REPOSITORY = "https://github.com/hydropix/TranslateBookWithLLM"
+    GENERATOR_NAME = APP_GENERATOR_NAME
+    SOURCE_REPOSITORY = REPOSITORY_URL
     TELEMETRY_VERSION = "1.0.0"
 
     def __init__(self):

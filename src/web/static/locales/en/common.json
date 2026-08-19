@@ -1,5 +1,8 @@
 {
-  "app_subtitle": "Translate Books with LLMs",
+  "app_subtitle": "Local-first AI translation with editorial memory and fidelity gates.",
+  "brand_name": "VerbaLoom",
+  "brand_logo_alt": "VerbaLoom logo",
+  "brand_version_title": "VerbaLoom version",
   "llm_checking": "LLM: Checking...",
   "llm_connected": "LLM: Connected",
   "llm_offline": "LLM: Offline",

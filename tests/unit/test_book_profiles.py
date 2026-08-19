@@ -3692,7 +3692,7 @@ def test_prepare_book_profile_records_business_goal_and_limits(tmp_path, monkeyp
 
     profile = load_book_profile(result.profile_id)
     assert result.profile_goal == "audiobook"
-    assert result.profile_goal_label == "Audiolibro fiel"
+    assert result.profile_goal_label == "Faithful audiobook"
     assert profile.raw_config["profile_goal"] == "audiobook"
     assert profile.raw_config["business_rules"]["goal"] == "audiobook"
     assert result.business_limits["approved_entries_limit"] > 0

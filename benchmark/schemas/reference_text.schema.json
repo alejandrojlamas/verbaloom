@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hydropix/TranslateBookWithLLM/schemas/reference_text.schema.json",
-  "title": "TBL Benchmark Reference Text",
+  "$id": "https://github.com/alejandrojlamas/verbaloom/blob/main/benchmark/schemas/reference_text.schema.json",
+  "title": "VerbaLoom Benchmark Reference Text",
   "type": "object",
   "required": ["id", "title", "source_language", "text", "style"],
   "additionalProperties": false,

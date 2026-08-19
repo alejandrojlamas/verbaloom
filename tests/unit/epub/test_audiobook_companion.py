@@ -106,7 +106,7 @@ def test_structured_audiobook_epub_preserves_cover_images_positions_and_caption(
         package = etree.fromstring(companion.read("OEBPS/content.opf"))
         assert package.xpath(
             "string(//*[local-name()='metadata']/*[local-name()='title'][1])"
-        ) == "Libro ilustrado (Audiolibro)"
+        ) == "Libro ilustrado (Audiobook)"
         assert companion.infolist()[0].filename == "mimetype"
         assert companion.infolist()[0].compress_type == zipfile.ZIP_STORED
 
@@ -124,6 +124,9 @@ def test_job_companion_writer_uses_structured_epub_instead_of_flattening(tmp_pat
 
     epub_name = next(name for name in result["files"] if name.endswith(".epub"))
     report_name = next(name for name in result["files"] if name.endswith("report).json"))
+    assert "(Audiobook).epub" in epub_name
+    assert "(Audiobook report).json" in report_name
+    assert all("Audiolibro" not in name for name in result["files"])
     with zipfile.ZipFile(tmp_path / epub_name) as companion:
         assert companion.read("OEBPS/images/cover.jpg") == b"cover-image-bytes"
         assert companion.read("OEBPS/images/scene.jpg") == b"scene-image-bytes"

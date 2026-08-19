@@ -2036,11 +2036,11 @@ def _same_script_language_mismatch_issue(
 
 
 _STRUCTURAL_WRAPPER_LINE_RE = re.compile(
-    r"^\s*\[\[\[/?(?:TBLBLOCK|BLOCK)\d+\]\]\]\s*$",
+    r"^\s*\[\[\[/?(?:VERBALOOMBLOCK|TBLBLOCK|BLOCK)\d+\]\]\]\s*$",
     re.IGNORECASE,
 )
 _STRUCTURAL_WRAPPER_TOKEN_RE = re.compile(
-    r"\[\[\[/?(?:TBLBLOCK|BLOCK)\d+\]\]\]",
+    r"\[\[\[/?(?:VERBALOOMBLOCK|TBLBLOCK|BLOCK)\d+\]\]\]",
     re.IGNORECASE,
 )
 _LANGUAGE_NEUTRAL_LITERAL_RE = re.compile(
@@ -2264,7 +2264,7 @@ def _looks_like_preservable_name_index_echo(
 
     placeholder_count = len(_PLACEHOLDER_PATTERNS[0].findall(source or ""))
     wrapper_count = len(re.findall(
-        r"\[\[\[(?:TBLBLOCK|BLOCK)\d+\]\]\]",
+        r"\[\[\[(?:VERBALOOMBLOCK|TBLBLOCK|BLOCK)\d+\]\]\]",
         source or "",
         flags=re.IGNORECASE,
     ))

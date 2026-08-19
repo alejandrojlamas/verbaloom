@@ -15,7 +15,8 @@ export const ProfilePrepManager = {
     POLL_INTERVAL_MS: 1200,
     POLL_RECONNECT_MAX_DELAY_MS: 5000,
     MAX_POLL_FAILURE_MS: 180000,
-    ACTIVE_JOB_STORAGE_KEY: 'tbl.activeProfilePreparationId',
+    ACTIVE_JOB_STORAGE_KEY: 'verbaloom.activeProfilePreparationId',
+    LEGACY_ACTIVE_JOB_STORAGE_KEY: 'tbl.activeProfilePreparationId',
 
     init() {
         this.bindEvents();
@@ -190,7 +191,7 @@ export const ProfilePrepManager = {
         this.updateFromJob(job);
         MessageLogger.showMessage(
             t('transform:profile_prep_restored', {
-                defaultValue: 'Seguimiento del perfil editorial restaurado.',
+                defaultValue: 'Editorial profile tracking restored.',
             }),
             'info',
         );
@@ -257,7 +258,7 @@ export const ProfilePrepManager = {
                 if (elapsedMs > this.MAX_POLL_FAILURE_MS) {
                     throw new Error(t('transform:profile_prep_reconnect_failed', {
                         error: error.message || '',
-                        defaultValue: `La conexión con el servidor se perdió durante la preparación del perfil. El proceso puede seguir activo; actualiza la página para revisar si aparece como terminado. Último error: ${error.message || ''}`,
+                        defaultValue: `The server connection was lost while preparing the profile. The process may still be active; refresh the page to see whether it finished. Last error: ${error.message || ''}`,
                     }));
                 }
 
@@ -324,7 +325,15 @@ export const ProfilePrepManager = {
 
     trackedJobId() {
         try {
-            return String(window.localStorage.getItem(this.ACTIVE_JOB_STORAGE_KEY) || '').trim();
+            let prepId = window.localStorage.getItem(this.ACTIVE_JOB_STORAGE_KEY) || '';
+            if (!prepId) {
+                prepId = window.localStorage.getItem(this.LEGACY_ACTIVE_JOB_STORAGE_KEY) || '';
+                if (prepId) {
+                    window.localStorage.setItem(this.ACTIVE_JOB_STORAGE_KEY, prepId);
+                    window.localStorage.removeItem(this.LEGACY_ACTIVE_JOB_STORAGE_KEY);
+                }
+            }
+            return String(prepId).trim();
         } catch (_error) {
             return '';
         }
@@ -334,6 +343,7 @@ export const ProfilePrepManager = {
         if (!prepId) return;
         try {
             window.localStorage.setItem(this.ACTIVE_JOB_STORAGE_KEY, String(prepId));
+            window.localStorage.removeItem(this.LEGACY_ACTIVE_JOB_STORAGE_KEY);
         } catch (_error) {
             // The backend list endpoint remains the fallback when storage is unavailable.
         }
@@ -344,6 +354,7 @@ export const ProfilePrepManager = {
             const current = window.localStorage.getItem(this.ACTIVE_JOB_STORAGE_KEY) || '';
             if (!prepId || current === String(prepId)) {
                 window.localStorage.removeItem(this.ACTIVE_JOB_STORAGE_KEY);
+                window.localStorage.removeItem(this.LEGACY_ACTIVE_JOB_STORAGE_KEY);
             }
         } catch (_error) {
             // Ignore private-mode/storage failures; server-side recovery still works.
@@ -370,7 +381,7 @@ export const ProfilePrepManager = {
         const message = t('transform:profile_prep_reconnecting', {
             seconds,
             error: error?.message || '',
-            defaultValue: `Conexión inestable; reintentando consulta del perfil (${seconds}s). El análisis sigue en segundo plano.`,
+            defaultValue: `Unstable connection; retrying the profile request in ${seconds}s. Analysis continues in the background.`,
         });
         this.setProgress(percent, message);
         if (last) {
@@ -440,7 +451,7 @@ export const ProfilePrepManager = {
                 total: batchTotal || 0,
                 termsCurrent: termsReviewed || 0,
                 termsTotal: termsTotal || 0,
-                defaultValue: `Revisión de glosario: lote ${batchIndex || 0}/${batchTotal || 0} · ${termsReviewed || 0}/${termsTotal || 0} términos`,
+                defaultValue: `Glossary review: batch ${batchIndex || 0}/${batchTotal || 0} · ${termsReviewed || 0}/${termsTotal || 0} terms`,
             });
         }
         if (stage === 'llm_discovery') {
@@ -451,7 +462,7 @@ export const ProfilePrepManager = {
                 current: chunkIndex || 0,
                 total: chunkTotal || 0,
                 suggestions: suggestions || 0,
-                defaultValue: `Lectura del libro: fragmento ${chunkIndex || 0}/${chunkTotal || 0} · ${suggestions || 0} sugerencias`,
+                defaultValue: `Reading book: chunk ${chunkIndex || 0}/${chunkTotal || 0} · ${suggestions || 0} suggestions`,
             });
         }
         return '';
@@ -531,13 +542,13 @@ export const ProfilePrepManager = {
                 }));
             }
             if (item.reviewed_terms !== undefined) {
-                details.push(`${item.reviewed_terms || 0} revisados`);
+                details.push(`${item.reviewed_terms || 0} reviewed`);
             }
             if (item.auto_approved_translations !== undefined) {
-                details.push(`${item.auto_approved_translations || 0} traducciones`);
+                details.push(`${item.auto_approved_translations || 0} translations`);
             }
             if (item.rejected_noise !== undefined) {
-                details.push(`${item.rejected_noise || 0} ruido`);
+                details.push(`${item.rejected_noise || 0} noise`);
             }
             const meta = [this.stageLabel(item.stage), `${item.progress ?? 0}%`, ...details].filter(Boolean).join(' · ');
             return `

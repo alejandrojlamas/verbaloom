@@ -749,7 +749,7 @@ class TestHealthEndpointSessionId:
         from flask import Flask
 
         monkeypatch.setattr(config_routes, "_local_tailnet_ip", lambda: "100.64.0.10")
-        monkeypatch.setenv("TBL_MAGICDNS_URL", "https://device.example.ts.net/")
+        monkeypatch.setenv("VERBALOOM_MAGICDNS_URL", "https://device.example.ts.net/")
         app = Flask(__name__)
         app.register_blueprint(create_config_blueprint(server_session_id="1234567890"))
 
@@ -763,8 +763,8 @@ class TestHealthEndpointSessionId:
 
             assert response.status_code == 200
             assert data["status"] == "ok"
-            assert data["recommended_url"] == "http://100.64.0.10/"
-            assert data["fallback_url"] == "http://100.64.0.10:5000/"
+            assert data["recommended_url"] == "http://100.64.0.10/verbaloom"
+            assert data["fallback_url"] == "http://100.64.0.10:5000/verbaloom"
             assert data["magicdns_url"] == "https://device.example.ts.net/"
             assert data["request"]["is_android"] is True
             assert "Test Device" in data["request"]["user_agent"]
@@ -781,15 +781,18 @@ class TestHealthEndpointSessionId:
 
         with app.test_client() as client:
             response = client.get(
-                '/mobile',
+                '/verbaloom/mobile',
                 base_url='http://100.64.0.10',
                 headers={'User-Agent': 'Mozilla/5.0 (Linux; Android 16; Test Device) Chrome/140'},
             )
             html = response.get_data(as_text=True)
 
             assert response.status_code == 200
-            assert "Servidor alcanzado" in html
-            assert "Android detectado" in html
+            assert "Server reached" in html
+            assert "Android detected" in html
             assert "Test Device" in html
-            assert "http://100.64.0.10/" in html
-            assert "http://100.64.0.10:5000/" in html
+            assert "http://100.64.0.10/verbaloom" in html
+            assert "http://100.64.0.10:5000/verbaloom" in html
+            assert "https://github.com/alejandrojlamas/verbaloom" in html
+            assert 'lang="en"' in html
+            assert "Servidor alcanzado" not in html

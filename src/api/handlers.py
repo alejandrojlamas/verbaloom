@@ -726,17 +726,17 @@ def _create_audiobook_companion_outputs(
     output_root = Path(output_dir)
     files: list[str] = []
 
-    txt_path = Path(get_unique_output_path(str(output_root / f"{base_stem} (Audiolibro).txt")))
+    txt_path = Path(get_unique_output_path(str(output_root / f"{base_stem} (Audiobook).txt")))
     write_text_as_output(artifact.text, txt_path, "txt")
     files.append(txt_path.name)
 
     if normalize_output_format(output_format) == "epub":
-        epub_path = Path(get_unique_output_path(str(output_root / f"{base_stem} (Audiolibro).epub")))
+        epub_path = Path(get_unique_output_path(str(output_root / f"{base_stem} (Audiobook).epub")))
         if final_path.suffix.casefold() == ".epub":
             structured_report = create_structured_audiobook_epub(
                 final_path,
                 epub_path,
-                title_suffix="Audiolibro",
+                title_suffix="Audiobook",
             )
             artifact.report.structured_epub_preserved = True
             artifact.report.images_preserved = structured_report.image_count
@@ -750,7 +750,7 @@ def _create_audiobook_companion_outputs(
             write_text_as_output(artifact.text, epub_path, "epub")
         files.append(epub_path.name)
 
-    report_path = Path(get_unique_output_path(str(output_root / f"{base_stem} (Audiolibro report).json")))
+    report_path = Path(get_unique_output_path(str(output_root / f"{base_stem} (Audiobook report).json")))
     report_path.write_text(
         json.dumps(artifact.report.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -2555,17 +2555,17 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     metadata={'profile_id': active_profile_id, 'audiobook': True},
                 )
                 audiobook_companion_files = list(companion_result.get('files') or [])
-                summary = companion_result.get('summary') or 'sin cambios'
+                summary = companion_result.get('summary') or 'no changes'
                 if audiobook_companion_files:
                     _log_message_callback(
                         "audiobook_companions_created",
-                        "🎧 Audiolibro listo: "
+                        "🎧 Audiobook ready: "
                         f"{', '.join(audiobook_companion_files)} ({summary})."
                     )
             except Exception as audiobook_error:
                 _log_message_callback(
                     "audiobook_companion_error",
-                    f"⚠️ No se pudieron crear archivos de audiolibro: {audiobook_error}"
+                    f"⚠️ Could not create audiobook companion files: {audiobook_error}"
                 )
 
         # Set result message based on file type

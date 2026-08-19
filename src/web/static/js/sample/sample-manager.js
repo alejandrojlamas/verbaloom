@@ -33,7 +33,8 @@ import {
 // Track every SearchableSelect attached by this module so we can avoid double
 // wiring when the tab is initialized more than once in a long browser session.
 const sampleSearchableIds = new Set();
-const SAMPLE_SESSION_STORAGE_KEY = 'tbl.sample.activeRun.v2';
+const SAMPLE_SESSION_STORAGE_KEY = 'verbaloom.sample.activeRun.v2';
+const LEGACY_SAMPLE_SESSION_STORAGE_KEY = 'tbl.sample.activeRun.v2';
 const SAMPLE_POLL_INTERVAL_MS = 2500;
 const SAMPLE_CONTROL_REQUEST_TIMEOUT_MS = 20000;
 let samplePollTimer = null;
@@ -128,7 +129,14 @@ function readPersistedSampleSession() {
     const storage = safeLocalStorage();
     if (!storage) return null;
     try {
-        const raw = storage.getItem(SAMPLE_SESSION_STORAGE_KEY);
+        let raw = storage.getItem(SAMPLE_SESSION_STORAGE_KEY);
+        if (!raw) {
+            raw = storage.getItem(LEGACY_SAMPLE_SESSION_STORAGE_KEY);
+            if (raw) {
+                storage.setItem(SAMPLE_SESSION_STORAGE_KEY, raw);
+                storage.removeItem(LEGACY_SAMPLE_SESSION_STORAGE_KEY);
+            }
+        }
         return raw ? JSON.parse(raw) : null;
     } catch (err) {
         console.warn('[sample] could not read persisted sample session', err);
@@ -141,6 +149,7 @@ function clearPersistedSampleSession() {
     if (!storage) return;
     try {
         storage.removeItem(SAMPLE_SESSION_STORAGE_KEY);
+        storage.removeItem(LEGACY_SAMPLE_SESSION_STORAGE_KEY);
     } catch (_err) {
         // ignore storage failures
     }

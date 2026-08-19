@@ -104,7 +104,7 @@ python -m benchmark.cli wiki-publish [RUN_ID]
 **Requirements:**
 - Git must be configured with push access to the wiki repo
 - Wiki must be initialized on GitHub (create at least one page first)
-- `WIKI_REPO_URL` env var or default `https://github.com/hydropix/TranslateBookWithLLM.wiki.git`
+- `WIKI_REPO_URL` env var or default `https://github.com/alejandrojlamas/verbaloom.wiki.git`
 
 ### `list` - List Benchmark Runs
 
@@ -243,7 +243,7 @@ REQUEST_TIMEOUT=900
 OPENROUTER_API_KEY=your_key_here
 
 # Wiki Publishing
-WIKI_REPO_URL=https://github.com/your-username/TranslateBookWithLLM.wiki.git
+WIKI_REPO_URL=https://github.com/your-username/verbaloom.wiki.git
 ```
 
 ### Default Evaluator
@@ -420,6 +420,6 @@ Either:
 
 ## See Also
 
-- [Live Benchmark Results](https://github.com/hydropix/TranslateBookWithLLM/wiki) - Published wiki with current results
+- [Live Benchmark Results](https://github.com/alejandrojlamas/verbaloom/wiki) - Published wiki with current results
 - [CLAUDE.md](../CLAUDE.md) - Main project documentation
 - [OpenRouter Documentation](https://openrouter.ai/docs) - API documentation for evaluation

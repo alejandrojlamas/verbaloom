@@ -1,4 +1,4 @@
-# TranslateBookWithLLM — Judge Rubric (v1)
+# VerbaLoom — Judge Rubric (v1)
 
 **Version:** `v1`
 **Identifier to record in submissions:** `<judge-id>-rubric-v1` (e.g.

@@ -425,6 +425,8 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
                 element.getroottree().getpath(element)
                 for element in root.xpath(
                     "//*[contains(concat(' ', normalize-space(@class), ' '), "
+                    "' verbaloom-sanitized-artifact ') or "
+                    "contains(concat(' ', normalize-space(@class), ' '), "
                     "' tbl-sanitized-artifact ')]"
                 )
             }
@@ -561,7 +563,7 @@ def audit_epub_publication(
         added = sorted(set(output.entry_names) - set(source.entry_names))
         allowed_added = [
             name for name in added
-            if Path(name).name == "tbl-professional.css"
+            if Path(name).name in {"verbaloom-professional.css", "tbl-professional.css"}
             and output.manifest_resources.get(name, {}).get("media_type") == "text/css"
         ]
         unexpected_added = sorted(set(added) - set(allowed_added))
@@ -627,7 +629,10 @@ def audit_epub_publication(
         if source_counts != output_counts:
             delta = output_counts - source_counts
             removed = source_counts - output_counts
-            generated_css = any(Path(path).name == "tbl-professional.css" for path in output.css_files)
+            generated_css = any(
+                Path(path).name in {"verbaloom-professional.css", "tbl-professional.css"}
+                for path in output.css_files
+            )
             viewport_added = bool(
                 not source.mobile_viewports.get(file_href)
                 and output.mobile_viewports.get(file_href)

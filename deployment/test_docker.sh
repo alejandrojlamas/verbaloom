@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# Docker Testing Script for TranslateBookWithLLM
+# Docker Testing Script for VerbaLoom
 # ============================================================================
 # This script tests the Docker deployment automatically
 # Usage: ./test_docker.sh
@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 echo ""
 echo "============================================================"
-echo "  Docker Test Script - TranslateBookWithLLM"
+echo "  Docker Test Script - VerbaLoom"
 echo "============================================================"
 echo ""
 
@@ -114,7 +114,7 @@ echo "Useful commands:"
 echo "  - View logs:           docker-compose logs -f"
 echo "  - Stop container:      docker-compose down"
 echo "  - Restart container:   docker-compose restart"
-echo "  - Shell access:        docker-compose exec translatebook bash"
+echo "  - Shell access:        docker-compose exec verbaloom bash"
 echo ""
 echo "Web interface: http://localhost:5000"
 echo "API health:    http://localhost:5000/api/health"

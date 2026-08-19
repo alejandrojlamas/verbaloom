@@ -5,20 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="dark light">
     <meta name="theme-color" id="themeColorMeta" content="#080c12">
-    <title>Translate Books with LLMs</title>
-    <link rel="icon" type="image/png" href="/static/TBL-Logo-alpha.png">
+    <title>VerbaLoom — Local-first AI translation</title>
+    <link rel="icon" type="image/png" href="/static/verbaloom-logo-64.png">
 
     <!-- Initial locale + app version handed off by Flask so i18next boots
          without an extra round-trip and JSON caches bust on app upgrades.
          tojson escapes safely for a <script> context. -->
     <script>
         (function applyInitialTheme() {
-            var storageKey = 'tbl-theme-preference';
+            var storageKey = 'verbaloom-theme-preference';
             var darkColor = '#080c12';
             var lightColor = '#f5f7fb';
             var savedTheme = null;
             try {
                 savedTheme = localStorage.getItem(storageKey);
+                if (!savedTheme) {
+                    savedTheme = localStorage.getItem('tbl-theme-preference');
+                    if (savedTheme) {
+                        localStorage.setItem(storageKey, savedTheme);
+                        localStorage.removeItem('tbl-theme-preference');
+                    }
+                }
             } catch (error) {
                 savedTheme = null;
             }
@@ -62,11 +69,11 @@
         <header class="header">
             <div class="logo-section">
                 <div class="logo-icon">
-                    <img src="/static/TBL-Logo-alpha.png" alt="TBL Logo" style="width: 100%; height: 100%; object-fit: contain;">
+                    <img src="/static/verbaloom-logo-64.png" alt="VerbaLoom logo" data-i18n-attr="alt:common:brand_logo_alt" style="width: 100%; height: 100%; object-fit: contain;">
                 </div>
                 <div class="logo-text">
-                    <h2>TBL <span class="app-version" id="appVersion" title="TBL v{{ app_version|default('dev') }}">v{{ app_version|default('dev') }}</span></h2>
-                    <p data-i18n="common:app_subtitle">Translate Books with LLMs</p>
+                    <h2><span data-i18n="common:brand_name">VerbaLoom</span> <span class="app-version" id="appVersion" title="VerbaLoom v{{ app_version|default('dev') }}" data-i18n-attr="title:common:brand_version_title">v{{ app_version|default('dev') }}</span></h2>
+                    <p data-i18n="common:app_subtitle">Local-first AI translation with editorial memory and fidelity gates.</p>
                 </div>
             </div>
 
@@ -81,12 +88,12 @@
                     <span class="material-symbols-outlined header-lang-caret">expand_more</span>
                     <select id="uiLocaleSelect" class="header-lang-select" data-i18n-attr="aria-label:settings:ui_language_label" aria-label="Interface language">
                         <option value="en" data-short="EN">English</option>
-                        <option value="zh-CN" data-short="中">简体中文</option>
-                        <option value="es" data-short="ES">Español</option>
-                        <option value="fr" data-short="FR">Français</option>
-                        <option value="de" data-short="DE">Deutsch</option>
-                        <option value="ja" data-short="日">日本語</option>
-                        <option value="ko" data-short="한">한국어</option>
+                        <option value="zh-CN" data-short="ZH">Chinese</option>
+                        <option value="es" data-short="ES">Spanish</option>
+                        <option value="fr" data-short="FR">French</option>
+                        <option value="de" data-short="DE">German</option>
+                        <option value="ja" data-short="JA">Japanese</option>
+                        <option value="ko" data-short="KO">Korean</option>
                     </select>
                 </div>
                 <button class="btn btn-secondary" id="themeToggleBtn" onclick="toggleTheme()" data-i18n-attr="title:common:theme_toggle_title" title="Toggle dark/light mode">
@@ -134,11 +141,11 @@
             </button>
             <button type="button" class="tab-btn" data-tab="transform" onclick="switchTopTab('transform')">
                     <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">auto_fix_high</span>
-                <span data-i18n="common:tab_transform">Transformar</span>
+                <span data-i18n="common:tab_transform">Transform</span>
             </button>
             <button type="button" class="tab-btn" data-tab="profile-prep" onclick="switchTopTab('profile-prep')">
                     <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">psychology_alt</span>
-                <span data-i18n="common:tab_profile_prep">Perfil</span>
+                <span data-i18n="common:tab_profile_prep">Profile</span>
             </button>
             <button type="button" class="tab-btn" data-tab="sample" onclick="switchTopTab('sample')">
                     <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">science</span>
@@ -513,29 +520,29 @@
                 <div class="card-body">
                     <h2 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
                         <span class="material-symbols-outlined">auto_fix_high</span>
-                        <span data-i18n="transform:title">Transformar texto</span>
+                        <span data-i18n="transform:title">Transform text</span>
                     </h2>
                     <p style="color: var(--text-muted-light); font-size: 0.875rem; margin-bottom: 1.25rem;" data-i18n="transform:subtitle">
-                        Mismo idioma, nuevo tratamiento editorial.
+                        Same language, new editorial treatment.
                     </p>
 
                     <div class="transform-grid transform-grid-primary">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="transform:mode_label">Proceso</label>
+                            <label data-i18n="transform:mode_label">Process</label>
                             <div class="neu-inset-light">
                                 <select class="form-control" id="transformMode">
-                                    <option value="modernize" data-label="Modernizar" data-i18n="transform:mode_modernize" data-i18n-attr="data-label:transform:mode_modernize;data-description:transform:mode_modernize_desc" data-description="Actualiza prosa antigua a una versión contemporánea fiel.">Modernizar</option>
-                                    <option value="simplify" data-label="Explicar" data-i18n="transform:mode_simplify" data-i18n-attr="data-label:transform:mode_simplify;data-description:transform:mode_simplify_desc" data-description="Reescribe en prosa universitaria clara, explicando conceptos complejos, tablas y argumentos sin perder rigor.">Explicar</option>
-                                    <option value="humanize" data-label="Humanizar" data-i18n="transform:mode_humanize" data-i18n-attr="data-label:transform:mode_humanize;data-description:transform:mode_humanize_desc" data-description="Quita rigidez de IA y vuelve el texto más natural.">Humanizar</option>
-                                    <option value="mexican_spanish" data-label="Adaptar a mexicano" data-i18n="transform:mode_mexican" data-i18n-attr="data-label:transform:mode_mexican;data-description:transform:mode_mexican_desc" data-description="Adapta a español mexicano o latinoamericano natural.">Adaptar a mexicano</option>
-                                    <option value="academic_clarity" data-label="Claridad académica" data-i18n="transform:mode_academic" data-i18n-attr="data-label:transform:mode_academic;data-description:transform:mode_academic_desc" data-description="Ordena y aclara prosa académica densa.">Claridad académica</option>
-                                    <option value="literary_polish" data-label="Pulido literario" data-i18n="transform:mode_literary" data-i18n-attr="data-label:transform:mode_literary;data-description:transform:mode_literary_desc" data-description="Mejora ritmo, dicción y fluidez literaria.">Pulido literario</option>
-                                    <option value="ocr_structure" data-label="Corregir OCR" data-i18n="transform:mode_ocr" data-i18n-attr="data-label:transform:mode_ocr;data-description:transform:mode_ocr_desc" data-description="Corrige ruido OCR, saltos, espacios y estructura.">Corregir OCR</option>
+                                    <option value="modernize" data-label="Modernize" data-i18n="transform:mode_modernize" data-i18n-attr="data-label:transform:mode_modernize;data-description:transform:mode_modernize_desc" data-description="Updates older prose into a faithful contemporary version.">Modernize</option>
+                                    <option value="simplify" data-label="Explain" data-i18n="transform:mode_simplify" data-i18n-attr="data-label:transform:mode_simplify;data-description:transform:mode_simplify_desc" data-description="Rewrites in clear university-level prose, explaining complex concepts, tables, and arguments without losing rigor.">Explain</option>
+                                    <option value="humanize" data-label="Humanize" data-i18n="transform:mode_humanize" data-i18n-attr="data-label:transform:mode_humanize;data-description:transform:mode_humanize_desc" data-description="Removes rigid AI phrasing and makes the text sound more natural.">Humanize</option>
+                                    <option value="mexican_spanish" data-label="Adapt to Mexican Spanish" data-i18n="transform:mode_mexican" data-i18n-attr="data-label:transform:mode_mexican;data-description:transform:mode_mexican_desc" data-description="Adapts the text to natural Mexican or Latin American Spanish.">Adapt to Mexican Spanish</option>
+                                    <option value="academic_clarity" data-label="Academic clarity" data-i18n="transform:mode_academic" data-i18n-attr="data-label:transform:mode_academic;data-description:transform:mode_academic_desc" data-description="Organizes and clarifies dense academic prose.">Academic clarity</option>
+                                    <option value="literary_polish" data-label="Literary polish" data-i18n="transform:mode_literary" data-i18n-attr="data-label:transform:mode_literary;data-description:transform:mode_literary_desc" data-description="Improves literary rhythm, diction, and flow.">Literary polish</option>
+                                    <option value="ocr_structure" data-label="Repair OCR" data-i18n="transform:mode_ocr" data-i18n-attr="data-label:transform:mode_ocr;data-description:transform:mode_ocr_desc" data-description="Repairs OCR noise, line breaks, spacing, and structure.">Repair OCR</option>
                                 </select>
                             </div>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="transform:profile_label">Perfil editorial</label>
+                            <label data-i18n="transform:profile_label">Editorial profile</label>
                             <div class="neu-inset-light">
                                 <select class="form-control" id="transformProfile">
                                     <option value="" selected data-i18n="transform:profile_none">General</option>
@@ -553,7 +560,7 @@
                         </summary>
                         <div class="transform-grid transform-grid-secondary">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label data-i18n="transform:language_label">Idioma del texto</label>
+                                <label data-i18n="transform:language_label">Text language</label>
                                 <div class="neu-inset-light">
                                     <select class="form-control" id="transformLanguage">
                                         <option value="Spanish" selected>Spanish</option>
@@ -570,7 +577,7 @@
                                 </div>
                             </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label id="transformGlossaryLabel" data-i18n="transform:glossary_label">Glosario</label>
+                            <label id="transformGlossaryLabel" data-i18n="transform:glossary_label">Glossary</label>
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <div class="neu-inset-light" style="flex: 1;">
                                     <select class="form-control" id="transformGlossarySelect" aria-labelledby="transformGlossaryLabel">
@@ -584,7 +591,7 @@
                             <div id="transformGlossaryInfoCard" class="glossary-info-card" style="display: none;"></div>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="transform:output_format_label">Salida</label>
+                            <label data-i18n="transform:output_format_label">Output</label>
                             <div class="neu-inset-light">
                                 <select class="form-control" id="transformOutputFormat">
                                     <option value="auto" selected data-i18n="settings:output_format_auto">Auto (native)</option>
@@ -602,9 +609,9 @@
                         <div class="upload-icon">
                             <span class="material-symbols-outlined">upload_file</span>
                         </div>
-                        <h3 data-i18n="transform:drop_files_title">Suelta archivos para transformar</h3>
-                        <p data-i18n="transform:drop_files_support">PDF, TXT, EPUB, DOCX y archivos de texto</p>
-                        <div class="browse-btn" data-i18n="translation:browse_files">Explorar archivos</div>
+                        <h3 data-i18n="transform:drop_files_title">Drop files to transform</h3>
+                        <p data-i18n="transform:drop_files_support">PDF, TXT, EPUB, DOCX, and text files</p>
+                        <div class="browse-btn" data-i18n="translation:browse_files">Browse files</div>
                         <input type="file" id="transformFileInput" accept=".pdf,.txt,.text,.md,.markdown,.rst,.log,.epub,.docx,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml" style="display: none;" multiple>
                     </div>
 
@@ -613,11 +620,11 @@
                     <div style="text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 12px; align-items: center; flex-wrap: wrap;">
                         <button class="btn btn-primary" id="transformStartBtn" disabled>
                             <span class="material-symbols-outlined">play_circle</span>
-                            <span data-i18n="transform:start">Iniciar transformación</span>
+                            <span data-i18n="transform:start">Start transformation</span>
                         </button>
                         <button class="btn btn-secondary" id="transformClearBtn" disabled>
                             <span class="material-symbols-outlined">delete</span>
-                            <span data-i18n="transform:clear">Limpiar</span>
+                            <span data-i18n="transform:clear">Clear</span>
                         </button>
                     </div>
                 </div>
@@ -630,15 +637,15 @@
                 <div class="card-body">
                     <h2 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
                         <span class="material-symbols-outlined">psychology_alt</span>
-                        <span data-i18n="transform:profile_prep_title">Preparar perfil editorial</span>
+                        <span data-i18n="transform:profile_prep_title">Prepare editorial profile</span>
                     </h2>
                     <p style="color: var(--text-muted-light); font-size: 0.875rem; margin-bottom: 1.25rem;" data-i18n="transform:profile_prep_subtitle">
-                        Analiza un libro completo antes de traducir o transformar para crear un perfil por obra con glosario, entidades, voces, secciones y riesgos editoriales.
+                        Analyze a complete book before translating or transforming it to create a book-specific profile with a glossary, entities, voices, sections, and editorial risks.
                     </p>
 
                     <div class="transform-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="transform:profile_prep_language_label">Idioma objetivo</label>
+                            <label data-i18n="transform:profile_prep_language_label">Target language</label>
                             <div class="neu-inset-light">
                                 <select class="form-control" id="profilePrepLanguage">
                                     <option value="Spanish" selected>Spanish</option>
@@ -655,14 +662,14 @@
                             </div>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="transform:profile_prep_purpose_label">Uso principal</label>
+                            <label data-i18n="transform:profile_prep_purpose_label">Primary use</label>
                             <div class="neu-inset-light">
                                 <select class="form-control" id="profilePrepPurpose">
-                                    <option value="translation" selected data-i18n="transform:profile_prep_purpose_translation">Traducción fiel</option>
-                                    <option value="audiobook" data-i18n="transform:profile_prep_purpose_audiobook">Audiolibro</option>
-                                    <option value="modernize" data-i18n="transform:mode_modernize">Modernizar</option>
-                                    <option value="simplify" data-i18n="transform:mode_simplify">Explicar</option>
-                                    <option value="literary_polish" data-i18n="transform:mode_literary">Pulido literario</option>
+                                    <option value="translation" selected data-i18n="transform:profile_prep_purpose_translation">Faithful translation</option>
+                                    <option value="audiobook" data-i18n="transform:profile_prep_purpose_audiobook">Audiobook</option>
+                                    <option value="modernize" data-i18n="transform:mode_modernize">Modernize</option>
+                                    <option value="simplify" data-i18n="transform:mode_simplify">Explain</option>
+                                    <option value="literary_polish" data-i18n="transform:mode_literary">Literary polish</option>
                                 </select>
                             </div>
                         </div>
@@ -672,11 +679,11 @@
                         <div class="profile-prep-card-header">
                             <div class="profile-prep-title">
                                 <span class="material-symbols-outlined">auto_awesome</span>
-                                <span data-i18n="transform:profile_prep_button">Analizar con DeepSeek Flash</span>
+                                <span data-i18n="transform:profile_prep_button">Analyze with DeepSeek Flash</span>
                             </div>
                         </div>
                         <p class="profile-prep-body" data-i18n="transform:profile_prep_help">
-                            DeepSeek Flash lee todo el libro por fragmentos, extrae nombres, conceptos, tratamientos y dudas editoriales útiles, crea un perfil por obra y lo deja listo en el selector.
+                            DeepSeek Flash reads the entire book in chunks, extracts names, concepts, forms of address, and useful editorial questions, creates a book-specific profile, and makes it available in the selector.
                         </p>
                     </div>
 
@@ -684,9 +691,9 @@
                         <div class="upload-icon">
                             <span class="material-symbols-outlined">upload_file</span>
                         </div>
-                        <h3 data-i18n="transform:profile_prep_drop_title">Suelta archivos para preparar perfil</h3>
-                        <p data-i18n="transform:drop_files_support">PDF, TXT, EPUB, DOCX y archivos de texto</p>
-                        <div class="browse-btn" data-i18n="translation:browse_files">Explorar archivos</div>
+                        <h3 data-i18n="transform:profile_prep_drop_title">Drop files to prepare a profile</h3>
+                        <p data-i18n="transform:drop_files_support">PDF, TXT, EPUB, DOCX, and text files</p>
+                        <div class="browse-btn" data-i18n="translation:browse_files">Browse files</div>
                         <input type="file" id="profilePrepFileInput" accept=".pdf,.txt,.text,.md,.markdown,.rst,.log,.epub,.docx,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml" style="display: none;" multiple>
                     </div>
 
@@ -695,11 +702,11 @@
                     <div style="text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 12px; align-items: center; flex-wrap: wrap;">
                         <button class="btn btn-primary" id="profilePrepStartBtn" disabled>
                             <span class="material-symbols-outlined">play_circle</span>
-                            <span data-i18n="transform:profile_prep_start">Preparar perfil</span>
+                            <span data-i18n="transform:profile_prep_start">Prepare profile</span>
                         </button>
                         <button class="btn btn-secondary" id="profilePrepClearBtn" disabled>
                             <span class="material-symbols-outlined">delete</span>
-                            <span data-i18n="transform:clear">Limpiar</span>
+                            <span data-i18n="transform:clear">Clear</span>
                         </button>
                     </div>
 
@@ -707,7 +714,7 @@
                         <div class="profile-prep-card-header">
                             <div class="profile-prep-title">
                                 <span class="material-symbols-outlined">monitoring</span>
-                                <span data-i18n="transform:profile_prep_live_title">Proceso en vivo</span>
+                                <span data-i18n="transform:profile_prep_live_title">Live process</span>
                             </div>
                             <small id="profilePrepModelLabel" style="color: var(--text-muted-light);" data-i18n="transform:profile_prep_model_default">DeepSeek Flash</small>
                         </div>
@@ -718,26 +725,26 @@
                         <div class="profile-prep-live-grid">
                             <div class="profile-prep-live-stat">
                                 <strong id="profilePrepStage">—</strong>
-                                <span data-i18n="transform:profile_prep_stat_stage">Etapa</span>
+                                <span data-i18n="transform:profile_prep_stat_stage">Stage</span>
                             </div>
                             <div class="profile-prep-live-stat">
                                 <strong id="profilePrepChunks">0/0</strong>
-                                <span id="profilePrepChunksLabel" data-i18n="transform:profile_prep_stat_chunks">Fragmentos</span>
+                                <span id="profilePrepChunksLabel" data-i18n="transform:profile_prep_stat_chunks">Chunks</span>
                             </div>
                             <div class="profile-prep-live-stat">
                                 <strong id="profilePrepSuggestions">0</strong>
-                                <span id="profilePrepSuggestionsLabel" data-i18n="transform:profile_prep_stat_suggestions">Sugerencias</span>
+                                <span id="profilePrepSuggestionsLabel" data-i18n="transform:profile_prep_stat_suggestions">Suggestions</span>
                             </div>
                             <div class="profile-prep-live-stat">
                                 <strong id="profilePrepSignals">0</strong>
-                                <span data-i18n="transform:profile_prep_stat_signals">Señales</span>
+                                <span data-i18n="transform:profile_prep_stat_signals">Signals</span>
                             </div>
                         </div>
                         <div id="profilePrepResult" class="profile-prep-status success"></div>
-                        <h4 style="margin: 8px 0 8px; color: var(--text-dark); font-weight: 700;" data-i18n="transform:profile_prep_log_title">Registro del análisis</h4>
+                        <h4 style="margin: 8px 0 8px; color: var(--text-dark); font-weight: 700;" data-i18n="transform:profile_prep_log_title">Analysis log</h4>
                         <div id="profilePrepLog" class="profile-prep-log">
                             <div class="profile-prep-log-item">
-                                <span data-i18n="transform:profile_prep_no_logs">Aún no hay eventos.</span>
+                                <span data-i18n="transform:profile_prep_no_logs">No events yet.</span>
                             </div>
                         </div>
                     </div>
@@ -751,19 +758,19 @@
                 <div class="card-body">
                     <div class="sample-lab-hero">
                         <div>
-                            <span class="sample-kicker" data-i18n="sample:kicker">Laboratorio editorial</span>
+                            <span class="sample-kicker" data-i18n="sample:kicker">Editorial lab</span>
                             <h2>
                                 <span class="material-symbols-outlined">science</span>
-                                <span data-i18n="sample:title">Muestra inteligente</span>
+                                <span data-i18n="sample:title">Smart sample</span>
                             </h2>
                             <p data-i18n="sample:subtitle">
-                                Compara el mismo fragmento con y sin glosario, perfil y transformación antes de gastar en el libro completo.
+                                Compare the same excerpt with and without a glossary, profile, and transformation before processing the complete book.
                             </p>
                         </div>
                         <div class="sample-lab-meter">
                             <span class="material-symbols-outlined">compare_arrows</span>
                             <strong id="sampleVariantCount">1</strong>
-                            <span data-i18n="sample:variant_count_label">variantes</span>
+                            <span data-i18n="sample:variant_count_label">variants</span>
                         </div>
                     </div>
 
@@ -771,8 +778,8 @@
                         <div class="sample-step">
                             <span class="sample-step-number">1</span>
                             <div>
-                                <h3 data-i18n="sample:section_document">Documento y fragmentos</h3>
-                                <p data-i18n="sample:section_document_hint">Sube un libro y revisa unos cuantos chunks representativos antes de ejecutar.</p>
+                                <h3 data-i18n="sample:section_document">Document and excerpts</h3>
+                                <p data-i18n="sample:section_document_hint">Upload a book and review a few representative chunks before running the complete workflow.</p>
                             </div>
                         </div>
 
@@ -822,8 +829,8 @@
                             <div class="upload-icon">
                                 <span class="material-symbols-outlined">upload_file</span>
                             </div>
-                            <h3 data-i18n="sample:drop_file_title">Suelta un libro para probar</h3>
-                            <p data-i18n="sample:drop_file_support">PDF, TXT, EPUB, SRT, DOCX y archivos de texto</p>
+                            <h3 data-i18n="sample:drop_file_title">Drop a book to test</h3>
+                            <p data-i18n="sample:drop_file_support">PDF, TXT, EPUB, SRT, DOCX, and text files</p>
                             <div class="browse-btn" data-i18n="translation:browse_files">Browse Files</div>
                             <input type="file" id="sampleFileInput" accept=".pdf,.txt,.text,.md,.markdown,.rst,.log,.epub,.srt,.docx,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml" style="display: none;">
                         </div>
@@ -850,8 +857,8 @@
                         <div class="sample-step">
                             <span class="sample-step-number">2</span>
                             <div>
-                                <h3 data-i18n="sample:section_model">Modelo y tamaño de muestra</h3>
-                                <p data-i18n="sample:section_model_hint">Todas las variantes usan el mismo modelo para que la diferencia venga del pipeline, no del proveedor.</p>
+                                <h3 data-i18n="sample:section_model">Model and sample size</h3>
+                                <p data-i18n="sample:section_model_hint">Every variant uses the same model so the pipeline—not the provider—accounts for the difference.</p>
                             </div>
                         </div>
                         <div class="sample-lab-grid sample-lab-grid-model">
@@ -892,30 +899,30 @@
                         <div class="sample-step">
                             <span class="sample-step-number">3</span>
                             <div>
-                                <h3 data-i18n="sample:section_variants">Variantes a comparar</h3>
-                                <p data-i18n="sample:section_variants_hint">Elige un glosario, un perfil y una transformación opcional. La app genera las variantes útiles automáticamente.</p>
+                                <h3 data-i18n="sample:section_variants">Variants to compare</h3>
+                                <p data-i18n="sample:section_variants_hint">Choose a glossary, a profile, and an optional transformation. The app generates the useful variants automatically.</p>
                             </div>
                         </div>
                         <div class="sample-lab-grid sample-lab-grid-variants">
                             <div class="form-group">
-                                <label data-i18n="sample:glossary_label">Glosario</label>
+                                <label data-i18n="sample:glossary_label">Glossary</label>
                                 <select id="sampleGlossarySelect" class="form-control"></select>
                             </div>
                             <div class="form-group">
-                                <label data-i18n="sample:profile_label">Perfil editorial</label>
+                                <label data-i18n="sample:profile_label">Editorial profile</label>
                                 <select id="sampleProfileSelect" class="form-control"></select>
                             </div>
                             <div class="form-group">
-                                <label data-i18n="sample:transform_label">Transformación</label>
+                                <label data-i18n="sample:transform_label">Transformation</label>
                                 <select id="sampleTransformMode" class="form-control">
-                                    <option value="" data-i18n="sample:transform_none">Sin transformación</option>
-                                    <option value="modernize" data-i18n="transform:mode_modernize">Modernizar</option>
-                                    <option value="simplify" data-i18n="transform:mode_simplify">Explicar</option>
-                                    <option value="humanize" data-i18n="transform:mode_humanize">Humanizar</option>
-                                    <option value="mexican_spanish" data-i18n="transform:mode_mexican">Adaptar a mexicano</option>
-                                    <option value="academic_clarity" data-i18n="transform:mode_academic">Claridad académica</option>
-                                    <option value="literary_polish" data-i18n="transform:mode_literary">Pulido literario</option>
-                                    <option value="ocr_structure" data-i18n="transform:mode_ocr">Corregir OCR</option>
+                                    <option value="" data-i18n="sample:transform_none">No transformation</option>
+                                    <option value="modernize" data-i18n="transform:mode_modernize">Modernize</option>
+                                    <option value="simplify" data-i18n="transform:mode_simplify">Explain</option>
+                                    <option value="humanize" data-i18n="transform:mode_humanize">Humanize</option>
+                                    <option value="mexican_spanish" data-i18n="transform:mode_mexican">Adapt to Mexican Spanish</option>
+                                    <option value="academic_clarity" data-i18n="transform:mode_academic">Academic clarity</option>
+                                    <option value="literary_polish" data-i18n="transform:mode_literary">Literary polish</option>
+                                    <option value="ocr_structure" data-i18n="transform:mode_ocr">Repair OCR</option>
                                 </select>
                             </div>
                         </div>
@@ -954,9 +961,9 @@
                         <div class="sample-integrated-title">
                             <div>
                                 <span class="material-symbols-outlined">library_books</span>
-                                <h3 data-i18n="sample:integrated_title">Muestra integrada</h3>
+                                <h3 data-i18n="sample:integrated_title">Integrated sample</h3>
                             </div>
-                            <p data-i18n="sample:integrated_hint">Une los fragmentos seleccionados en orden para leer cada pipeline como una sola muestra continua.</p>
+                            <p data-i18n="sample:integrated_hint">Joins the selected excerpts in order so each pipeline reads as one continuous sample.</p>
                         </div>
                         <div id="sampleIntegratedResults" class="sample-integrated-results"></div>
                     </section>
@@ -1324,7 +1331,7 @@
                     <p data-i18n-html="settings:notifications_intro" style="margin: 5px 0 15px 0; font-size: 0.875rem; color: var(--text-muted-light); line-height: 1.5;">
                         Get pinged on your phone, Discord channel, or any HTTP endpoint when a translation reaches a terminal state.
                         Useful for long-running jobs with local models. Compatible with <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong>, or any custom webhook.
-                        See <a href="https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/NOTIFICATIONS.md" target="_blank" rel="noopener" style="color: var(--primary-light);">docs/NOTIFICATIONS.md</a> for the full reference.
+                        See <a href="https://github.com/alejandrojlamas/verbaloom/blob/main/docs/NOTIFICATIONS.md" target="_blank" rel="noopener" style="color: var(--primary-light);">docs/NOTIFICATIONS.md</a> for the full reference.
                     </p>
 
                     <!-- Quick presets -->
@@ -1453,11 +1460,11 @@
             <div class="main-card">
                 <div class="card-header">
                     <span class="material-symbols-outlined">monitoring</span>
-                    <h2 data-i18n="common:usage_title">Uso de tokens y costos</h2>
+                    <h2 data-i18n="common:usage_title">Token usage and cost</h2>
                     <div style="margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         <button type="button" class="btn btn-secondary" id="usageBackfillBtn" style="padding: 0.5rem 1rem;">
                             <span class="material-symbols-outlined">history</span>
-                            <span data-i18n="common:usage_backfill">Estimar histórico</span>
+                            <span data-i18n="common:usage_backfill">Estimate history</span>
                         </button>
                         <button type="button" class="btn btn-secondary" id="usageRefreshBtn" style="padding: 0.5rem 1rem;">
                             <span class="material-symbols-outlined">refresh</span>
@@ -1465,73 +1472,73 @@
                     </div>
                 </div>
                 <div class="card-body" id="usageContent">
-                    <div id="usageLoading" class="usage-loading hidden" data-i18n="common:usage_loading">Cargando uso...</div>
+                    <div id="usageLoading" class="usage-loading hidden" data-i18n="common:usage_loading">Loading usage...</div>
                     <p class="usage-note" data-i18n="common:usage_note">
-                        Registra cada llamada al modelo con tokens de entrada, salida y costo estimado. Cuando esta pestaña está abierta se actualiza en vivo; los eventos históricos reconstruidos desde checkpoints aparecen como estimados.
+                        Records every model call with input tokens, output tokens, and estimated cost. This tab updates live while open; historical events reconstructed from checkpoints are marked as estimates.
                     </p>
 
                     <div class="usage-metric-grid">
                         <div class="usage-metric">
-                            <span data-i18n="common:usage_total_cost">Costo total</span>
+                            <span data-i18n="common:usage_total_cost">Total cost</span>
                             <strong id="usageTotalCost">$0.0000</strong>
                         </div>
                         <div class="usage-metric">
-                            <span data-i18n="common:usage_total_tokens">Tokens totales</span>
+                            <span data-i18n="common:usage_total_tokens">Total tokens</span>
                             <strong id="usageTotalTokens">0</strong>
                         </div>
                         <div class="usage-metric">
-                            <span data-i18n="common:usage_input">Entrada</span>
+                            <span data-i18n="common:usage_input">Input</span>
                             <strong id="usagePromptTokens">0</strong>
                         </div>
                         <div class="usage-metric">
-                            <span data-i18n="common:usage_output">Salida</span>
+                            <span data-i18n="common:usage_output">Output</span>
                             <strong id="usageCompletionTokens">0</strong>
                         </div>
                         <div class="usage-metric">
-                            <span data-i18n="common:usage_calls">Llamadas</span>
+                            <span data-i18n="common:usage_calls">Calls</span>
                             <strong id="usageCallCount">0</strong>
                         </div>
                         <div class="usage-metric">
-                            <span data-i18n="common:usage_estimated_events">Eventos estimados</span>
+                            <span data-i18n="common:usage_estimated_events">Estimated events</span>
                             <strong id="usageEstimatedEvents">0</strong>
                         </div>
                     </div>
 
                     <div class="usage-section usage-live-section">
                         <div class="usage-section-header">
-                            <h3 data-i18n="common:usage_live_title">Procesos en vivo</h3>
-                            <span id="usageLiveStatus" data-i18n="common:usage_live_status_default">Actualización automática al abrir esta pestaña</span>
+                            <h3 data-i18n="common:usage_live_title">Live processes</h3>
+                            <span id="usageLiveStatus" data-i18n="common:usage_live_status_default">Automatically refreshes when this tab opens</span>
                         </div>
                         <div id="usageLiveJobsList" class="usage-live-list"></div>
-                        <p id="usageLiveEmpty" class="usage-empty hidden" data-i18n="common:usage_live_empty">No hay procesos activos con gasto de tokens en este momento.</p>
+                        <p id="usageLiveEmpty" class="usage-empty hidden" data-i18n="common:usage_live_empty">No active processes are currently consuming tokens.</p>
                     </div>
 
                     <div class="usage-section">
                         <div class="usage-section-header">
-                            <h3 data-i18n="common:usage_daily_title">Gasto diario</h3>
-                            <span data-i18n="common:usage_daily_subtitle">Tokens procesados por día</span>
+                            <h3 data-i18n="common:usage_daily_title">Daily usage</h3>
+                            <span data-i18n="common:usage_daily_subtitle">Tokens processed per day</span>
                         </div>
                         <canvas id="usageDailyChart" class="usage-chart" height="180"></canvas>
                     </div>
 
                     <div class="usage-section">
                         <div class="usage-section-header">
-                            <h3 data-i18n="common:usage_books_title">Por libro o proceso</h3>
-                            <span data-i18n="common:usage_books_subtitle">Se conserva aunque borres archivos de salida</span>
+                            <h3 data-i18n="common:usage_books_title">By book or process</h3>
+                            <span data-i18n="common:usage_books_subtitle">Retained even after output files are deleted</span>
                         </div>
                         <div id="usageBooksList" class="usage-books-list"></div>
-                        <p id="usageBooksEmpty" class="usage-empty hidden" data-i18n="common:usage_empty">Sin datos todavía.</p>
+                        <p id="usageBooksEmpty" class="usage-empty hidden" data-i18n="common:usage_empty">No data yet.</p>
                     </div>
 
                     <div class="usage-two-col">
                         <div class="usage-section">
                             <div class="usage-section-header">
-                                <h3 data-i18n="common:usage_models_title">Por modelo</h3>
+                                <h3 data-i18n="common:usage_models_title">By model</h3>
                             </div>
                             <div class="usage-table-wrap">
                                 <table class="file-table usage-table">
                                     <thead>
-                                        <tr><th data-i18n="common:usage_model">Modelo</th><th data-i18n="common:usage_calls">Llamadas</th><th data-i18n="common:usage_tokens">Tokens</th><th data-i18n="common:usage_cost">Costo</th></tr>
+                                        <tr><th data-i18n="common:usage_model">Model</th><th data-i18n="common:usage_calls">Calls</th><th data-i18n="common:usage_tokens">Tokens</th><th data-i18n="common:usage_cost">Cost</th></tr>
                                     </thead>
                                     <tbody id="usageModelsBody"></tbody>
                                 </table>
@@ -1539,12 +1546,12 @@
                         </div>
                         <div class="usage-section">
                             <div class="usage-section-header">
-                                <h3 data-i18n="common:usage_phases_title">Por fase</h3>
+                                <h3 data-i18n="common:usage_phases_title">By phase</h3>
                             </div>
                             <div class="usage-table-wrap">
                                 <table class="file-table usage-table">
                                     <thead>
-                                        <tr><th data-i18n="common:usage_phase">Fase</th><th data-i18n="common:usage_calls">Llamadas</th><th data-i18n="common:usage_tokens">Tokens</th><th data-i18n="common:usage_cost">Costo</th></tr>
+                                        <tr><th data-i18n="common:usage_phase">Phase</th><th data-i18n="common:usage_calls">Calls</th><th data-i18n="common:usage_tokens">Tokens</th><th data-i18n="common:usage_cost">Cost</th></tr>
                                     </thead>
                                     <tbody id="usageProcessesBody"></tbody>
                                 </table>
@@ -1554,21 +1561,21 @@
 
                     <div class="usage-section">
                         <div class="usage-section-header">
-                            <h3 data-i18n="common:usage_recent_events">Eventos recientes</h3>
-                            <span data-i18n="common:usage_recent_subtitle">No guarda prompts completos, solo hashes y métricas</span>
+                            <h3 data-i18n="common:usage_recent_events">Recent events</h3>
+                            <span data-i18n="common:usage_recent_subtitle">Stores hashes and metrics, never complete prompts</span>
                         </div>
                         <div class="usage-table-wrap">
                             <table class="file-table usage-table usage-events-table">
                                 <thead>
                                     <tr>
-                                        <th data-i18n="common:usage_date">Fecha</th>
-                                        <th data-i18n="common:usage_phase">Fase</th>
-                                        <th data-i18n="common:usage_book">Libro</th>
-                                        <th data-i18n="common:usage_model">Modelo</th>
-                                        <th data-i18n="common:usage_input">Entrada</th>
-                                        <th data-i18n="common:usage_output">Salida</th>
-                                        <th data-i18n="common:usage_cost">Costo</th>
-                                        <th data-i18n="common:usage_status">Estado</th>
+                                        <th data-i18n="common:usage_date">Date</th>
+                                        <th data-i18n="common:usage_phase">Phase</th>
+                                        <th data-i18n="common:usage_book">Book</th>
+                                        <th data-i18n="common:usage_model">Model</th>
+                                        <th data-i18n="common:usage_input">Input</th>
+                                        <th data-i18n="common:usage_output">Output</th>
+                                        <th data-i18n="common:usage_cost">Cost</th>
+                                        <th data-i18n="common:usage_status">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="usageEventsBody"></tbody>
@@ -1697,10 +1704,10 @@
                             <div id="profileGlossaryBulkBar" class="hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--border-color-light); border-radius: 8px; background: rgba(96, 165, 250, 0.08);">
                                 <span id="profileGlossaryBulkLabel" style="font-size: 0.88rem; color: var(--text-muted-light);">0</span>
                                 <div style="display: inline-flex; align-items: center; gap: 8px;">
-                                    <button type="button" class="btn btn-secondary btn-sm" id="profileGlossaryBulkClearBtn" data-i18n="glossary:profile_glossary_bulk_clear">Limpiar</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="profileGlossaryBulkClearBtn" data-i18n="glossary:profile_glossary_bulk_clear">Clear</button>
                                     <button type="button" class="btn btn-danger btn-sm" id="profileGlossaryBulkDeleteBtn">
                                         <span class="material-symbols-outlined" style="font-size: 0.9rem;">delete</span>
-                                        <span data-i18n="glossary:profile_glossary_bulk_delete">Eliminar seleccionados</span>
+                                        <span data-i18n="glossary:profile_glossary_bulk_delete">Delete selected</span>
                                     </button>
                                 </div>
                             </div>
@@ -1717,7 +1724,7 @@
                                 <thead>
                                     <tr>
                                         <th class="col-center">
-                                            <input type="checkbox" id="profileGlossarySelectAll" data-i18n-attr="title:glossary:profile_glossary_select_all_title" title="Seleccionar todos los perfiles eliminables">
+                                            <input type="checkbox" id="profileGlossarySelectAll" data-i18n-attr="title:glossary:profile_glossary_select_all_title" title="Select every deletable profile">
                                         </th>
                                         <th data-i18n="glossary:profile_glossary_profile_column">Profile</th>
                                         <th data-i18n="glossary:profile_glossary_source_column">Source</th>
@@ -2098,15 +2105,15 @@
     <!-- Footer -->
     <footer class="app-footer">
         <div class="footer-links">
-            <a href="https://github.com/hydropix/TranslateBookWithLLM" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/alejandrojlamas/verbaloom" target="_blank" rel="noopener noreferrer">
                 <span class="material-symbols-outlined">code</span>
                 <span data-i18n="common:footer_github">GitHub</span>
             </a>
-            <a href="https://github.com/hydropix/TranslateBookWithLLM/issues/new" target="_blank" rel="noopener noreferrer" data-i18n-attr="title:common:footer_report_bug_title" title="Report a bug">
+            <a href="https://github.com/alejandrojlamas/verbaloom/issues/new" target="_blank" rel="noopener noreferrer" data-i18n-attr="title:common:footer_report_bug_title" title="Report a bug">
                 <span class="material-symbols-outlined">bug_report</span>
                 <span data-i18n="common:footer_report_bug">Report Bug</span>
             </a>
-            <a href="https://github.com/hydropix/TranslateBookWithLLM/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" data-i18n-attr="title:common:footer_suggest_feature_title" title="Suggest a feature">
+            <a href="https://github.com/alejandrojlamas/verbaloom/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" data-i18n-attr="title:common:footer_suggest_feature_title" title="Suggest a feature">
                 <span class="material-symbols-outlined">lightbulb</span>
                 <span data-i18n="common:footer_suggest_feature">Suggest Feature</span>
             </a>

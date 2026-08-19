@@ -1,5 +1,5 @@
 """
-Unified logging system for TranslateBookWithLLM
+Unified logging system for VerbaLoom
 Provides consistent logging across CLI, Web, and all file types
 """
 import sys
@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, Callable
 from enum import Enum
 from src.utils.telemetry import get_telemetry
+from src.utils.branding import DISPLAY_NAME, env_value
 
 
 class LogLevel(Enum):
@@ -55,7 +56,7 @@ class Colors:
 
 def _verbose_llm_logs_enabled() -> bool:
     """Return True only when raw prompt/response console dumps are explicitly allowed."""
-    return os.environ.get('TBL_VERBOSE_LLM_LOGS', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+    return str(env_value('VERBOSE_LLM_LOGS', '')).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 class UnifiedLogger:
@@ -64,7 +65,7 @@ class UnifiedLogger:
     """
     
     def __init__(self, 
-                 name: str = "TranslateBookWithLLM",
+                 name: str = DISPLAY_NAME,
                  console_output: bool = True,
                  enable_colors: bool = True,
                  min_level: LogLevel = LogLevel.INFO,
@@ -189,7 +190,7 @@ class UnifiedLogger:
             output.append(
                 f"{Colors.GRAY}Prompt body omitted "
                 f"({system_chars:,} system chars, {user_chars:,} user chars). "
-                f"Set TBL_VERBOSE_LLM_LOGS=1 to print raw prompt text locally.{Colors.ENDC}"
+                f"Set VERBALOOM_VERBOSE_LLM_LOGS=1 to print raw prompt text locally.{Colors.ENDC}"
             )
 
         return '\n'.join(output)
@@ -216,7 +217,7 @@ class UnifiedLogger:
             response_chars = len(str(data.get('response') or ''))
             output.append(
                 f"{Colors.GRAY}Response body omitted ({response_chars:,} chars). "
-                f"Set TBL_VERBOSE_LLM_LOGS=1 to print raw response text locally.{Colors.ENDC}"
+                f"Set VERBALOOM_VERBOSE_LLM_LOGS=1 to print raw response text locally.{Colors.ENDC}"
             )
 
         return '\n'.join(output)
@@ -488,7 +489,7 @@ class UnifiedLogger:
 _global_logger = None
 
 
-def get_logger(name: str = "TranslateBookWithLLM", **kwargs) -> UnifiedLogger:
+def get_logger(name: str = DISPLAY_NAME, **kwargs) -> UnifiedLogger:
     """
     Get or create the global logger instance
 

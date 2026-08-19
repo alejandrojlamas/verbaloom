@@ -238,11 +238,11 @@ def _renumber_inline_part(
     ]
     result = text
     for index, placeholder in enumerate(ordered):
-        result = result.replace(placeholder, f"__TBL_INLINE_{index}__", 1)
+        result = result.replace(placeholder, f"__VERBALOOM_INLINE_{index}__", 1)
     local_map: Dict[str, str] = {}
     for index, placeholder in enumerate(ordered):
         local = fmt.create(index)
-        result = result.replace(f"__TBL_INLINE_{index}__", local, 1)
+        result = result.replace(f"__VERBALOOM_INLINE_{index}__", local, 1)
         local_map[local] = tag_map[placeholder]
     return result, local_map, ordered
 
@@ -255,9 +255,9 @@ def _restore_inline_part_placeholders(text: str, original_order: List[str]) -> s
     fmt = PlaceholderFormat.from_config()
     result = text
     for index in range(len(original_order)):
-        result = result.replace(fmt.create(index), f"__TBL_INLINE_RESTORE_{index}__", 1)
+        result = result.replace(fmt.create(index), f"__VERBALOOM_INLINE_RESTORE_{index}__", 1)
     for index, original in enumerate(original_order):
-        result = result.replace(f"__TBL_INLINE_RESTORE_{index}__", original, 1)
+        result = result.replace(f"__VERBALOOM_INLINE_RESTORE_{index}__", original, 1)
     return result
 
 
@@ -496,7 +496,7 @@ async def _translate_structure_safe_fallback(
 
     def marker(index: int, closing: bool = False) -> str:
         slash = "/" if closing else ""
-        return f"[[[{slash}TBLBLOCK{index:03d}]]]"
+        return f"[[[{slash}VERBALOOMBLOCK{index:03d}]]]"
 
     def batch_payload(indices: List[int]) -> str:
         return "\n\n".join(
@@ -584,7 +584,7 @@ async def _translate_structure_safe_fallback(
             )
         marker_instruction = (
             "STRUCTURAL RECOVERY BATCH: translate only the prose inside every "
-            "[[[TBLBLOCKNNN]]] pair. Preserve each opening and closing marker "
+            "[[[VERBALOOMBLOCKNNN]]] pair. Preserve each opening and closing marker "
             "exactly once, in the same order. Do not merge, split, omit, summarize, "
             "or explain blocks. Return the complete marked batch."
         )

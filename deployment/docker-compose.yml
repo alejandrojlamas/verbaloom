@@ -1,9 +1,9 @@
 services:
-  translatebook:
+  verbaloom:
     build:
       context: ..
       dockerfile: deployment/Dockerfile
-    container_name: translatebook-llm
+    container_name: verbaloom
     ports:
       - "127.0.0.1:${PORT:-5000}:${PORT:-5000}"
     volumes:
@@ -14,7 +14,7 @@ services:
       # Server Configuration
       - PORT=${PORT:-5000}
       - HOST=0.0.0.0  # Listen on all interfaces inside container
-      - TBL_ALLOW_NETWORK_BIND=true  # Container-only bind; host port stays loopback-only
+      - VERBALOOM_ALLOW_NETWORK_BIND=true  # Container-only bind; host port stays loopback-only
       - OUTPUT_DIR=/app/translated_files
 
       # LLM Provider Settings

@@ -96,7 +96,7 @@
   "notifications_test": "发送测试通知",
   "notifications_test_sent": "已成功发送测试 {{event}} 通知。",
   "notifications_test_failed": "测试失败：{{error}}",
-  "notifications_intro": "当翻译进入终止状态时，可向您的手机、Discord 频道或任何 HTTP 端点发送通知。适合在本地模型上运行的长任务。兼容 <strong>ntfy</strong>、<strong>gotify</strong>、<strong>Discord</strong>、<strong>Slack</strong>、<strong>Healthchecks.io</strong> 或任何自定义 Webhook。完整参考见 <a href=\"https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a>。",
+  "notifications_intro": "当翻译进入终止状态时，可向您的手机、Discord 频道或任何 HTTP 端点发送通知。适合在本地模型上运行的长任务。兼容 <strong>ntfy</strong>、<strong>gotify</strong>、<strong>Discord</strong>、<strong>Slack</strong>、<strong>Healthchecks.io</strong> 或任何自定义 Webhook。完整参考见 <a href=\"https://github.com/alejandrojlamas/verbaloom/blob/main/docs/NOTIFICATIONS.md\" target=\"_blank\" rel=\"noopener\" style=\"color: var(--primary-light);\">docs/NOTIFICATIONS.md</a>。",
   "notifications_presets_label": "快速预设",
   "notifications_presets_help": "选择一项服务以预填 URL 和负载，然后编辑各值以匹配您的账号。",
   "notifications_preset_reset": "重置（禁用）",

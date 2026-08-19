@@ -42,16 +42,16 @@ jobs:
 
     - name: Build executable
       run: |
-        pyinstaller --clean build/macos/TranslateBook-macOS.spec
+        pyinstaller --clean build/macos/VerbaLoom-macOS.spec
 
     - name: Get executable info
       id: exe_info
       run: |
-        SIZE_BYTES=$(stat -f%z dist/TranslateBook)
+        SIZE_BYTES=$(stat -f%z dist/VerbaLoom)
         SIZE_MB=$(echo "scale=2; $SIZE_BYTES / 1048576" | bc)
         echo "size_bytes=$SIZE_BYTES" >> $GITHUB_OUTPUT
         echo "size_mb=$SIZE_MB" >> $GITHUB_OUTPUT
-        ARCH=$(file dist/TranslateBook | grep -o 'arm64\|x86_64')
+        ARCH=$(file dist/VerbaLoom | grep -o 'arm64\|x86_64')
         echo "arch=$ARCH" >> $GITHUB_OUTPUT
 
     - name: Create release archive
@@ -60,19 +60,19 @@ jobs:
         mkdir -p release
 
         # Copy executable
-        cp dist/TranslateBook release/
+        cp dist/VerbaLoom release/
 
         # Make sure it's executable
-        chmod +x release/TranslateBook
+        chmod +x release/VerbaLoom
 
         # Create a README for the release
         cat > release/README.txt << 'EOF'
-        # TranslateBook macOS Executable
+        # VerbaLoom macOS Executable
 
         ## Quick Start
 
-        1. Extract TranslateBook to a folder of your choice
-        2. Open Terminal and run: ./TranslateBook
+        1. Extract VerbaLoom to a folder of your choice
+        2. Open Terminal and run: ./VerbaLoom
         3. Open your browser to http://localhost:5000
         4. Choose your LLM provider (see below)
 
@@ -80,9 +80,9 @@ jobs:
 
         macOS will block the app on first launch. To authorize it:
 
-        1. Double-click TranslateBook - macOS will show a warning
+        1. Double-click VerbaLoom - macOS will show a warning
         2. Open System Settings > Privacy & Security
-        3. Scroll down and click "Open Anyway" next to the TranslateBook message
+        3. Scroll down and click "Open Anyway" next to the VerbaLoom message
         4. Click "Open" in the confirmation dialog
 
         This only needs to be done once.
@@ -108,18 +108,18 @@ jobs:
         Different models perform better for different target languages!
 
         See our comprehensive benchmarks to find the best model:
-        https://github.com/hydropix/TranslateBooksWithLLMs/wiki
+        https://github.com/alejandrojlamas/verbaloom/wiki
 
         ## First Run
 
         On first run, the application will:
-        - Create a TranslateBook_Data folder next to the executable
+        - Create a VerbaLoom_Data folder next to the executable
         - Generate a default .env configuration file
         - Create necessary subdirectories (translated_files, checkpoints)
 
         ## Configuration
 
-        Edit TranslateBook_Data/.env to customize:
+        Edit VerbaLoom_Data/.env to customize:
         - LLM provider and model selection
         - API keys for cloud providers
         - Server port and host
@@ -128,33 +128,33 @@ jobs:
 
         - Web UI: http://localhost:5000
         - Supported formats: .txt, .epub, .srt, .docx, .odt
-        - Output files: TranslateBook_Data/translated_files/
+        - Output files: VerbaLoom_Data/translated_files/
 
         ## Links
 
-        - Full Documentation: https://github.com/hydropix/TranslateBooksWithLLMs
-        - Model Benchmarks: https://github.com/hydropix/TranslateBooksWithLLMs/wiki
-        - Report Issues: https://github.com/hydropix/TranslateBooksWithLLMs/issues
+        - Full Documentation: https://github.com/alejandrojlamas/verbaloom
+        - Model Benchmarks: https://github.com/alejandrojlamas/verbaloom/wiki
+        - Report Issues: https://github.com/alejandrojlamas/verbaloom/issues
         - OpenRouter Models: https://openrouter.ai/models
         EOF
 
         # Create zip archive
         cd release
-        zip -r ../TranslateBook-macOS-${{ matrix.artifact_suffix }}.zip .
+        zip -r ../VerbaLoom-macOS-${{ matrix.artifact_suffix }}.zip .
         cd ..
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: TranslateBook-macOS-${{ matrix.artifact_suffix }}
-        path: TranslateBook-macOS-${{ matrix.artifact_suffix }}.zip
+        name: VerbaLoom-macOS-${{ matrix.artifact_suffix }}
+        path: VerbaLoom-macOS-${{ matrix.artifact_suffix }}.zip
         retention-days: 90
 
     - name: Upload executable only
       uses: actions/upload-artifact@v4
       with:
-        name: TranslateBook-${{ matrix.artifact_suffix }}
-        path: dist/TranslateBook
+        name: VerbaLoom-${{ matrix.artifact_suffix }}
+        path: dist/VerbaLoom
         retention-days: 90
 
     - name: Build summary
@@ -165,8 +165,8 @@ jobs:
         echo "**Executable Size:** ${{ steps.exe_info.outputs.size_mb }} MB" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Artifacts:**" >> $GITHUB_STEP_SUMMARY
-        echo "- TranslateBook-macOS-${{ matrix.artifact_suffix }}.zip (executable + README)" >> $GITHUB_STEP_SUMMARY
-        echo "- TranslateBook (standalone)" >> $GITHUB_STEP_SUMMARY
+        echo "- VerbaLoom-macOS-${{ matrix.artifact_suffix }}.zip (executable + README)" >> $GITHUB_STEP_SUMMARY
+        echo "- VerbaLoom (standalone)" >> $GITHUB_STEP_SUMMARY
 
   create-release:
     needs: build-macos
@@ -177,7 +177,7 @@ jobs:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: TranslateBook-macOS-*
+        pattern: VerbaLoom-macOS-*
         merge-multiple: false
 
     - name: List downloaded files
@@ -189,27 +189,27 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          TranslateBook-macOS-Intel/TranslateBook-macOS-Intel.zip
-          TranslateBook-macOS-AppleSilicon/TranslateBook-macOS-AppleSilicon.zip
+          VerbaLoom-macOS-Intel/VerbaLoom-macOS-Intel.zip
+          VerbaLoom-macOS-AppleSilicon/VerbaLoom-macOS-AppleSilicon.zip
         body: |
           ## macOS Executable Release
 
           ### Downloads
-          - **TranslateBook-macOS-AppleSilicon.zip** - For Apple Silicon Macs (M1/M2/M3/M4)
-          - **TranslateBook-macOS-Intel.zip** - For Intel-based Macs
+          - **VerbaLoom-macOS-AppleSilicon.zip** - For Apple Silicon Macs (M1/M2/M3/M4)
+          - **VerbaLoom-macOS-Intel.zip** - For Intel-based Macs
 
           ### Installation
           1. Download the appropriate version for your Mac
           2. Extract the zip file
           3. Install [Ollama](https://ollama.ai) (required for local LLM)
-          4. Open Terminal and run `./TranslateBook`
+          4. Open Terminal and run `./VerbaLoom`
           5. Open http://localhost:5000 in your browser
 
           ### First Launch - Security Authorization
           macOS will block the app on first launch:
-          1. Double-click TranslateBook - macOS shows a warning
+          1. Double-click VerbaLoom - macOS shows a warning
           2. Open **System Settings > Privacy & Security**
-          3. Click **"Open Anyway"** next to the TranslateBook message
+          3. Click **"Open Anyway"** next to the VerbaLoom message
 
           This only needs to be done once.
 

@@ -9,19 +9,16 @@
   "open_folder_title": "Ouvrir le dossier des traductions",
   "refresh": "Actualiser",
   "refresh_list_title": "Actualiser la liste des fichiers",
-
   "name_column": "Nom",
   "filename_column": "Nom de fichier",
   "size_column": "Taille",
   "modified_column": "Modifié",
   "actions_column": "Actions",
-
   "no_files": "Aucun fichier pour le moment.",
   "confirm_delete_one": "Supprimer ce fichier ?",
   "confirm_delete_many": "Supprimer {{count}} fichiers ?",
   "confirm_delete_named": "Êtes-vous sûr de vouloir supprimer « {{name}} » ?",
   "confirm_delete_selected": "Êtes-vous sûr de vouloir supprimer {{count}} fichier(s) ?",
-
   "no_selection_download": "Aucun fichier sélectionné pour le téléchargement",
   "no_selection_delete": "Aucun fichier sélectionné pour la suppression",
   "downloading": "Téléchargement de {{name}}...",
@@ -37,7 +34,6 @@
   "delete_failed": "Échec de la suppression : {{error}}",
   "download_failed": "Échec du téléchargement : {{error}}",
   "load_failed": "Erreur de chargement de la liste des fichiers : {{error}}",
-
   "open_action": "Ouvrir le fichier",
   "open_log": "📂 Fichier ouvert : {{name}}",
   "open_error": "Erreur d'ouverture du fichier : {{error}}",
@@ -51,11 +47,9 @@
   "folder_opened_log_with_path": "📁 Dossier des traductions ouvert : {{path}}",
   "folder_open_error": "Erreur d'ouverture du dossier : {{error}}",
   "delete_default_msg": "{{name}} supprimé",
-
   "file_too_large": "Fichier trop volumineux : {{name}} ({{size}})",
   "unsupported_format": "Format non pris en charge : {{name}}",
   "upload_failed": "Échec du téléversement : {{error}}",
-
   "quality_action": "Vérifier avant téléchargement",
   "quality_title": "Vérification avant téléchargement",
   "quality_subtitle": "Vérifiez la qualité éditoriale et la structure EPUB avant de télécharger.",
@@ -84,7 +78,6 @@
   "quality_epub_nav": "Navigation",
   "quality_epub_title": "Titre",
   "quality_epub_language": "Langue",
-
   "total_label": "Total :",
   "files_unit": "fichiers"
 }

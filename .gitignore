@@ -12,7 +12,7 @@ __pycache__/
 /venv
 build_installer.bat
 build/dist/
-build/TranslateBookWithLLM/
+build/VerbaLoom/
 /dist
 /wiki/
 .wiki_repo/

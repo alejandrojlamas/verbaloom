@@ -1,6 +1,6 @@
 # LLM Providers Guide
 
-TBL supports multiple LLM providers. This guide explains how to set up each one.
+VerbaLoom supports multiple LLM providers. This guide explains how to set up each one.
 
 ---
 
@@ -12,7 +12,7 @@ Runs models locally on your machine.
 
 1. Install from [ollama.com](https://ollama.com/)
 2. Download a model: `ollama pull qwen3:14b`
-3. Select "Ollama" in TBL
+3. Select "Ollama" in VerbaLoom
 
 ### Models by VRAM
 
@@ -35,7 +35,7 @@ python translate.py -i book.txt -o book_fr.txt -m qwen3:14b
 
 ## OpenAI-Compatible Servers (Local)
 
-TBL supports any server that implements the OpenAI API format. This includes:
+VerbaLoom supports any server that implements the OpenAI API format. This includes:
 
 - **llama.cpp** (`llama-server`) - Lightweight, direct model serving
 - **LM Studio** - Desktop app with GUI
@@ -46,7 +46,7 @@ TBL supports any server that implements the OpenAI API format. This includes:
 ### Setup
 
 1. Start your OpenAI-compatible server
-2. In TBL:
+2. In VerbaLoom:
    - Select "OpenAI-Compatible" provider
    - Set endpoint to your server URL (see table below)
    - Leave API key empty (local servers don't require it)
@@ -83,7 +83,7 @@ Access to 200+ models from multiple providers through a single API.
 ### Setup
 
 1. Get API key at [openrouter.ai/keys](https://openrouter.ai/keys)
-2. In TBL: Select "OpenRouter", enter your key
+2. In VerbaLoom: Select "OpenRouter", enter your key
 3. Choose a model from the list
 
 ### CLI Example
@@ -101,7 +101,7 @@ Browse models and pricing: [openrouter.ai/models](https://openrouter.ai/models)
 
 ## OpenAI Cloud
 
-Official OpenAI API (GPT models). Uses the same "OpenAI-Compatible" provider in TBL.
+Official OpenAI API (GPT models). Uses the same "OpenAI-Compatible" provider in VerbaLoom.
 
 ### Models
 
@@ -113,7 +113,7 @@ Official OpenAI API (GPT models). Uses the same "OpenAI-Compatible" provider in 
 ### Setup
 
 1. Get API key at [platform.openai.com](https://platform.openai.com/api-keys)
-2. In TBL:
+2. In VerbaLoom:
    - Select "OpenAI-Compatible" provider
    - Keep endpoint as `https://api.openai.com/v1/chat/completions`
    - Enter your API key
@@ -144,7 +144,7 @@ Google's Gemini models.
 ### Setup
 
 1. Get API key at [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. In TBL: Select "Gemini", enter your key
+2. In VerbaLoom: Select "Gemini", enter your key
 
 ### CLI Example
 
@@ -171,7 +171,7 @@ European cloud provider with strong multilingual quality.
 ### Setup
 
 1. Get API key at [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys)
-2. In TBL: Select "Mistral", enter your key
+2. In VerbaLoom: Select "Mistral", enter your key
 
 ### CLI Example
 
@@ -200,7 +200,7 @@ Chinese LLM provider with 64K context and OpenAI-compatible API. Supports thinki
 ### Setup
 
 1. Get API key at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)
-2. In TBL: Select "DeepSeek", enter your key
+2. In VerbaLoom: Select "DeepSeek", enter your key
 
 ### CLI Example
 
@@ -222,7 +222,7 @@ Single key, many models — Claude, GPT, Gemini, Llama, Mistral, DeepSeek and mo
 ### Setup
 
 1. Get API key at [poe.com/api_key](https://poe.com/api_key)
-2. In TBL: Select "Poe", enter your key
+2. In VerbaLoom: Select "Poe", enter your key
 3. Pick a model name from [poe.com](https://poe.com/) (case-sensitive, e.g. `Claude-Sonnet-4`)
 
 ### CLI Example
@@ -245,7 +245,7 @@ Hosted models via NVIDIA's inference platform — OpenAI-compatible API, generou
 ### Setup
 
 1. Get API key at [build.nvidia.com](https://build.nvidia.com/)
-2. In TBL: Select "NVIDIA NIM", enter your key
+2. In VerbaLoom: Select "NVIDIA NIM", enter your key
 
 ### CLI Example
 

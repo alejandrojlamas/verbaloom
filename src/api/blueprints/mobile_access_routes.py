@@ -14,6 +14,8 @@ from typing import Callable
 
 from flask import Blueprint, jsonify, make_response, request
 
+from src.utils.branding import REPOSITORY_URL, ROUTE_PREFIX, env_value
+
 
 TAILSCALE_IP_RE = re.compile(r"^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
 MOBILE_ACCESS_LOG_LIMIT = 60
@@ -21,7 +23,7 @@ MOBILE_ACCESS_LOG_LIMIT = 60
 
 def configured_magicdns_url() -> str:
     """Return an optional user-provided MagicDNS URL without a device default."""
-    return os.getenv("TBL_MAGICDNS_URL", "").strip()
+    return str(env_value("MAGICDNS_URL", "")).strip()
 
 
 def local_tailnet_ip() -> str:
@@ -41,7 +43,7 @@ def local_tailnet_ip() -> str:
     for value in candidates:
         if TAILSCALE_IP_RE.match(value):
             return value
-    configured = os.getenv("TBL_TAILSCALE_IP", "").strip()
+    configured = str(env_value("TAILSCALE_IP", "")).strip()
     return configured if TAILSCALE_IP_RE.match(configured) else "127.0.0.1"
 
 
@@ -178,6 +180,8 @@ def register_mobile_access_routes(
         if context.get("request_path") in {
             "/mobile",
             "/android",
+            f"{ROUTE_PREFIX}/mobile",
+            f"{ROUTE_PREFIX}/android",
             "/api/mobile-access",
             "/api/mobile-access/events",
         }:
@@ -207,9 +211,9 @@ def register_mobile_access_routes(
             {
                 "status": "ok",
                 "current_url": f"{scheme}://{request.host}/",
-                "recommended_url": f"http://{tailnet_ip}/",
-                "dns_fallback_url": f"http://{nipio_host}/",
-                "fallback_url": f"http://{tailnet_ip}:{app_port}/",
+                "recommended_url": f"http://{tailnet_ip}{ROUTE_PREFIX}",
+                "dns_fallback_url": f"http://{nipio_host}{ROUTE_PREFIX}",
+                "fallback_url": f"http://{tailnet_ip}:{app_port}{ROUTE_PREFIX}",
                 "second_fallback_url": "",
                 "magicdns_url": configured_magicdns_url(),
                 "tailnet_ip": tailnet_ip,
@@ -246,26 +250,28 @@ def register_mobile_access_routes(
 
     @bp.route("/mobile", methods=["GET"])
     @bp.route("/android", methods=["GET"])
+    @bp.route(f"{ROUTE_PREFIX}/mobile", methods=["GET"])
+    @bp.route(f"{ROUTE_PREFIX}/android", methods=["GET"])
     def mobile_access_page():
         """Render a bundle-independent page to prove phone-to-Mac connectivity."""
         tailnet_ip = tailnet_ip_provider()
         app_port = int(os.getenv("PORT", "5000"))
         nipio_host = nipio_tailnet_host(tailnet_ip)
-        recommended_url = f"http://{tailnet_ip}/"
-        diagnostic_url = f"http://{tailnet_ip}/android"
-        dns_fallback_url = f"http://{nipio_host}/"
-        dns_fallback_diagnostic_url = f"http://{nipio_host}/android"
-        direct_backend_url = f"http://{tailnet_ip}:{app_port}/"
-        direct_backend_diagnostic_url = f"http://{tailnet_ip}:{app_port}/android"
+        recommended_url = f"http://{tailnet_ip}{ROUTE_PREFIX}"
+        diagnostic_url = f"http://{tailnet_ip}{ROUTE_PREFIX}/android"
+        dns_fallback_url = f"http://{nipio_host}{ROUTE_PREFIX}"
+        dns_fallback_diagnostic_url = f"http://{nipio_host}{ROUTE_PREFIX}/android"
+        direct_backend_url = f"http://{tailnet_ip}:{app_port}{ROUTE_PREFIX}"
+        direct_backend_diagnostic_url = f"http://{tailnet_ip}:{app_port}{ROUTE_PREFIX}/android"
         request_context = mobile_request_context()
         event_store.append("page", request_context)
-        user_agent = html.escape(request_context["user_agent"] or "No disponible")
+        user_agent = html.escape(request_context["user_agent"] or "Unavailable")
         remote_addr = html.escape(
             request_context["forwarded_for"]
             or request_context["remote_addr"]
-            or "No disponible"
+            or "Unavailable"
         )
-        request_host = html.escape(request_context["request_host"] or "No disponible")
+        request_host = html.escape(request_context["request_host"] or "Unavailable")
         request_time = html.escape(request_context["request_time"])
         recent_android_hit = next(
             (
@@ -279,18 +285,18 @@ def register_mobile_access_routes(
             f"{html.escape(recent_android_hit.get('request_time', ''))} · "
             f"{html.escape(recent_android_hit.get('request_host', ''))}"
             if recent_android_hit
-            else "Aún no hay hits Android registrados desde el último borrado/log local."
+            else "No Android requests have been recorded in the current local log yet."
         )
         device_label = (
-            "Android detectado" if request_context["is_android"] else "Navegador no Android"
+            "Android detected" if request_context["is_android"] else "Non-Android browser"
         )
         response = make_response(
             f"""<!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TBL acceso móvil</title>
+  <title>VerbaLoom mobile access</title>
   <style>
     :root {{ color-scheme: dark; }}
     body {{
@@ -352,33 +358,33 @@ def register_mobile_access_routes(
 </head>
 <body>
   <main>
-    <h1>TBL acceso móvil</h1>
-    <p><span class="ok">Servidor alcanzado.</span> Si ves esta pantalla desde Android, Tailscale ya llega al servidor.</p>
-    <p><span class="{'ok' if request_context['is_android'] else 'warn'}">{device_label}.</span> Esta pantalla muestra el request que recibió la app.</p>
-    <p><span class="bad">No uses HTTPS con la IP.</span> En Android escribe la URL completa empezando por <strong>http://</strong>.</p>
-    <p>Primero prueba este diagnóstico corto desde Android:</p>
+    <h1>VerbaLoom mobile access</h1>
+    <p><span class="ok">Server reached.</span> If you can see this page from Android, Tailscale is reaching VerbaLoom.</p>
+    <p><span class="{'ok' if request_context['is_android'] else 'warn'}">{device_label}.</span> This page shows the request received by the app.</p>
+    <p><span class="bad">Do not use HTTPS with the IP address.</span> On Android, enter the complete URL beginning with <strong>http://</strong>.</p>
+    <p>Start with this short diagnostic URL on Android:</p>
     <a class="secondary" href="{diagnostic_url}">{diagnostic_url}</a>
-    <p>Si ves esta pantalla desde Android, abre la app completa aquí:</p>
+    <p>If this page works on Android, open the full app here:</p>
     <a href="{recommended_url}">{recommended_url}</a>
-    <p class="muted">Si Android rechaza la IP o no aplica MagicDNS, usa este hostname que resuelve al mismo IP de Tailscale:</p>
+    <p class="muted">If Android rejects the bare IP or does not apply MagicDNS, use this hostname, which resolves to the same Tailscale IP:</p>
     <a class="secondary" href="{dns_fallback_diagnostic_url}">{dns_fallback_diagnostic_url}</a>
     <a class="secondary" href="{dns_fallback_url}">{dns_fallback_url}</a>
-    <p class="muted">Si el proxy de Tailscale Serve falla, prueba directo al puerto real de la app:</p>
+    <p class="muted">If the Tailscale Serve proxy fails, connect directly to the app port:</p>
     <a class="warning" href="{direct_backend_diagnostic_url}">{direct_backend_diagnostic_url}</a>
     <a class="secondary" href="{direct_backend_url}">{direct_backend_url}</a>
     <dl>
-      <dt>Host usado</dt>
+      <dt>Request host</dt>
       <dd>{request_host}</dd>
-      <dt>IP remota vista por Flask</dt>
+      <dt>Remote IP seen by Flask</dt>
       <dd>{remote_addr}</dd>
       <dt>User-Agent</dt>
       <dd>{user_agent}</dd>
-      <dt>Hora del servidor</dt>
+      <dt>Server time</dt>
       <dd>{request_time}</dd>
-      <dt>Último hit Android registrado</dt>
+      <dt>Latest recorded Android request</dt>
       <dd>{recent_android_text}</dd>
     </dl>
-    <p class="muted">Versión {server_version} · sesión {startup_time}</p>
+    <p class="muted">Version {server_version} · session {startup_time} · <a class="secondary" href="{REPOSITORY_URL}">GitHub repository</a></p>
   </main>
 </body>
 </html>"""

@@ -58,7 +58,7 @@ pip install pyyaml python-dotenv requests
 ### Running the Optimization
 
 ```bash
-cd c:\Users\bruno\Documents\GitHub\TranslateBookWithLLM
+cd path\to\verbaloom
 python -m tools.prompt_optimizer.optimize --config tools/prompt_optimizer/prompt_optimizer_config.yaml --verbose
 ```
 
