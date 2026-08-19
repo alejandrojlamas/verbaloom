@@ -1,0 +1,7 @@
+Repair the candidate with the smallest change needed.
+
+- Preserve the faithful translation and all source content.
+- Remove or neutralize raw links, note anchors, page markers, and download-site artifacts from the main body.
+- Keep informative captions accurate and concise; do not invent what the image shows.
+- Move disruptive notes/references out of the listening flow when possible.
+- Do not rewrite the book into a summary or commentary.

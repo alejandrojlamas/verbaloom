@@ -1,0 +1,1 @@
+Suggest only common mechanical normalization candidates. Do not propose book-specific literary equivalences.

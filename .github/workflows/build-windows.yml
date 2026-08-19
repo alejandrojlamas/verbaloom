@@ -1,0 +1,172 @@
+name: Build Windows Executable
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build executable
+      run: |
+        pyinstaller --clean build/windows/TranslateBook.spec
+
+    - name: Get executable size
+      id: exe_info
+      shell: pwsh
+      run: |
+        $size = (Get-Item dist\TranslateBook.exe).Length
+        $sizeMB = [math]::Round($size / 1MB, 2)
+        echo "size_bytes=$size" >> $env:GITHUB_OUTPUT
+        echo "size_mb=$sizeMB" >> $env:GITHUB_OUTPUT
+
+    - name: Create release archive
+      shell: pwsh
+      run: |
+        # Create a release folder with the executable and readme
+        New-Item -ItemType Directory -Path release -Force
+        Copy-Item dist\TranslateBook.exe release\
+
+        # Create a simple README for the release
+        $readme = @"
+        # TranslateBook Windows Executable
+
+        ## Quick Start
+
+        1. Extract TranslateBook.exe to a folder of your choice
+        2. Double-click TranslateBook.exe to start the server
+        3. Open your browser to http://localhost:5000
+        4. Choose your LLM provider (see below)
+
+        ## LLM Providers
+
+        You need at least one LLM provider to translate:
+
+        - DeepSeek - Chinese AI lab: https://platform.deepseek.com/api_keys
+        - Gemini - Google AI: https://aistudio.google.com/apikey
+        - Mistral - French AI lab: https://console.mistral.ai/api-keys
+        - Ollama (Local) - Free, runs on your machine: https://ollama.com
+        - OpenAI - GPT models: https://platform.openai.com/api-keys
+        - OpenRouter - 200+ cloud models: https://openrouter.ai/keys
+        - Poe - Multi-model cloud aggregator: https://poe.com/api_key
+
+        For local translation with Ollama:
+        1. Install Ollama from https://ollama.com
+        2. Download a model: ollama pull qwen3:14b
+
+        ## Choosing the Best Model for Your Language
+
+        Different models perform better for different target languages!
+
+        See our comprehensive benchmarks to find the best model:
+        https://github.com/hydropix/TranslateBooksWithLLMs/wiki
+
+        ## First Run
+
+        On first run, the application will:
+        - Create a TranslateBook_Data folder next to the executable
+        - Generate a default .env configuration file
+        - Create necessary subdirectories (translated_files, checkpoints)
+
+        ## Configuration
+
+        Edit TranslateBook_Data\.env to customize:
+        - LLM provider and model selection
+        - API keys for cloud providers
+        - Server port and host
+
+        ## Usage
+
+        - Web UI: http://localhost:5000
+        - Supported formats: .txt, .epub, .srt, .docx, .odt
+        - Output files: TranslateBook_Data\translated_files\
+
+        ## Links
+
+        - Full Documentation: https://github.com/hydropix/TranslateBooksWithLLMs
+        - Model Benchmarks: https://github.com/hydropix/TranslateBooksWithLLMs/wiki
+        - Report Issues: https://github.com/hydropix/TranslateBooksWithLLMs/issues
+        - OpenRouter Models: https://openrouter.ai/models
+        "@
+
+        $readme | Out-File -FilePath release\README.txt -Encoding UTF8
+
+        # Create zip archive
+        Compress-Archive -Path release\* -DestinationPath TranslateBook-Windows.zip
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TranslateBook-Windows
+        path: TranslateBook-Windows.zip
+        retention-days: 90
+
+    - name: Upload executable only
+      uses: actions/upload-artifact@v4
+      with:
+        name: TranslateBook.exe
+        path: dist\TranslateBook.exe
+        retention-days: 90
+
+    - name: Build summary
+      shell: pwsh
+      run: |
+        echo "### Build Complete! :rocket:" >> $env:GITHUB_STEP_SUMMARY
+        echo "" >> $env:GITHUB_STEP_SUMMARY
+        echo "**Executable Size:** ${{ steps.exe_info.outputs.size_mb }} MB" >> $env:GITHUB_STEP_SUMMARY
+        echo "" >> $env:GITHUB_STEP_SUMMARY
+        echo "**Artifacts:**" >> $env:GITHUB_STEP_SUMMARY
+        echo "- TranslateBook-Windows.zip (executable + README)" >> $env:GITHUB_STEP_SUMMARY
+        echo "- TranslateBook.exe (standalone)" >> $env:GITHUB_STEP_SUMMARY
+
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: TranslateBook-Windows.zip
+        body: |
+          ## Windows Executable Release
+
+          ### Installation
+          1. Download and extract TranslateBook-Windows.zip
+          2. Install [Ollama](https://ollama.ai) (required for local LLM)
+          3. Run TranslateBook.exe
+          4. Open http://localhost:5000 in your browser
+
+          ### What's Included
+          - Single-file Windows executable (no Python installation required)
+          - Auto-generated configuration on first run
+          - Support for .txt, .epub, .srt translation
+
+          ### System Requirements
+          - Windows 10/11 (64-bit)
+          - Ollama installed for local LLM support
+          - Or API keys for cloud providers (OpenAI, Gemini, OpenRouter)
+
+          **Size:** ${{ steps.exe_info.outputs.size_mb }} MB
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

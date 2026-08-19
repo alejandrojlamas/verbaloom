@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hydropix/TranslateBookWithLLM/schemas/translations.schema.json",
+  "title": "TBL Benchmark Translations (per-model)",
+  "description": "Immutable record of all translations a model has produced. No scores. One file per model.",
+  "type": "object",
+  "required": ["schema_version", "model", "environment", "contributors", "translations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "model": {
+      "type": "object",
+      "required": ["provider", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "enum": ["ollama", "openai", "openrouter", "gemini", "mistral", "deepseek", "poe", "nim"]
+        },
+        "id": { "type": "string", "minLength": 1 },
+        "context_window": { "type": "integer", "minimum": 0 },
+        "released_at": { "type": "string", "format": "date" },
+        "license": { "type": "string" },
+        "size_b_params": { "type": "number", "minimum": 0 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["tbl_version", "prompt_version"],
+      "additionalProperties": false,
+      "properties": {
+        "tbl_version": { "type": "string" },
+        "prompt_version": { "type": "string" }
+      }
+    },
+    "contributors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["by", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "by": {
+            "type": "string",
+            "pattern": "^github:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,38})$",
+            "description": "GitHub identity in the form 'github:<username>'"
+          },
+          "at": { "type": "string", "format": "date-time" },
+          "notes": { "type": "string", "maxLength": 2000 }
+        }
+      }
+    },
+    "translations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/translation" }
+    }
+  },
+  "$defs": {
+    "translation": {
+      "type": "object",
+      "required": ["text_id", "source_lang", "target_lang", "output", "output_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "text_id": { "type": "string", "minLength": 1 },
+        "source_lang": { "type": "string", "minLength": 2 },
+        "target_lang": { "type": "string", "minLength": 2 },
+        "output": { "type": "string" },
+        "output_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "translation_latency_ms": { "type": "integer", "minimum": 0 },
+        "produced_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

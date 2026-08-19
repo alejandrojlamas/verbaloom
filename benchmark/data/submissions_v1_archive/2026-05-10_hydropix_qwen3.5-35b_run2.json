@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "submission": {
+    "submitted_by": "github:hydropix",
+    "submitted_at": "2026-05-10T15:37:34Z"
+  },
+  "environment": {
+    "tbl_version": "git-0be0425",
+    "prompt_version": "v1",
+    "judge_id": "claude-opus-4-7-rubric-v1-reranked"
+  },
+  "model": {
+    "provider": "ollama",
+    "id": "qwen3.5:35b"
+  },
+  "results": [
+    {
+      "text_id": "kokoro",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "I always called him \"Sensei.\" Therefore, I write only \"Sensei\" here without ever disclosing his real name. It is not out of hesitation to avoid public scrutiny, but simply because it feels more natural to me. Whenever I recall his memory, \"Sensei\" immediately springs to mind. Even when I take up my pen, my feelings remain the same. I have no urge to use such stiff, formal initial abbreviations.",
+      "output_hash": "sha256:d4ea85c82bbbe556fa2b5bebddf84c646f291fe3be1c559c42964c32a967514e",
+      "translation_latency_ms": 8720,
+      "scores": {
+        "accuracy": 8.5,
+        "fluency": 8.0,
+        "style": 7.5,
+        "overall": 7.75,
+        "feedback": "'Recall his memory' is a calque of 記憶を呼び起す (-0.5 flu); 'stiff, formal initial abbreviations' is redundant for よそよそしい頭文字 (-0.5 sty); 'hesitation to avoid public scrutiny' slightly overstates 世間を憚る遠慮 (-0.3 acc). Sōseki's restrained voice flattened in places."
+      }
+    },
+    {
+      "text_id": "unsu_jouen_nal",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "With a coldly smug air, the sky seemed ready to snow, but instead of snow, cold rain fell in a steady, persistent drizzle.\n\nFor Kim Cheom-ji, a rickshaw puller working within Dongso-mun, this was a rare and fortunate day. Not only had he been commissioned to escort the mistress of the house next door all the way to the tram stop, but he also lingered nervously at the station, hoping for a fare, casting what could almost be mistaken for hopeful eyes at every passenger who alighted. Eventually, he was able to take a man in Western attire—presumably a teacher—from the station to Dongkwang School.\n\nThirty yen for the first trip, fifty for the second. Such uncommon luck had struck early in the morning. Truly blessed by fate, Kim Cheom-ji, who had gone without seeing money for nearly ten days, was so overjoyed when ten-cent or five-cent coins clinked into his palm that he nearly shed tears.",
+      "output_hash": "sha256:ab29de41094db0141607a4111faf00605cac25d10ac3bce71b59c2fca3a2e19a",
+      "translation_latency_ms": 6343,
+      "scores": {
+        "accuracy": 6.0,
+        "fluency": 7.5,
+        "style": 7.0,
+        "overall": 6.7,
+        "feedback": "Hallucinated currency: 삼십 전/오십 전 (jeon, 1/100 yen) rendered as 'thirty yen / fifty yen' (-2.0 acc); coin count and denomination of 십 전짜리 백통화 서 푼 또는 다섯 푼 collapsed to 'ten-cent or five-cent coins' losing both count and the nickel/baektonghwa specification (-1.0 acc); 'casting what could almost be mistaken for hopeful eyes' awkward (-0.5 flu); 새침하게 → 'coldly smug' interpretive drift (-0.3 acc). Period color preserved but yen jars for 1924 colonial Korean."
+      }
+    },
+    {
+      "text_id": "hu_shi_reform",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "There are now many discussing the reform of literature. As a scholar of humble learning and unrefined literary talent, I scarcely dare to speak on this matter. However, in recent years, I have devoted considerable thought to this issue and have engaged in debate with friends. The results of our deliberations have, I believe, considerable value for discussion. Therefore, I have summarized my views into eight points and will address them separately, presenting them for the study and consideration of those interested in literary reform today. I believe that any contemporary discussion of literary reform must begin with these eight points. What are they? First, one must express substance in one's writing. Second, one must not imitate the ancients. Third, one must attend to grammatical structure. Fourth, one must avoid affectations and forced lamentations of those who are not truly suffering. Fifth, one must eliminate empty clichés and hackneyed phrases. Sixth, one must not rely on allusions and obscure classical references. Seventh, one must not obsess over parallelism. Eighth, one should not shun vernacular characters and colloquial expressions.",
+      "output_hash": "sha256:9176981cac19c23f427912d05f3e84e4456e294b9c571c227650423a0fc829a9",
+      "translation_latency_ms": 6725,
+      "scores": {
+        "accuracy": 8.5,
+        "fluency": 9.0,
+        "style": 8.0,
+        "overall": 8.1,
+        "feedback": "Good rendition of Hu Shi's manifesto: 一曰…/二曰… parallelism preserved as 'First…/Second…', 不作无病之呻吟 nicely glossed as 'forced lamentations of those who are not truly suffering'. Minor drifts: 不讲对仗 → 'must not obsess over parallelism' overshoots 讲 (-0.3 acc); 不用典 expanded with 'obscure classical references' (-0.3 acc); register slightly more Western-academic than the terse classical-vernacular original (-0.5 sty)."
+      }
+    },
+    {
+      "text_id": "lu_xun_guxiang",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "I braved the biting cold to return to my native place, over two thousand li away, after being separated from it for more than twenty years. It was deep winter by then; as I drew nearer to my hometown, the weather turned gloomy. A cold wind blew into the cabin, whistling mournfully. Gazing out through a gap in the canvas, I saw under a dull, yellowish sky several desolate, barren villages scattered at various distances, devoid of any life. My heart could not help but grow desolate. Alas! Is this the hometown I have remembered for twenty years? What I recall of my native place is nothing like this. My hometown used to be far better. Yet, whenever I try to recall its beauty or describe its merits, no image nor words come to mind. It seems as though it has always been like this. Thus, I told myself: perhaps this is indeed how it is—without progress, yet not necessarily as desolate as I feel; it is merely a change in my own state of mind, for I had no joyful mood upon returning home this time.",
+      "output_hash": "sha256:b9ab3781c0fd95854f0daf7c2ef118402b24cf0bbbeef7d9460d3dfa232acc4b",
+      "translation_latency_ms": 6869,
+      "scores": {
+        "accuracy": 8.5,
+        "fluency": 9.0,
+        "style": 8.0,
+        "overall": 8.2,
+        "feedback": "Lu Xun's elegiac voice mostly preserved; 苍黄的天 → 'dull, yellowish sky', 萧索的荒村 → 'desolate, barren villages' both work. Drifts: 故乡本也如此 → 'perhaps this is indeed how it is' softens the resigned assertion (-0.3 acc); 仿佛也就如此 expanded with 'always' (-0.3 acc); 'Alas!' for 阿！is faintly Victorian (-0.5 sty); 呜呜的响 → 'whistling mournfully' adds interpretive color (-0.3 sty)."
+      }
+    },
+    {
+      "text_id": "kokoro",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "我一直称他为“先生”。所以在此，我只写“先生”二字，而不会道出他的真名。这并非出于顾及世间的避忌，而是因为这样对我而言更为自然。每当我忆起那个人，“先生”二字便脱口而出。即便提笔写作，心境亦然。那些疏离的称呼，实在让我提不起使用的兴致。",
+      "output_hash": "sha256:60cdaec97ac37281e9756d34d2a38a4d93878ba1cb98658f59a973904c6aa74f",
+      "translation_latency_ms": 2610,
+      "scores": {
+        "accuracy": 8.5,
+        "fluency": 9.0,
+        "style": 8.5,
+        "overall": 8.2,
+        "feedback": "Polished literary Chinese: 心境亦然 elegant for 心持は同じ事である, 忆起 / 提笔写作 register-appropriate. Significant omission: 頭文字 (initials like 'K先生') generalized to '那些疏离的称呼', losing the specific reference to abbreviations (-1.0 acc); 世間を憚る遠慮 → '顾及世间的避忌' slightly weak, 避忌 doesn't quite carry the social-deference sense (-0.3 acc); '脱口而出' is more dynamic than the original's reflective 'いいたくなる' (-0.3 sty)."
+      }
+    }
+  ]
+}

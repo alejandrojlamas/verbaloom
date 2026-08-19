@@ -1,0 +1,64 @@
+__pycache__/
+*.pyc
+.idea/
+/DoNotCommit/
+/translated_files/
+/data/
+.claude/
+.env
+.env.*
+!.env.example
+/venv
+build_installer.bat
+build/dist/
+build/TranslateBookWithLLM/
+/dist
+/wiki/
+.wiki_repo/
+/prompt_optimization_results
+.watermark/
+tests/.placeholder_tests/
+.telemetry/
+/plan/
+/experiments
+/benchmark_results/
+/[Dd]ebug/
+/profiles/auto_*/
+/server.log
+/server.pid
+/translation_samples/
+/.translation-work/
+/input/
+/reports/
+/editorial_changes.md
+
+# Local reports, browser artifacts, and profile safety copies.
+# They remain on disk but must not pollute source-control or code-health reports.
+/output/
+/test-results/
+/.playwright-cli/
+/profiles_backup_*/
+
+# Ad-hoc scratch scripts at repo root — keep them out of commits.
+# Real tests live under tests/, real entrypoints are translate.py / translation_api.py / launcher.py.
+/check_*.py
+/scratch_*.py
+/debug_*.py
+/tmp_*.py
+/test_*.py
+/scripts/manual_repair_*.py
+/scripts/tmp_*.py
+/scripts/debug_*.py
+
+# Runtime databases are created locally by the app or Docker volume mounts.
+/deployment/data/*.db
+/deployment/data/*.db-*
+
+# Common secret/credential file patterns
+*.pem
+*.key
+secrets.*
+credentials.*
+*_secret.*
+*_credentials.*
+.wiki_repo_archive/

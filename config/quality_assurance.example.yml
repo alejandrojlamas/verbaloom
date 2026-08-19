@@ -1,0 +1,63 @@
+strict: true
+report_root: data/quality_runs
+
+translation:
+  source_language: auto
+  target_language: es
+  target_locale: es-MX
+  preserve_style: true
+
+segmentation:
+  max_chars: 4000
+  context_before_units: 1
+  context_after_units: 1
+  preserve_inline_markup: true
+
+retries:
+  max_translation_attempts: 3
+  max_review_attempts: 2
+  max_audit_attempts: 2
+  max_repair_rounds: 2
+
+validation:
+  require_full_coverage: true
+  block_on_missing_units: true
+  block_on_duplicate_units: true
+  block_on_source_language_blocks: true
+  block_on_critical_entity_diff: true
+  block_on_epubcheck_error: true
+  block_on_protocol_leak: true
+  block_on_spacing_corruption: true
+  allow_warnings: true
+
+language_validation:
+  enabled: true
+  max_source_ratio_document: 0.01
+  max_source_ratio_unit: 0.15
+  min_chars: 40
+  allow_named_entities: true
+  allow_quoted_foreign_text: true
+
+entity_validation:
+  preserve_numbers: true
+  preserve_dates: true
+  preserve_percentages: true
+  preserve_currencies: true
+  preserve_measurements: true
+  preserve_identifiers: true
+  preserve_scientific_names: true
+  preserve_urls: true
+  preserve_isbn: true
+  preserve_protected_names: true
+
+export:
+  keep_intermediate_files: true
+  create_html_report: true
+  overwrite_valid_output: false
+  atomic_publish: true
+
+models:
+  translator: ""
+  reviewer: ""
+  auditor: ""
+  audit_flagged_only: true

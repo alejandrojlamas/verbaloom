@@ -1,0 +1,32 @@
+repos:
+  # Python syntax checks (fast)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-ast
+        name: Check Python syntax
+      - id: check-yaml
+        name: Check YAML syntax
+      - id: end-of-file-fixer
+        name: Ensure correct end of file
+      - id: trailing-whitespace
+        name: Remove trailing whitespace
+
+  # Sorted Python imports
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: Sort imports
+        args: ["--profile", "black", "--check-only"]
+
+  # Local tests with pytest
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (unit tests)
+        entry: pytest tests/unit -v --tb=short
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

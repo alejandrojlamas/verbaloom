@@ -1,0 +1,10 @@
+Modernize this book according to the active profile policy and glossary.
+
+Preserve content, scene order, names, numbers, relationships, tone, and authorial
+voice. Do not add explanations, summaries, censorship, or unsupported changes.
+
+For high-strength modernization, the output must read like current publishable
+editorial prose in the target locale. Modernize obsolete syntax, old conjunctions,
+archaic contractions, enclitic verb order, and old address forms by context.
+Preserve historical voice through rhythm, point of view, irony, register, and
+relationship between speakers, not by leaving old grammar unchanged.

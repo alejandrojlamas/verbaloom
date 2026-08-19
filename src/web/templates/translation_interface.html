@@ -1,0 +1,2340 @@
+<!DOCTYPE html>
+<html lang="{{ initial_locale|default('en') }}" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" id="themeColorMeta" content="#080c12">
+    <title>Translate Books with LLMs</title>
+    <link rel="icon" type="image/png" href="/static/TBL-Logo-alpha.png">
+
+    <!-- Initial locale + app version handed off by Flask so i18next boots
+         without an extra round-trip and JSON caches bust on app upgrades.
+         tojson escapes safely for a <script> context. -->
+    <script>
+        (function applyInitialTheme() {
+            var storageKey = 'tbl-theme-preference';
+            var darkColor = '#080c12';
+            var lightColor = '#f5f7fb';
+            var savedTheme = null;
+            try {
+                savedTheme = localStorage.getItem(storageKey);
+            } catch (error) {
+                savedTheme = null;
+            }
+            var prefersDark = false;
+            try {
+                prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            } catch (error) {
+                prefersDark = false;
+            }
+            var theme = savedTheme || 'dark';
+            document.documentElement.classList.toggle('dark', theme === 'dark');
+            document.documentElement.style.backgroundColor = theme === 'dark' ? darkColor : lightColor;
+            var themeColorMeta = document.getElementById('themeColorMeta');
+            if (themeColorMeta) {
+                themeColorMeta.setAttribute('content', theme === 'dark' ? darkColor : lightColor);
+            }
+        })();
+        window.__INITIAL_LOCALE__ = {{ initial_locale|default('en')|tojson }};
+        window.__APP_VERSION__    = {{ app_version|default('dev')|tojson }};
+    </script>
+
+    <!-- i18next runtime (CDN UMD, pinned). The HTTP backend lazy-loads
+         JSON namespaces from /static/locales/<lng>/<ns>.json. -->
+    <script src="https://cdn.jsdelivr.net/npm/i18next@23.16.4/dist/umd/i18next.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/i18next-http-backend@2.6.2/i18nextHttpBackend.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Google Material Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/style.css?v={{ app_version|default('dev') }}&ux=pro-ui-20260704-ajl2">
+    <link rel="stylesheet" href="/static/css/design-system.css?v={{ app_version|default('dev') }}&ux=ds-20260625">
+    <link rel="stylesheet" href="/static/css/app-components.css?v={{ app_version|default('dev') }}&ux=app-components-20260704-ajl-mobile5">
+</head>
+<body>
+    <div class="container">
+        <!-- Header with Neumorphic Style -->
+        <header class="header">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <img src="/static/TBL-Logo-alpha.png" alt="TBL Logo" style="width: 100%; height: 100%; object-fit: contain;">
+                </div>
+                <div class="logo-text">
+                    <h2>TBL <span class="app-version" id="appVersion" title="TBL v{{ app_version|default('dev') }}">v{{ app_version|default('dev') }}</span></h2>
+                    <p data-i18n="common:app_subtitle">Translate Books with LLMs</p>
+                </div>
+            </div>
+
+            <div class="status-section">
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="providerStatusText" data-i18n="common:llm_checking">LLM: Checking...</span>
+                </div>
+                <div class="header-lang-wrapper" data-i18n-attr="title:settings:ui_language_label" title="Interface language">
+                    <span class="material-symbols-outlined header-lang-icon">language</span>
+                    <span class="header-lang-display" id="uiLocaleDisplay">EN</span>
+                    <span class="material-symbols-outlined header-lang-caret">expand_more</span>
+                    <select id="uiLocaleSelect" class="header-lang-select" data-i18n-attr="aria-label:settings:ui_language_label" aria-label="Interface language">
+                        <option value="en" data-short="EN">English</option>
+                        <option value="zh-CN" data-short="中">简体中文</option>
+                        <option value="es" data-short="ES">Español</option>
+                        <option value="fr" data-short="FR">Français</option>
+                        <option value="de" data-short="DE">Deutsch</option>
+                        <option value="ja" data-short="日">日本語</option>
+                        <option value="ko" data-short="한">한국어</option>
+                    </select>
+                </div>
+                <button class="btn btn-secondary" id="themeToggleBtn" onclick="toggleTheme()" data-i18n-attr="title:common:theme_toggle_title" title="Toggle dark/light mode">
+                    <span class="material-symbols-outlined" id="themeIcon">dark_mode</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Update notification banner (populated by update-checker.js) -->
+        <div id="updateBanner" class="update-banner hidden" role="status" aria-live="polite">
+            <div class="update-banner__text">
+                <strong data-i18n="common:update_available">Update available</strong>
+                <span id="updateBannerVersion"></span>
+                <a id="updateBannerLink" href="#" target="_blank" rel="noopener" data-i18n="common:update_release_notes" style="margin-left: 0.5rem;">Release notes</a>
+            </div>
+            <div class="update-banner__actions">
+                <button type="button" id="updateBannerInstallBtn" class="btn btn-primary">
+                    <span class="material-symbols-outlined" style="font-size: 1rem; vertical-align: middle;">download</span>
+                    <span data-i18n="common:update_now">Update now</span>
+                </button>
+                <button type="button" id="updateBannerCloseBtn" class="update-banner__close" data-i18n-attr="title:common:update_dismiss" title="Dismiss">
+                    <span class="material-symbols-outlined" style="font-size: 1.1rem;">close</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Update progress overlay (shown during git pull / pip install / restart) -->
+        <div id="updateOverlay" class="update-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="updateOverlayTitle">
+            <div class="update-overlay__panel">
+                <h3 id="updateOverlayTitle" class="update-overlay__title" data-i18n="common:update_in_progress_title">Updating...</h3>
+                <p id="updateOverlayStep" class="update-overlay__step" data-i18n="common:update_starting">Starting update</p>
+                <div id="updateOverlayError" class="update-overlay__error" style="display: none;"></div>
+                <pre id="updateOverlayLog" class="update-overlay__log"></pre>
+                <div class="update-overlay__actions">
+                    <button type="button" id="updateOverlayCloseBtn" class="btn btn-secondary" data-i18n="common:update_close" style="display: none;">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top-level Tab Navigation -->
+        <div class="tab-nav" id="topTabNav" style="display: flex; gap: 8px; margin-bottom: 20px;">
+            <button type="button" class="tab-btn tab-btn-active" data-tab="translate" onclick="switchTopTab('translate')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">translate</span>
+                <span data-i18n="common:tab_translate">Translate</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="transform" onclick="switchTopTab('transform')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">auto_fix_high</span>
+                <span data-i18n="common:tab_transform">Transformar</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="profile-prep" onclick="switchTopTab('profile-prep')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">psychology_alt</span>
+                <span data-i18n="common:tab_profile_prep">Perfil</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="sample" onclick="switchTopTab('sample')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">science</span>
+                <span data-i18n="common:tab_sample">Sample</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="settings" onclick="switchTopTab('settings')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">tune</span>
+                <span data-i18n="common:tab_settings">Settings</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="glossaries" onclick="switchTopTab('glossaries')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">menu_book</span>
+                <span data-i18n="common:tab_glossaries">Glossaries</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="usage" onclick="switchTopTab('usage')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">monitoring</span>
+                <span data-i18n="common:tab_usage">Tokens</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="files" onclick="switchTopTab('files')">
+                    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem;">folder_open</span>
+                <span data-i18n="common:tab_files">Files</span>
+            </button>
+        </div>
+
+        <!-- Tab: Translate -->
+        <div id="tab-translate">
+
+        <!-- Main Translation Configuration Card -->
+        <div class="main-card">
+            <div class="card-body">
+                <!-- Languages Row -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label data-i18n="translation:source_language">Source Language</label>
+                        <div class="neu-inset-light">
+                            <select class="form-control" id="sourceLang">
+                                <option value="" selected data-i18n="translation:auto_detect_placeholder">Auto-detect from file...</option>
+                                <optgroup data-i18n-attr="label:translation:lang_group_common" label="Most Common">
+                                    <option value="English">English</option>
+                                    <option value="Chinese">Chinese</option>
+                                    <option value="Spanish">Spanish</option>
+                                    <option value="French">French</option>
+                                    <option value="German">German</option>
+                                    <option value="Japanese">Japanese</option>
+                                    <option value="Korean">Korean</option>
+                                    <option value="Portuguese">Portuguese</option>
+                                    <option value="Russian">Russian</option>
+                                    <option value="Arabic">Arabic</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_european" label="European">
+                                    <option value="Italian">Italian</option>
+                                    <option value="Dutch">Dutch</option>
+                                    <option value="Polish">Polish</option>
+                                    <option value="Swedish">Swedish</option>
+                                    <option value="Norwegian">Norwegian</option>
+                                    <option value="Danish">Danish</option>
+                                    <option value="Finnish">Finnish</option>
+                                    <option value="Greek">Greek</option>
+                                    <option value="Hungarian">Hungarian</option>
+                                    <option value="Czech">Czech</option>
+                                    <option value="Slovak">Slovak</option>
+                                    <option value="Romanian">Romanian</option>
+                                    <option value="Bulgarian">Bulgarian</option>
+                                    <option value="Croatian">Croatian</option>
+                                    <option value="Serbian">Serbian</option>
+                                    <option value="Ukrainian">Ukrainian</option>
+                                    <option value="Catalan">Catalan</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_asian" label="Asian">
+                                    <option value="Hindi">Hindi</option>
+                                    <option value="Bengali">Bengali</option>
+                                    <option value="Urdu">Urdu</option>
+                                    <option value="Punjabi">Punjabi</option>
+                                    <option value="Tamil">Tamil</option>
+                                    <option value="Telugu">Telugu</option>
+                                    <option value="Marathi">Marathi</option>
+                                    <option value="Gujarati">Gujarati</option>
+                                    <option value="Vietnamese">Vietnamese</option>
+                                    <option value="Thai">Thai</option>
+                                    <option value="Indonesian">Indonesian</option>
+                                    <option value="Malay">Malay</option>
+                                    <option value="Tagalog">Tagalog</option>
+                                    <option value="Burmese">Burmese</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_middle_east_africa" label="Middle East & Africa">
+                                    <option value="Persian">Persian</option>
+                                    <option value="Turkish">Turkish</option>
+                                    <option value="Hebrew">Hebrew</option>
+                                    <option value="Swahili">Swahili</option>
+                                    <option value="Amharic">Amharic</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_custom" label="Custom">
+                                    <option value="Other" data-i18n="translation:lang_other_option">Other (Specify)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="neu-inset-light" style="margin-top: 10px; display: none;" id="customSourceLangContainer">
+                            <input type="text" class="form-control" id="customSourceLang" data-i18n-attr="placeholder:translation:custom_source_lang_placeholder" placeholder="Enter custom source language">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label data-i18n="translation:target_language">Target Language</label>
+                        <div class="neu-inset-light">
+                            <select class="form-control" id="targetLang">
+                                <optgroup data-i18n-attr="label:translation:lang_group_common" label="Most Common">
+                                    <option value="Chinese">Chinese</option>
+                                    <option value="English">English</option>
+                                    <option value="Spanish">Spanish</option>
+                                    <option value="French">French</option>
+                                    <option value="German">German</option>
+                                    <option value="Japanese">Japanese</option>
+                                    <option value="Korean">Korean</option>
+                                    <option value="Portuguese">Portuguese</option>
+                                    <option value="Russian">Russian</option>
+                                    <option value="Arabic">Arabic</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_european" label="European">
+                                    <option value="Italian">Italian</option>
+                                    <option value="Dutch">Dutch</option>
+                                    <option value="Polish">Polish</option>
+                                    <option value="Swedish">Swedish</option>
+                                    <option value="Norwegian">Norwegian</option>
+                                    <option value="Danish">Danish</option>
+                                    <option value="Finnish">Finnish</option>
+                                    <option value="Greek">Greek</option>
+                                    <option value="Hungarian">Hungarian</option>
+                                    <option value="Czech">Czech</option>
+                                    <option value="Slovak">Slovak</option>
+                                    <option value="Romanian">Romanian</option>
+                                    <option value="Bulgarian">Bulgarian</option>
+                                    <option value="Croatian">Croatian</option>
+                                    <option value="Serbian">Serbian</option>
+                                    <option value="Ukrainian">Ukrainian</option>
+                                    <option value="Catalan">Catalan</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_asian" label="Asian">
+                                    <option value="Hindi">Hindi</option>
+                                    <option value="Bengali">Bengali</option>
+                                    <option value="Urdu">Urdu</option>
+                                    <option value="Punjabi">Punjabi</option>
+                                    <option value="Tamil">Tamil</option>
+                                    <option value="Telugu">Telugu</option>
+                                    <option value="Marathi">Marathi</option>
+                                    <option value="Gujarati">Gujarati</option>
+                                    <option value="Vietnamese">Vietnamese</option>
+                                    <option value="Thai">Thai</option>
+                                    <option value="Indonesian">Indonesian</option>
+                                    <option value="Malay">Malay</option>
+                                    <option value="Tagalog">Tagalog</option>
+                                    <option value="Burmese">Burmese</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_middle_east_africa" label="Middle East & Africa">
+                                    <option value="Persian">Persian</option>
+                                    <option value="Turkish">Turkish</option>
+                                    <option value="Hebrew">Hebrew</option>
+                                    <option value="Swahili">Swahili</option>
+                                    <option value="Amharic">Amharic</option>
+                                </optgroup>
+                                <optgroup data-i18n-attr="label:translation:lang_group_custom" label="Custom">
+                                    <option value="Other" data-i18n="translation:lang_other_option">Other (Specify)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="neu-inset-light" style="margin-top: 10px; display: none;" id="customTargetLangContainer">
+                            <input type="text" class="form-control" id="customTargetLang" data-i18n-attr="placeholder:translation:custom_target_lang_placeholder" placeholder="Enter custom target language">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Unified File Upload Area -->
+                <div class="file-upload" id="fileUpload" data-zone="translate" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">
+                        <span class="material-symbols-outlined">cloud_upload</span>
+                    </div>
+                    <h3 data-i18n="translation:drop_files_title">Drop files</h3>
+                    <p data-i18n="translation:drop_files_support">PDF, TXT, EPUB, SRT, DOCX, and text. Translation and editorial review run in one flow.</p>
+                    <div class="browse-btn" data-i18n="translation:browse_files">Browse Files</div>
+                    <input type="file" id="fileInput" accept=".pdf,.txt,.text,.md,.markdown,.rst,.log,.epub,.srt,.docx,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml" style="display: none;" onchange="handleFileSelect(event)" multiple>
+                </div>
+
+                <!-- File Info Section (Batch Files) -->
+                <div id="fileInfo" class="hidden" style="margin-bottom: 20px; margin-top: 20px;">
+                    <h4 data-i18n="translation:selected_files" style="color: var(--text-dark); font-weight: 700; margin-bottom: 1rem;">Selected Files:</h4>
+                    <ul id="fileListContainer"></ul>
+                </div>
+
+                <!-- Glossary Selector (primary translation workflow) -->
+                <div class="translation-glossary-picker" aria-labelledby="translateGlossaryLabel">
+                    <div class="translation-glossary-picker__header">
+                        <div>
+                            <label id="translateGlossaryLabel" class="translation-glossary-picker__label" data-i18n="translation:glossary_picker_label">Translation glossary</label>
+                            <p class="translation-glossary-picker__help" data-i18n="translation:glossary_picker_help">
+                                Optional. Inject approved terms to keep names, concepts and vocabulary consistent from the first chunk.
+                            </p>
+                        </div>
+                        <button type="button" id="translateGlossaryManageBtn" class="translation-glossary-picker__secondary" data-i18n-attr="title:settings:glossary_manage_title" title="Manage glossaries">
+                            <span class="material-symbols-outlined" aria-hidden="true">library_books</span>
+                            <span data-i18n="glossary:title">Glossaries</span>
+                        </button>
+                    </div>
+                    <div class="translation-glossary-picker__controls">
+                        <div class="neu-inset-light">
+                            <select id="translateGlossarySelect" class="form-control" aria-labelledby="translateGlossaryLabel">
+                                <option value="" data-i18n="settings:select_none">None</option>
+                            </select>
+                        </div>
+                        <button type="button" id="translateGlossaryRefreshBtn" class="translation-glossary-picker__icon" data-i18n-attr="title:settings:refresh_list_title" title="Refresh list">
+                            <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                        </button>
+                    </div>
+                    <div id="translateGlossaryInfoCard" class="glossary-info-card" style="display: none;"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="text-align: center; margin-top: 30px; display: flex; justify-content: center; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-primary" id="translateBtn" onclick="startBatchTranslation()" disabled>
+                        <span class="material-symbols-outlined">play_circle</span>
+                        <span data-i18n="translation:start_batch">Start</span>
+                    </button>
+                    <button class="btn btn-danger hidden" id="interruptBtn" onclick="interruptCurrentTranslation()">
+                        <span class="material-symbols-outlined">stop_circle</span>
+                        <span data-i18n="translation:interrupt_batch">Interrupt Current & Stop Batch</span>
+                    </button>
+                </div>
+
+                <!-- Settings Summary (concise overview of LLM + active options) -->
+                <div id="settingsSummary" style="margin-top: 12px; text-align: center; font-size: 0.8125rem; color: var(--text-muted-light); line-height: 1.5;"></div>
+
+                <!-- Messages (connection status, notifications) -->
+                <div id="messages"></div>
+
+                <!-- Sticky alerts: high-failure-rate / fallback recommendations
+                     surfaced during translation. Each alert is a dismissible card. -->
+                <div id="translationAlerts"></div>
+
+                <!-- Progress Section -->
+                <div id="progressSection" class="progress-section hidden">
+                    <h3 id="currentFileProgressTitle">
+                        <span class="material-symbols-outlined">monitoring</span>
+                        <span data-i18n="translation:progress_title">Translation Progress</span>
+                    </h3>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
+                    </div>
+                    <div id="promptContextSummary" class="prompt-context-summary hidden"></div>
+                    <div class="stats-grid" id="statsGrid">
+                        <div class="stat-card">
+                            <h3 id="totalChunks">0</h3>
+                            <p data-i18n="translation:stat_total_chunks">Total Chunks</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="completedChunks">0</h3>
+                            <p data-i18n="translation:stat_completed">Completed</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="failedChunks">0</h3>
+                            <p data-i18n="translation:stat_failed">Failed</p>
+                        </div>
+                        <div class="stat-card" id="fallbackStatCard" data-i18n-attr="title:translation:stat_fallbacks_tooltip" title="Phase 2 (token alignment) + Phase 3 (untranslated) chunks. Indicates the LLM struggled with placeholders." aria-expanded="false">
+                            <h3 id="fallbackChunks">0</h3>
+                            <p data-i18n="translation:stat_fallbacks">Fallbacks</p>
+                            <span class="stat-card-chevron material-symbols-outlined" aria-hidden="true">expand_more</span>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="elapsedTime">0s</h3>
+                            <p data-i18n="translation:stat_time_elapsed">Time Elapsed</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="estimatedTimeRemaining">--</h3>
+                            <p data-i18n="translation:stat_est_remaining">Est. Remaining</p>
+                        </div>
+                    </div>
+
+                    <!-- Expandable panel toggled by clicking the Fallbacks card.
+                         Carries the mitigation guidance that used to live in a
+                         sticky alert / tooltip — easier to read inline. -->
+                    <div id="fallbackRecommendationPanel" class="recommendation-panel" hidden></div>
+
+                    <!-- OpenRouter Cost Display -->
+                    <div class="stats-grid hidden" id="openrouterCostGrid" style="margin-top: 15px;">
+                        <div class="stat-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b;">
+                            <h3 id="openrouterCost" style="color: #92400e;">$0.0000</h3>
+                            <p data-i18n="translation:stat_total_cost" style="color: #78350f;">Total Cost (USD)</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border: 1px solid #3b82f6;">
+                            <h3 id="openrouterTokens" style="color: #1e40af;">0</h3>
+                            <p data-i18n="translation:stat_total_tokens" style="color: #1e3a8a;">Total Tokens</p>
+                        </div>
+                    </div>
+
+                    <!-- Last Translation Preview -->
+                    <div id="lastTranslationPreviewSection" style="margin-top: 20px; display: block !important;">
+                        <h4 style="margin: 0 0 10px 0; color: var(--text-dark); font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.25rem;">description</span>
+                            <span data-i18n="translation:last_translation_preview">Last Translation Preview</span>
+                            <span id="previewLanguages" style="font-weight: 400; font-size: 0.85rem; color: var(--text-muted-light); margin-left: 0.5rem;"></span>
+                        </h4>
+                        <div class="log-container" id="lastTranslationPreview">
+                            <div data-i18n="translation:no_translation_yet" style="color: var(--text-muted-light); font-style: italic; padding: 10px;">No translation yet...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Completion cards (one per finished file, stacked until the user dismisses them) -->
+                <div id="completionCardsContainer"></div>
+
+                <!-- TTS Progress Section -->
+                <div id="ttsProgressSection" style="display: none; margin-top: 20px; padding: 15px; background: var(--success-light-bg); border: 1px solid var(--success-light); border-radius: 1.5rem;">
+                    <h3 style="margin: 0 0 10px 0; color: var(--success-light); display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="material-symbols-outlined">volume_up</span>
+                        <span data-i18n="tts:progress_title">Audio Generation</span>
+                    </h3>
+                    <div class="progress-bar-container" style="margin-bottom: 10px;">
+                        <div class="progress-bar" id="ttsProgressBar" style="width: 0%; background: linear-gradient(90deg, var(--success-light), #22c55e);">0%</div>
+                    </div>
+                    <p id="ttsStatusText" data-i18n="tts:waiting" style="margin: 0; font-size: 0.875rem; color: var(--success-light);">Waiting to start...</p>
+                </div>
+
+                <!-- Activity Log (Collapsible) -->
+                <div class="prompt-options-toggle" onclick="toggleActivityLog()" style="margin-top: 30px;">
+                    <span style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="material-symbols-outlined">terminal</span>
+                        <span data-i18n="common:activity_log">Activity Log</span>
+                    </span>
+                    <span id="activityLogIcon" class="material-symbols-outlined">expand_more</span>
+                </div>
+
+                <div id="activityLogSection" class="hidden">
+                    <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                        <button class="btn btn-secondary" onclick="clearActivityLog()" style="font-size: 0.75rem; padding: 0.5rem 1rem;">
+                            <span class="material-symbols-outlined" style="font-size: 1rem;">delete</span>
+                            <span data-i18n="common:activity_log_clear">Clear Log</span>
+                        </button>
+                    </div>
+                    <div class="log-container" id="logContainer"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumable Jobs Section -->
+        <div class="main-card" id="resumableJobsSection" style="margin-top: 30px; display: none;">
+            <div class="card-header">
+                <span class="material-symbols-outlined">pause_circle</span>
+                <h2 data-i18n="translation:paused_translations">Paused Translations</h2>
+                <button class="btn btn-secondary" onclick="loadResumableJobs()" data-i18n-attr="title:translation:refresh_list_title" title="Refresh list" style="margin-left: auto; padding: 0.5rem 1rem;">
+                    <span class="material-symbols-outlined">refresh</span>
+                </button>
+            </div>
+
+            <div class="card-body">
+                <div id="resumableJobsContainer">
+                    <div id="resumableJobsLoading" style="text-align: center; padding: 20px;">
+                        <p data-i18n="common:loading">Loading...</p>
+                    </div>
+
+                    <div id="resumableJobsList" style="display: none;">
+                        <!-- Jobs will be inserted here -->
+                    </div>
+
+                    <div id="resumableJobsEmpty" style="text-align: center; padding: 40px; display: none;">
+                        <p data-i18n="translation:no_paused_translations" style="color: var(--text-muted-light);">No paused translations</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        </div><!-- /#tab-translate -->
+
+        <!-- Tab: Same-language Transform -->
+        <div id="tab-transform" class="hidden">
+            <div class="main-card">
+                <div class="card-body">
+                    <h2 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span class="material-symbols-outlined">auto_fix_high</span>
+                        <span data-i18n="transform:title">Transformar texto</span>
+                    </h2>
+                    <p style="color: var(--text-muted-light); font-size: 0.875rem; margin-bottom: 1.25rem;" data-i18n="transform:subtitle">
+                        Mismo idioma, nuevo tratamiento editorial.
+                    </p>
+
+                    <div class="transform-grid transform-grid-primary">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="transform:mode_label">Proceso</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="transformMode">
+                                    <option value="modernize" data-label="Modernizar" data-i18n="transform:mode_modernize" data-i18n-attr="data-label:transform:mode_modernize;data-description:transform:mode_modernize_desc" data-description="Actualiza prosa antigua a una versión contemporánea fiel.">Modernizar</option>
+                                    <option value="simplify" data-label="Explicar" data-i18n="transform:mode_simplify" data-i18n-attr="data-label:transform:mode_simplify;data-description:transform:mode_simplify_desc" data-description="Reescribe en prosa universitaria clara, explicando conceptos complejos, tablas y argumentos sin perder rigor.">Explicar</option>
+                                    <option value="humanize" data-label="Humanizar" data-i18n="transform:mode_humanize" data-i18n-attr="data-label:transform:mode_humanize;data-description:transform:mode_humanize_desc" data-description="Quita rigidez de IA y vuelve el texto más natural.">Humanizar</option>
+                                    <option value="mexican_spanish" data-label="Adaptar a mexicano" data-i18n="transform:mode_mexican" data-i18n-attr="data-label:transform:mode_mexican;data-description:transform:mode_mexican_desc" data-description="Adapta a español mexicano o latinoamericano natural.">Adaptar a mexicano</option>
+                                    <option value="academic_clarity" data-label="Claridad académica" data-i18n="transform:mode_academic" data-i18n-attr="data-label:transform:mode_academic;data-description:transform:mode_academic_desc" data-description="Ordena y aclara prosa académica densa.">Claridad académica</option>
+                                    <option value="literary_polish" data-label="Pulido literario" data-i18n="transform:mode_literary" data-i18n-attr="data-label:transform:mode_literary;data-description:transform:mode_literary_desc" data-description="Mejora ritmo, dicción y fluidez literaria.">Pulido literario</option>
+                                    <option value="ocr_structure" data-label="Corregir OCR" data-i18n="transform:mode_ocr" data-i18n-attr="data-label:transform:mode_ocr;data-description:transform:mode_ocr_desc" data-description="Corrige ruido OCR, saltos, espacios y estructura.">Corregir OCR</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="transform:profile_label">Perfil editorial</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="transformProfile">
+                                    <option value="" selected data-i18n="transform:profile_none">General</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p id="transformModeDescription" class="transform-mode-note"></p>
+
+                    <details class="transform-advanced-options">
+                        <summary>
+                            <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+                            <span data-i18n="transform:advanced_options">File options</span>
+                        </summary>
+                        <div class="transform-grid transform-grid-secondary">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label data-i18n="transform:language_label">Idioma del texto</label>
+                                <div class="neu-inset-light">
+                                    <select class="form-control" id="transformLanguage">
+                                        <option value="Spanish" selected>Spanish</option>
+                                        <option value="English">English</option>
+                                        <option value="French">French</option>
+                                        <option value="German">German</option>
+                                        <option value="Italian">Italian</option>
+                                        <option value="Portuguese">Portuguese</option>
+                                        <option value="Chinese">Chinese</option>
+                                        <option value="Japanese">Japanese</option>
+                                        <option value="Korean">Korean</option>
+                                        <option value="Russian">Russian</option>
+                                    </select>
+                                </div>
+                            </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label id="transformGlossaryLabel" data-i18n="transform:glossary_label">Glosario</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <div class="neu-inset-light" style="flex: 1;">
+                                    <select class="form-control" id="transformGlossarySelect" aria-labelledby="transformGlossaryLabel">
+                                        <option value="" selected data-i18n="settings:select_none">None</option>
+                                    </select>
+                                </div>
+                                <button type="button" id="transformGlossaryRefreshBtn" class="translation-glossary-picker__icon" data-i18n-attr="title:settings:refresh_list_title" title="Refresh list">
+                                    <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                                </button>
+                            </div>
+                            <div id="transformGlossaryInfoCard" class="glossary-info-card" style="display: none;"></div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="transform:output_format_label">Salida</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="transformOutputFormat">
+                                    <option value="auto" selected data-i18n="settings:output_format_auto">Auto (native)</option>
+                                    <option value="txt" data-i18n="settings:output_format_txt">TXT</option>
+                                    <option value="docx" data-i18n="settings:output_format_docx">DOCX</option>
+                                    <option value="pdf" data-i18n="settings:output_format_pdf">PDF</option>
+                                    <option value="epub" data-i18n="settings:output_format_epub">EPUB</option>
+                                </select>
+                            </div>
+                        </div>
+                        </div>
+                    </details>
+
+                    <div class="file-upload" id="transformFileUpload">
+                        <div class="upload-icon">
+                            <span class="material-symbols-outlined">upload_file</span>
+                        </div>
+                        <h3 data-i18n="transform:drop_files_title">Suelta archivos para transformar</h3>
+                        <p data-i18n="transform:drop_files_support">PDF, TXT, EPUB, DOCX y archivos de texto</p>
+                        <div class="browse-btn" data-i18n="translation:browse_files">Explorar archivos</div>
+                        <input type="file" id="transformFileInput" accept=".pdf,.txt,.text,.md,.markdown,.rst,.log,.epub,.docx,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml" style="display: none;" multiple>
+                    </div>
+
+                    <div id="transformPendingFiles" class="transform-file-list"></div>
+
+                    <div style="text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-primary" id="transformStartBtn" disabled>
+                            <span class="material-symbols-outlined">play_circle</span>
+                            <span data-i18n="transform:start">Iniciar transformación</span>
+                        </button>
+                        <button class="btn btn-secondary" id="transformClearBtn" disabled>
+                            <span class="material-symbols-outlined">delete</span>
+                            <span data-i18n="transform:clear">Limpiar</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Editorial Profile Preparation -->
+        <div id="tab-profile-prep" class="hidden">
+            <div class="main-card">
+                <div class="card-body">
+                    <h2 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span class="material-symbols-outlined">psychology_alt</span>
+                        <span data-i18n="transform:profile_prep_title">Preparar perfil editorial</span>
+                    </h2>
+                    <p style="color: var(--text-muted-light); font-size: 0.875rem; margin-bottom: 1.25rem;" data-i18n="transform:profile_prep_subtitle">
+                        Analiza un libro completo antes de traducir o transformar para crear un perfil por obra con glosario, entidades, voces, secciones y riesgos editoriales.
+                    </p>
+
+                    <div class="transform-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="transform:profile_prep_language_label">Idioma objetivo</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="profilePrepLanguage">
+                                    <option value="Spanish" selected>Spanish</option>
+                                    <option value="English">English</option>
+                                    <option value="French">French</option>
+                                    <option value="German">German</option>
+                                    <option value="Italian">Italian</option>
+                                    <option value="Portuguese">Portuguese</option>
+                                    <option value="Chinese">Chinese</option>
+                                    <option value="Japanese">Japanese</option>
+                                    <option value="Korean">Korean</option>
+                                    <option value="Russian">Russian</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="transform:profile_prep_purpose_label">Uso principal</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="profilePrepPurpose">
+                                    <option value="translation" selected data-i18n="transform:profile_prep_purpose_translation">Traducción fiel</option>
+                                    <option value="audiobook" data-i18n="transform:profile_prep_purpose_audiobook">Audiolibro</option>
+                                    <option value="modernize" data-i18n="transform:mode_modernize">Modernizar</option>
+                                    <option value="simplify" data-i18n="transform:mode_simplify">Explicar</option>
+                                    <option value="literary_polish" data-i18n="transform:mode_literary">Pulido literario</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="profile-prep-card">
+                        <div class="profile-prep-card-header">
+                            <div class="profile-prep-title">
+                                <span class="material-symbols-outlined">auto_awesome</span>
+                                <span data-i18n="transform:profile_prep_button">Analizar con DeepSeek Flash</span>
+                            </div>
+                        </div>
+                        <p class="profile-prep-body" data-i18n="transform:profile_prep_help">
+                            DeepSeek Flash lee todo el libro por fragmentos, extrae nombres, conceptos, tratamientos y dudas editoriales útiles, crea un perfil por obra y lo deja listo en el selector.
+                        </p>
+                    </div>
+
+                    <div class="file-upload" id="profilePrepFileUpload">
+                        <div class="upload-icon">
+                            <span class="material-symbols-outlined">upload_file</span>
+                        </div>
+                        <h3 data-i18n="transform:profile_prep_drop_title">Suelta archivos para preparar perfil</h3>
+                        <p data-i18n="transform:drop_files_support">PDF, TXT, EPUB, DOCX y archivos de texto</p>
+                        <div class="browse-btn" data-i18n="translation:browse_files">Explorar archivos</div>
+                        <input type="file" id="profilePrepFileInput" accept=".pdf,.txt,.text,.md,.markdown,.rst,.log,.epub,.docx,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml" style="display: none;" multiple>
+                    </div>
+
+                    <div id="profilePrepPendingFiles" class="transform-file-list"></div>
+
+                    <div style="text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-primary" id="profilePrepStartBtn" disabled>
+                            <span class="material-symbols-outlined">play_circle</span>
+                            <span data-i18n="transform:profile_prep_start">Preparar perfil</span>
+                        </button>
+                        <button class="btn btn-secondary" id="profilePrepClearBtn" disabled>
+                            <span class="material-symbols-outlined">delete</span>
+                            <span data-i18n="transform:clear">Limpiar</span>
+                        </button>
+                    </div>
+
+                    <div id="profilePrepLiveCard" class="profile-prep-card hidden" style="margin-top: 20px;">
+                        <div class="profile-prep-card-header">
+                            <div class="profile-prep-title">
+                                <span class="material-symbols-outlined">monitoring</span>
+                                <span data-i18n="transform:profile_prep_live_title">Proceso en vivo</span>
+                            </div>
+                            <small id="profilePrepModelLabel" style="color: var(--text-muted-light);" data-i18n="transform:profile_prep_model_default">DeepSeek Flash</small>
+                        </div>
+                        <div id="profilePrepProgress" class="profile-prep-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                            <div id="profilePrepBar" class="profile-prep-progress-bar"></div>
+                        </div>
+                        <div id="profilePrepStatus" class="profile-prep-status" aria-live="polite"></div>
+                        <div class="profile-prep-live-grid">
+                            <div class="profile-prep-live-stat">
+                                <strong id="profilePrepStage">—</strong>
+                                <span data-i18n="transform:profile_prep_stat_stage">Etapa</span>
+                            </div>
+                            <div class="profile-prep-live-stat">
+                                <strong id="profilePrepChunks">0/0</strong>
+                                <span id="profilePrepChunksLabel" data-i18n="transform:profile_prep_stat_chunks">Fragmentos</span>
+                            </div>
+                            <div class="profile-prep-live-stat">
+                                <strong id="profilePrepSuggestions">0</strong>
+                                <span id="profilePrepSuggestionsLabel" data-i18n="transform:profile_prep_stat_suggestions">Sugerencias</span>
+                            </div>
+                            <div class="profile-prep-live-stat">
+                                <strong id="profilePrepSignals">0</strong>
+                                <span data-i18n="transform:profile_prep_stat_signals">Señales</span>
+                            </div>
+                        </div>
+                        <div id="profilePrepResult" class="profile-prep-status success"></div>
+                        <h4 style="margin: 8px 0 8px; color: var(--text-dark); font-weight: 700;" data-i18n="transform:profile_prep_log_title">Registro del análisis</h4>
+                        <div id="profilePrepLog" class="profile-prep-log">
+                            <div class="profile-prep-log-item">
+                                <span data-i18n="transform:profile_prep_no_logs">Aún no hay eventos.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Sample & Compare -->
+        <div id="tab-sample" class="hidden">
+            <div class="main-card sample-lab-card">
+                <div class="card-body">
+                    <div class="sample-lab-hero">
+                        <div>
+                            <span class="sample-kicker" data-i18n="sample:kicker">Laboratorio editorial</span>
+                            <h2>
+                                <span class="material-symbols-outlined">science</span>
+                                <span data-i18n="sample:title">Muestra inteligente</span>
+                            </h2>
+                            <p data-i18n="sample:subtitle">
+                                Compara el mismo fragmento con y sin glosario, perfil y transformación antes de gastar en el libro completo.
+                            </p>
+                        </div>
+                        <div class="sample-lab-meter">
+                            <span class="material-symbols-outlined">compare_arrows</span>
+                            <strong id="sampleVariantCount">1</strong>
+                            <span data-i18n="sample:variant_count_label">variantes</span>
+                        </div>
+                    </div>
+
+                    <section class="sample-lab-section">
+                        <div class="sample-step">
+                            <span class="sample-step-number">1</span>
+                            <div>
+                                <h3 data-i18n="sample:section_document">Documento y fragmentos</h3>
+                                <p data-i18n="sample:section_document_hint">Sube un libro y revisa unos cuantos chunks representativos antes de ejecutar.</p>
+                            </div>
+                        </div>
+
+                        <div class="sample-lab-grid sample-lab-grid-langs">
+                            <div class="form-group">
+                                <label data-i18n="translation:source_language">Source Language</label>
+                                <div class="neu-inset-light">
+                                    <select class="form-control" id="sampleSourceLang">
+                                        <option value="" selected data-i18n="translation:auto_detect_placeholder">Auto-detect from file...</option>
+                                        <option value="English">English</option>
+                                        <option value="Chinese">Chinese</option>
+                                        <option value="Spanish">Spanish</option>
+                                        <option value="French">French</option>
+                                        <option value="German">German</option>
+                                        <option value="Japanese">Japanese</option>
+                                        <option value="Korean">Korean</option>
+                                        <option value="Portuguese">Portuguese</option>
+                                        <option value="Russian">Russian</option>
+                                        <option value="Arabic">Arabic</option>
+                                        <option value="Italian">Italian</option>
+                                        <option value="Dutch">Dutch</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label data-i18n="translation:target_language">Target Language</label>
+                                <div class="neu-inset-light">
+                                    <select class="form-control" id="sampleTargetLang">
+                                        <option value="English">English</option>
+                                        <option value="Chinese">Chinese</option>
+                                        <option value="Spanish" selected>Spanish</option>
+                                        <option value="French">French</option>
+                                        <option value="German">German</option>
+                                        <option value="Japanese">Japanese</option>
+                                        <option value="Korean">Korean</option>
+                                        <option value="Portuguese">Portuguese</option>
+                                        <option value="Russian">Russian</option>
+                                        <option value="Arabic">Arabic</option>
+                                        <option value="Italian">Italian</option>
+                                        <option value="Dutch">Dutch</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="file-upload sample-dropzone" id="sampleFileUpload" onclick="document.getElementById('sampleFileInput').click()">
+                            <div class="upload-icon">
+                                <span class="material-symbols-outlined">upload_file</span>
+                            </div>
+                            <h3 data-i18n="sample:drop_file_title">Suelta un libro para probar</h3>
+                            <p data-i18n="sample:drop_file_support">PDF, TXT, EPUB, SRT, DOCX y archivos de texto</p>
+                            <div class="browse-btn" data-i18n="translation:browse_files">Browse Files</div>
+                            <input type="file" id="sampleFileInput" accept=".pdf,.txt,.text,.md,.markdown,.rst,.log,.epub,.srt,.docx,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml" style="display: none;">
+                        </div>
+
+                        <div id="sampleFileInfo" class="hidden sample-file-card">
+                            <div class="sample-file-cover" id="sampleFileCover">
+                                <span class="material-symbols-outlined">menu_book</span>
+                            </div>
+                            <div class="sample-file-meta">
+                                <div class="sample-file-label" data-i18n="sample:selected_file">Selected file:</div>
+                                <div class="sample-file-name" id="sampleFileName"></div>
+                                <div class="sample-file-details" id="sampleFileDetails"></div>
+                            </div>
+                            <button type="button" class="sample-file-remove" id="sampleFileRemoveBtn"
+                                    data-i18n-attr="title:sample:remove_file;aria-label:sample:remove_file"
+                                    title="Remove this book"
+                                    aria-label="Remove this book">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <section class="sample-lab-section">
+                        <div class="sample-step">
+                            <span class="sample-step-number">2</span>
+                            <div>
+                                <h3 data-i18n="sample:section_model">Modelo y tamaño de muestra</h3>
+                                <p data-i18n="sample:section_model_hint">Todas las variantes usan el mismo modelo para que la diferencia venga del pipeline, no del proveedor.</p>
+                            </div>
+                        </div>
+                        <div class="sample-lab-grid sample-lab-grid-model">
+                            <div class="form-group">
+                                <label data-i18n="settings:ai_provider">Provider</label>
+                                <select id="sampleProvider" class="form-control"></select>
+                            </div>
+                            <div class="form-group">
+                                <label data-i18n="settings:model">Model</label>
+                                <select id="sampleModel" class="form-control"></select>
+                            </div>
+                            <div class="form-group sample-endpoint-wrap" id="sampleEndpointWrap">
+                                <label data-i18n="settings:api_endpoint">API Endpoint</label>
+                                <input type="text" id="sampleEndpoint" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label data-i18n="settings:custom_instructions_label">Custom Instructions</label>
+                                <select id="sampleInstructions" class="form-control"></select>
+                            </div>
+                            <div class="form-group">
+                                <label data-i18n="sample:n_samples_label">Number of samples (N)</label>
+                                <input type="number" class="form-control" id="sampleNSamples" min="2" max="20">
+                            </div>
+                            <div class="form-group">
+                                <label data-i18n="sample:max_chars_label">Max chars per sample</label>
+                                <input type="number" class="form-control" id="sampleMaxChars" min="50" max="2000">
+                            </div>
+                            <button type="button" class="btn btn-secondary sample-update-btn" id="sampleUpdateBtn" disabled
+                                    data-i18n-attr="title:sample:update_samples_title"
+                                    title="Apply N and Max chars: re-sample the document, keeping existing translations where possible">
+                                <span class="material-symbols-outlined">refresh</span>
+                                <span data-i18n="sample:update_samples">Update samples</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <section class="sample-lab-section">
+                        <div class="sample-step">
+                            <span class="sample-step-number">3</span>
+                            <div>
+                                <h3 data-i18n="sample:section_variants">Variantes a comparar</h3>
+                                <p data-i18n="sample:section_variants_hint">Elige un glosario, un perfil y una transformación opcional. La app genera las variantes útiles automáticamente.</p>
+                            </div>
+                        </div>
+                        <div class="sample-lab-grid sample-lab-grid-variants">
+                            <div class="form-group">
+                                <label data-i18n="sample:glossary_label">Glosario</label>
+                                <select id="sampleGlossarySelect" class="form-control"></select>
+                            </div>
+                            <div class="form-group">
+                                <label data-i18n="sample:profile_label">Perfil editorial</label>
+                                <select id="sampleProfileSelect" class="form-control"></select>
+                            </div>
+                            <div class="form-group">
+                                <label data-i18n="sample:transform_label">Transformación</label>
+                                <select id="sampleTransformMode" class="form-control">
+                                    <option value="" data-i18n="sample:transform_none">Sin transformación</option>
+                                    <option value="modernize" data-i18n="transform:mode_modernize">Modernizar</option>
+                                    <option value="simplify" data-i18n="transform:mode_simplify">Explicar</option>
+                                    <option value="humanize" data-i18n="transform:mode_humanize">Humanizar</option>
+                                    <option value="mexican_spanish" data-i18n="transform:mode_mexican">Adaptar a mexicano</option>
+                                    <option value="academic_clarity" data-i18n="transform:mode_academic">Claridad académica</option>
+                                    <option value="literary_polish" data-i18n="transform:mode_literary">Pulido literario</option>
+                                    <option value="ocr_structure" data-i18n="transform:mode_ocr">Corregir OCR</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="sampleColumns" class="sample-variant-grid"></div>
+                    </section>
+
+                    <!-- Action buttons -->
+                    <div class="sample-action-row">
+                        <button class="btn btn-primary" id="sampleRunBtn">
+                            <span class="material-symbols-outlined">play_circle</span>
+                            <span data-i18n="sample:run">Run</span>
+                        </button>
+                        <button class="btn btn-danger hidden" id="sampleStopBtn">
+                            <span class="material-symbols-outlined">stop_circle</span>
+                            <span data-i18n="sample:stop">Stop</span>
+                        </button>
+                        <button class="btn btn-secondary" id="sampleCopyMdBtn" disabled>
+                            <span class="material-symbols-outlined">content_copy</span>
+                            <span data-i18n="sample:copy_markdown">Copy as Markdown</span>
+                        </button>
+                    </div>
+
+                    <!-- Warnings -->
+                    <div id="sampleWarnings" style="margin-top: 14px;"></div>
+
+                    <!-- Run status -->
+                    <div id="sampleRunStatus" class="sample-run-status hidden" aria-live="polite"></div>
+
+                    <!-- Results -->
+                    <div id="sampleResults" style="margin-top: 18px;">
+                        <p data-i18n="sample:no_results_yet" style="color: var(--text-muted-light); font-style: italic; text-align: center; padding: 20px;">No results yet. Pick a file, configure columns, and click Run.</p>
+                    </div>
+
+                    <!-- Integrated sample by pipeline -->
+                    <section id="sampleIntegratedSection" class="sample-integrated-section hidden">
+                        <div class="sample-integrated-title">
+                            <div>
+                                <span class="material-symbols-outlined">library_books</span>
+                                <h3 data-i18n="sample:integrated_title">Muestra integrada</h3>
+                            </div>
+                            <p data-i18n="sample:integrated_hint">Une los fragmentos seleccionados en orden para leer cada pipeline como una sola muestra continua.</p>
+                        </div>
+                        <div id="sampleIntegratedResults" class="sample-integrated-results"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Settings -->
+        <div id="tab-settings" class="hidden">
+        <div class="main-card">
+            <div class="card-body">
+                <!-- Provider & Defaults (Collapsible) -->
+                <div class="prompt-options-toggle" onclick="toggleSettingsOptions()">
+                    <span style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="material-symbols-outlined">tune</span>
+                        <span data-i18n="settings:provider_and_defaults">Provider &amp; Defaults</span>
+                    </span>
+                    <span id="settingsOptionsIcon" class="material-symbols-outlined">expand_more</span>
+                </div>
+
+                <div id="settingsOptionsSection" class="hidden">
+                    <!-- Provider + API Settings Row -->
+                    <div id="providerRow" style="display: grid; grid-template-columns: 1fr 2fr; gap: 15px; margin-bottom: 15px; align-items: end;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="settings:ai_provider">AI Provider</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="llmProvider">
+                                    <option value="ollama">Ollama (Local)</option>
+                                    <option value="poe">Poe (Multi-Provider)</option>
+                                    <option value="deepseek">DeepSeek (Cloud API)</option>
+                                    <option value="mistral">Mistral (Cloud API)</option>
+                                    <option value="gemini">Gemini (Cloud)</option>
+                                    <option value="openai">OpenAI-Compatible</option>
+                                    <option value="openrouter">OpenRouter (200+ models)</option>
+                                    <option value="nim">NVIDIA NIM (Cloud API)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Ollama Endpoint -->
+                        <div class="form-group" id="ollamaSettings" style="margin-bottom: 0;">
+                            <label>
+                                <span data-i18n="settings:api_endpoint">API Endpoint</span>
+                                <span id="apiEndpointBadge" class="badge badge-customized" data-i18n="settings:endpoint_custom_badge" style="display: none; margin-left: 8px; font-size: 0.75rem; background: #f59e0b; color: white; padding: 2px 8px; border-radius: 12px;">custom</span>
+                            </label>
+                            <div class="neu-inset-light" style="display: flex; gap: 8px;">
+                                <input type="text" class="form-control" id="apiEndpoint" value="http://localhost:11434/api/generate" style="flex: 1;">
+                                <button type="button" id="resetApiEndpointBtn" class="btn btn-secondary" data-i18n-attr="title:settings:reset_endpoint_title" style="display: none; padding: 8px 12px; white-space: nowrap;" title="Reset to server configuration">
+                                    <span class="material-symbols-outlined" style="font-size: 18px;">restart_alt</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Gemini API Key -->
+                        <div class="form-group" id="geminiSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span> <span id="geminiKeyStatus" class="key-status"></span></label>
+                            <div class="neu-inset-light">
+                                <input type="password" class="form-control" id="geminiApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_gemini;title:settings:api_key_rotation_tip" placeholder="Enter Gemini API key" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
+                            </div>
+                        </div>
+
+                        <!-- OpenAI API Key -->
+                        <div class="form-group" id="openaiApiKeyGroup" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span> <span id="openaiKeyStatus" class="key-status"></span></label>
+                            <div class="neu-inset-light">
+                                <input type="password" class="form-control" id="openaiApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_openai;title:settings:api_key_rotation_tip" placeholder="Enter OpenAI API key" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
+                            </div>
+                        </div>
+
+                        <!-- OpenRouter API Key -->
+                        <div class="form-group" id="openrouterSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span> <span id="openrouterKeyStatus" class="key-status"></span></label>
+                            <div class="neu-inset-light">
+                                <input type="password" class="form-control" id="openrouterApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_openrouter;title:settings:api_key_rotation_tip" placeholder="sk-or-v1-..." autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
+                            </div>
+                        </div>
+
+                        <!-- Mistral API Key -->
+                        <div class="form-group" id="mistralSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span> <span id="mistralKeyStatus" class="key-status"></span></label>
+                            <div class="neu-inset-light">
+                                <input type="password" class="form-control" id="mistralApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_mistral;title:settings:api_key_rotation_tip" placeholder="Enter Mistral API key" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
+                            </div>
+                        </div>
+
+                        <!-- DeepSeek API Key -->
+                        <div class="form-group" id="deepseekSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span> <span id="deepseekKeyStatus" class="key-status"></span></label>
+                            <div class="neu-inset-light">
+                                <input type="password" class="form-control" id="deepseekApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_deepseek;title:settings:api_key_rotation_tip" placeholder="Enter DeepSeek API key" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
+                            </div>
+                        </div>
+
+                        <!-- Poe API Key -->
+                        <div class="form-group" id="poeSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span> <span id="poeKeyStatus" class="key-status"></span></label>
+                            <div class="neu-inset-light">
+                                <input type="password" class="form-control" id="poeApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_poe;title:settings:api_key_rotation_tip" placeholder="Get key at poe.com/api_key" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
+                            </div>
+                        </div>
+
+                        <!-- NVIDIA NIM API Key -->
+                        <div class="form-group" id="nimSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span> <span id="nimKeyStatus" class="key-status"></span></label>
+                            <div class="neu-inset-light">
+                                <input type="password" class="form-control" id="nimApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_nim;title:settings:api_key_rotation_tip" placeholder="Get key at build.nvidia.com" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Model Selection Row (Full Width) -->
+                    <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin-bottom: 15px; align-items: end;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="settings:model">Model Selection</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="model">
+                                    <option value="" data-i18n="common:loading">Loading...</option>
+                                </select>
+                            </div>
+                            <!-- Thinking model warning -->
+                            <div id="thinkingModelWarning" style="display: none; margin-top: 8px; padding: 8px 10px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 8px;">
+                                <p id="thinkingModelWarningText" style="margin: 0; font-size: 13px; color: #991b1b; white-space: pre-line;"></p>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" onclick="refreshModels()" data-i18n-attr="title:settings:refresh_models_title" title="Refresh model list" style="height: 44px; padding: 0 1rem;">
+                            <span class="material-symbols-outlined">refresh</span>
+                        </button>
+                    </div>
+
+                    <!-- OpenAI Endpoint Row (shown only for OpenAI provider) -->
+                    <div id="openaiEndpointRow" style="display: none; margin-bottom: 15px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>
+                                <span data-i18n="settings:api_endpoint">API Endpoint</span>
+                                <span id="openaiEndpointBadge" class="badge badge-customized" data-i18n="settings:endpoint_custom_badge" style="display: none; margin-left: 8px; font-size: 0.75rem; background: #f59e0b; color: white; padding: 2px 8px; border-radius: 12px;">custom</span>
+                            </label>
+                            <div class="neu-inset-light" style="display: flex; gap: 8px;">
+                                <input type="text" class="form-control" id="openaiEndpoint" value="https://api.openai.com/v1/chat/completions" placeholder="https://api.openai.com/v1/chat/completions" style="flex: 1;">
+                                <button type="button" id="resetOpenaiEndpointBtn" class="btn btn-secondary" data-i18n-attr="title:settings:reset_endpoint_title" style="display: none; padding: 8px 12px; white-space: nowrap;" title="Reset to server configuration">
+                                    <span class="material-symbols-outlined" style="font-size: 18px;">restart_alt</span>
+                                </button>
+                            </div>
+                            <small data-i18n="settings:openai_local_servers_hint" style="color: var(--text-muted-light); font-size: 0.75rem; margin-top: 0.5rem; display: block;">Local servers: llama.cpp (8080), LM Studio (1234), vLLM, etc.</small>
+                        </div>
+                    </div>
+
+                    <!-- Output Filename Pattern -->
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label data-i18n="settings:naming_convention_label">Naming Convention</label>
+                        <div class="neu-inset-light">
+                            <input type="text" class="form-control" id="outputFilenamePattern" value="{originalName} ({targetLang}).{ext}" data-i18n-attr="title:settings:naming_convention_input_title" title="Use {originalName}, {targetLang}, {sourceLang}, {model}, {date}, {datetime}, {ext} as placeholders">
+                        </div>
+                        <small data-i18n-html="settings:naming_convention_help" style="color: var(--text-muted-light); font-size: 0.6875rem; margin-top: 0.5rem; display: block;">
+                            Placeholders: {originalName}, {targetLang}, {sourceLang}, {model}, {date}, {datetime}, {ext}<br>
+                            Example: {originalName} ({targetLang}) ({model})_{date}.{ext}
+                        </small>
+                    </div>
+
+                    <!-- Output Format -->
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label data-i18n="settings:output_format_label">Output Format</label>
+                        <div class="neu-inset-light">
+                            <select class="form-control" id="outputFormat">
+                                <option value="auto" data-i18n="settings:output_format_auto">Auto (native)</option>
+                                <option value="txt" data-i18n="settings:output_format_txt">TXT</option>
+                                <option value="docx" data-i18n="settings:output_format_docx">DOCX</option>
+                                <option value="pdf" data-i18n="settings:output_format_pdf">PDF</option>
+                                <option value="epub" data-i18n="settings:output_format_epub">EPUB</option>
+                            </select>
+                        </div>
+                        <small data-i18n="settings:output_format_help" style="color: var(--text-muted-light); font-size: 0.6875rem; margin-top: 0.5rem; display: block;">
+                            Auto keeps EPUB/DOCX/SRT native and extracts PDFs to TXT. Choose TXT, DOCX, PDF, or EPUB to convert the final translation or refinement.
+                        </small>
+                    </div>
+
+                    <!-- Don't auto-pause on rate limit (runtime behavior, not a stylistic option) -->
+                    <div class="option-item">
+                        <label class="option-item__label">
+                            <input type="checkbox" id="disableAutoPause">
+                            <div>
+                                <span class="option-item__title" data-i18n="settings:disable_auto_pause_title">Automatically resume after a temporary rate limit (HTTP 429)</span>
+                                <p class="option-item__description" data-i18n-html="settings:disable_auto_pause_description">
+                                    Enabled by default for long books: waits for <code>Retry-After</code> and continues from the last checkpoint. Exhausted credits still pause the job. Use "Interrupt" to cancel the resume.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Save Settings Button -->
+                    <div class="form-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                        <button type="button" id="saveSettingsBtn" class="btn btn-primary" style="width: 100%;" onclick="saveSettings()" disabled>
+                            <span class="material-symbols-outlined">save</span>
+                            <span data-i18n="settings:save_settings">Save Settings to .env</span>
+                        </button>
+                        <p data-i18n-html="settings:save_settings_help" style="margin: 8px 0 15px 0; font-size: 0.6875rem; color: var(--text-muted-light);">
+                            Saves API keys, endpoints, naming convention, and current model as default values in the <code>.env</code> file. Changes in this section are <strong>not</strong> auto-saved.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Translation Options (Collapsible) -->
+                <div class="prompt-options-toggle" onclick="togglePromptOptions()">
+                    <span style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="material-symbols-outlined">edit_note</span>
+                        <span data-i18n="settings:translation_options">Translation Options</span>
+                    </span>
+                    <span id="promptOptionsIcon" class="material-symbols-outlined">expand_more</span>
+                </div>
+
+                <div id="promptOptionsSection" class="hidden">
+                    <!-- Bilingual Output -->
+                    <div class="option-item">
+                        <label class="option-item__label">
+                            <input type="checkbox" id="bilingualMode">
+                            <div>
+                                <span class="option-item__title" data-i18n="settings:option_bilingual_title">Bilingual Output</span>
+                                <p class="option-item__description" data-i18n="settings:option_bilingual_description">
+                                    Include original text alongside the translation. Each chunk displays the source text followed by its translation, ideal for language learning or side-by-side comparison.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Plain Text Mode (EPUB / DOCX plain translation) -->
+                    <div class="option-item">
+                        <label class="option-item__label">
+                            <input type="checkbox" id="plainTextMode">
+                            <div>
+                                <span class="option-item__title" data-i18n="settings:option_plain_text_title">Plain Text Mode (EPUB / DOCX)</span>
+                                <p class="option-item__description" data-i18n-html="settings:option_plain_text_description">
+                                    Very well suited to simple novels and plain prose where structure matters less than reading the translated text. Only paragraph text is sent to the LLM, inline styles and complex markup are dropped. Headings, lists and blockquotes are kept; images stay in the output and are regrouped at the end of their original paragraph. Faster and far more reliable on small or local LLMs that struggle with <code>[id0]</code> placeholders. Less ideal for technical books, illustrated guides or anything where layout carries meaning. Only applies to EPUB and DOCX files.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Text Cleanup (OCR Correction) -->
+                    <div class="option-item">
+                        <label class="option-item__label">
+                            <input type="checkbox" id="literaryContinuity">
+                            <div>
+                                <span class="option-item__title" data-i18n="settings:option_literary_continuity_title">Literary Continuity Mode</span>
+                                <p class="option-item__description" data-i18n="settings:option_literary_continuity_description">
+                                    Keeps a compact memory of characters, recent events, names, and continuity doubts for long novels. Adds a small prompt block per chunk and writes a continuity report next to the output file.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
+                        <label data-i18n="settings:text_type_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
+                            Text type
+                        </label>
+                        <div class="neu-inset-light">
+                            <select id="textTypeMode" class="form-control" style="margin-bottom: 0;">
+                                <option value="auto" data-i18n="settings:text_type_auto">Detect automatically</option>
+                                <option value="literature" data-i18n="settings:text_type_literature">Literature / novel</option>
+                                <option value="general" data-i18n="settings:text_type_general">General / disable specialty mode</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="option-item">
+                        <label class="option-item__label">
+                            <input type="checkbox" id="textCleanup">
+                            <div>
+                                <span class="option-item__title" data-i18n="settings:option_text_cleanup_title">Text Cleanup (OCR Correction)</span>
+                                <p class="option-item__description" data-i18n="settings:option_text_cleanup_description">
+                                    For poorly formatted or OCR-scanned texts. Instructs the LLM to fix: broken line breaks, double spaces, punctuation errors, and merge incorrectly split paragraphs.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Glossary Selector -->
+                    <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
+                        <label data-i18n="settings:glossary_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
+                            Glossary
+                        </label>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 5px;">
+                            <div class="neu-inset-light" style="flex: 1;">
+                                <select id="glossarySelect" class="form-control" style="margin-bottom: 0;">
+                                    <option value="" data-i18n="settings:select_none">None</option>
+                                </select>
+                            </div>
+                            <button type="button" id="glossaryRefreshBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                            </button>
+                            <button type="button" id="glossaryManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:glossary_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage glossaries">
+                                <span class="material-symbols-outlined" style="font-size: 16px;">settings</span>
+                            </button>
+                        </div>
+                        <div id="glossaryInfoCard" class="glossary-info-card" style="display: none;"></div>
+                        <p data-i18n-html="settings:glossary_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                            Inject a curated source-to-target term list into every chunk's prompt to keep entity translations consistent. Click <strong>Manage</strong> to create, edit or auto-extract terms.
+                        </p>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
+                        <label data-i18n="settings:book_profile_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
+                            Editorial profile
+                        </label>
+                        <div class="neu-inset-light">
+                            <select id="bookProfileSelect" class="form-control" style="margin-bottom: 0;">
+                                <option value="" data-i18n="settings:select_none">None</option>
+                            </select>
+                        </div>
+                        <p data-i18n="settings:book_profile_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                            Use a book-specific editorial profile and its approved glossary during translation to keep names, terms, titles, acronyms, register, and recurring concepts consistent without changing fidelity.
+                        </p>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
+                        <label data-i18n="settings:profile_strength_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
+                            Profile supervision
+                        </label>
+                        <div class="neu-inset-light">
+                            <select id="profileStrengthSelect" class="form-control" style="margin-bottom: 0;">
+                                <option value="light" data-i18n="settings:profile_strength_light">Light - prompt and glossary only</option>
+                                <option value="balanced" selected data-i18n="settings:profile_strength_balanced">Balanced - local checks and targeted repair</option>
+                                <option value="strict" data-i18n="settings:profile_strength_strict">Strict - DeepSeek Pro audit and repair</option>
+                            </select>
+                        </div>
+                        <p data-i18n="settings:profile_strength_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                            Controls how strongly the active editorial profile audits each chunk. Balanced keeps the current fast flow; strict spends more tokens only when a book needs close supervision.
+                        </p>
+                    </div>
+
+                    <!-- Custom Instructions -->
+                    <div class="form-group" style="margin-bottom: 0; margin-top: 15px;">
+                        <label data-i18n="settings:custom_instructions_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
+                            Custom Instructions
+                        </label>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 5px;">
+                            <div class="neu-inset-light" style="flex: 1;">
+                                <select id="customInstructionSelect" class="form-control" style="margin-bottom: 0;">
+                                    <option value="" data-i18n="settings:select_none">None</option>
+                                    <!-- Options populated dynamically via JavaScript -->
+                                </select>
+                            </div>
+                            <button type="button" id="refreshCustomInstructionsBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;" title="Refresh list">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                            </button>
+                            <button type="button" id="openCustomInstructionsFolderBtn" class="btn btn-sm" data-i18n-attr="title:settings:open_folder_title" style="padding: 6px 10px; background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;" title="Open folder">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            </button>
+                        </div>
+                        <p data-i18n-html="settings:custom_instructions_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                            Select custom instructions from the <code>Custom_Instructions/</code> folder. Use <code>.yaml</code> files with <code>translation:</code> and/or <code>refinement:</code> keys to scope a preset per phase. Legacy <code>.txt</code> files still work and apply to both phases.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Notifications (Collapsible) -->
+                <div class="prompt-options-toggle" onclick="toggleNotificationOptions()">
+                    <span style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="material-symbols-outlined">notifications_active</span>
+                        <span data-i18n="settings:notifications">Notifications</span>
+                        <span id="notifyStatusBadge" style="display: none; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #10b981; color: white;">ON</span>
+                    </span>
+                    <span id="notificationOptionsIcon" class="material-symbols-outlined">expand_more</span>
+                </div>
+
+                <div id="notificationOptionsSection" class="hidden">
+                    <p data-i18n-html="settings:notifications_intro" style="margin: 5px 0 15px 0; font-size: 0.875rem; color: var(--text-muted-light); line-height: 1.5;">
+                        Get pinged on your phone, Discord channel, or any HTTP endpoint when a translation reaches a terminal state.
+                        Useful for long-running jobs with local models. Compatible with <strong>ntfy</strong>, <strong>gotify</strong>, <strong>Discord</strong>, <strong>Slack</strong>, <strong>Healthchecks.io</strong>, or any custom webhook.
+                        See <a href="https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/NOTIFICATIONS.md" target="_blank" rel="noopener" style="color: var(--primary-light);">docs/NOTIFICATIONS.md</a> for the full reference.
+                    </p>
+
+                    <!-- Quick presets -->
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label data-i18n="settings:notifications_presets_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">Quick presets</label>
+                        <p data-i18n="settings:notifications_presets_help" style="margin: 0 0 8px 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                            Pick a service to pre-fill URL and payload, then edit the values to match your account.
+                        </p>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            <button type="button" class="btn btn-secondary" data-notif-preset="ntfy" style="padding: 0.45rem 0.9rem; font-size: 0.85rem;">ntfy.sh</button>
+                            <button type="button" class="btn btn-secondary" data-notif-preset="gotify" style="padding: 0.45rem 0.9rem; font-size: 0.85rem;">gotify</button>
+                            <button type="button" class="btn btn-secondary" data-notif-preset="discord" style="padding: 0.45rem 0.9rem; font-size: 0.85rem;">Discord</button>
+                            <button type="button" class="btn btn-secondary" data-notif-preset="slack" style="padding: 0.45rem 0.9rem; font-size: 0.85rem;">Slack</button>
+                            <button type="button" class="btn btn-secondary" data-notif-preset="healthchecks" style="padding: 0.45rem 0.9rem; font-size: 0.85rem;">Healthchecks.io</button>
+                            <button type="button" class="btn btn-secondary" data-notif-preset="clear" data-i18n="settings:notifications_preset_reset" style="padding: 0.45rem 0.9rem; font-size: 0.85rem;">Reset (disable)</button>
+                        </div>
+                    </div>
+
+                    <!-- URL + method row -->
+                    <div style="display: grid; grid-template-columns: 1fr 140px; gap: 15px; margin-bottom: 15px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="settings:notifications_url">Webhook URL</label>
+                            <div class="neu-inset-light">
+                                <input type="text" class="form-control" id="notifyWebhookUrl" data-i18n-attr="placeholder:settings:notifications_url_placeholder" placeholder="https://ntfy.sh/your-unique-topic" autocomplete="off">
+                            </div>
+                            <small data-i18n-html="settings:notifications_url_help" style="color: var(--text-muted-light); font-size: 0.6875rem; margin-top: 0.4rem; display: block;">
+                                Leave empty to disable notifications entirely. Placeholders supported: <code>{event}</code>, <code>{file}</code>, <code>{translation_id}</code>, ...
+                            </small>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label data-i18n="settings:notifications_method">Method</label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="notifyWebhookMethod">
+                                    <option value="POST">POST</option>
+                                    <option value="GET">GET</option>
+                                    <option value="PUT">PUT</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Headers -->
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label data-i18n="settings:notifications_headers_label">Headers (JSON object, optional)</label>
+                        <div class="neu-inset-light">
+                            <textarea class="form-control" id="notifyWebhookHeaders" rows="2" placeholder='{"Authorization":"Bearer YOUR_TOKEN"}' style="font-family: monospace; font-size: 0.85rem;"></textarea>
+                        </div>
+                        <small data-i18n="settings:notifications_headers_help" style="color: var(--text-muted-light); font-size: 0.6875rem; margin-top: 0.4rem; display: block;">
+                            For services requiring auth (Bearer tokens, API keys). Header values are also templatable.
+                        </small>
+                    </div>
+
+                    <!-- Payload -->
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label data-i18n="settings:notifications_payload_label">Payload template (JSON, optional)</label>
+                        <div class="neu-inset-light">
+                            <textarea class="form-control" id="notifyWebhookPayload" rows="3" placeholder='{"title":"Translation {event}","message":"{file} in {duration_seconds:.0f}s"}' style="font-family: monospace; font-size: 0.85rem;"></textarea>
+                        </div>
+                        <small data-i18n-html="settings:notifications_payload_help" style="color: var(--text-muted-light); font-size: 0.6875rem; margin-top: 0.4rem; display: block;">
+                            Leave empty for the default gotify-compatible payload. String values support placeholders like <code>{event}</code>, <code>{file}</code>, <code>{duration_seconds}</code>, <code>{provider}</code>, <code>{model}</code>, <code>{source_lang}</code>, <code>{target_lang}</code>, <code>{error}</code>.
+                        </small>
+                    </div>
+
+                    <!-- Events row -->
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label data-i18n="settings:notifications_trigger_events_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 8px; display: block;">Trigger events</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="checkbox" id="notifyOnSuccess" checked>
+                                <span data-i18n-html="settings:notifications_event_success"><strong>Success</strong> — translation completed</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="checkbox" id="notifyOnFailure" checked>
+                                <span data-i18n-html="settings:notifications_event_failure"><strong>Failure</strong> — fatal error</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="checkbox" id="notifyOnInterruption">
+                                <span data-i18n-html="settings:notifications_event_interruption"><strong>Interruption</strong> — paused / rate-limit</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Timeout -->
+                    <div class="form-group" style="margin-bottom: 15px; max-width: 260px;">
+                        <label data-i18n="settings:notifications_timeout_label">HTTP timeout (seconds)</label>
+                        <div class="neu-inset-light">
+                            <input type="number" class="form-control" id="notifyTimeoutSeconds" min="1" max="120" step="1" value="5">
+                        </div>
+                        <small data-i18n="settings:notifications_timeout_help" style="color: var(--text-muted-light); font-size: 0.6875rem; margin-top: 0.4rem; display: block;">
+                            Increase if you see TLS handshake timeouts on slow networks.
+                        </small>
+                    </div>
+
+                    <!-- Save + Test row -->
+                    <div class="form-group" style="margin-bottom: 0; padding-top: 12px; border-top: 1px dashed var(--border-light);">
+                        <label data-i18n="settings:notifications_save_and_test_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 8px; display: block;">Save and test</label>
+                        <p data-i18n-html="settings:notifications_save_and_test_help" style="margin: 0 0 10px 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                            Click <strong>Save</strong> first, then <strong>Send test</strong>. The test uses the configuration currently on disk.
+                        </p>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-primary" onclick="saveSettings()" style="padding: 0.6rem 1.2rem;">
+                                <span class="material-symbols-outlined" style="font-size: 1.1rem; vertical-align: middle;">save</span>
+                                <span data-i18n="common:save">Save</span>
+                            </button>
+                            <div class="neu-inset-light" style="min-width: 160px;">
+                                <select class="form-control" id="notifyTestEvent">
+                                    <option value="success" data-i18n="settings:notifications_event_success_short">success</option>
+                                    <option value="failure" data-i18n="settings:notifications_event_failure_short">failure</option>
+                                    <option value="interruption" data-i18n="settings:notifications_event_interruption_short">interruption</option>
+                                </select>
+                            </div>
+                            <button type="button" id="notifyTestBtn" class="btn btn-secondary" onclick="testNotification()" style="padding: 0.6rem 1.2rem;">
+                                <span class="material-symbols-outlined" style="font-size: 1.1rem; vertical-align: middle;">send</span>
+                                <span data-i18n="settings:notifications_send_test">Send test</span>
+                            </button>
+                            <span id="notifyTestResult" style="font-size: 0.8125rem; color: var(--text-muted-light);"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div><!-- /#tab-settings -->
+
+        <!-- Tab: Token Usage -->
+        <div id="tab-usage" class="hidden">
+            <div class="main-card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">monitoring</span>
+                    <h2 data-i18n="common:usage_title">Uso de tokens y costos</h2>
+                    <div style="margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-secondary" id="usageBackfillBtn" style="padding: 0.5rem 1rem;">
+                            <span class="material-symbols-outlined">history</span>
+                            <span data-i18n="common:usage_backfill">Estimar histórico</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="usageRefreshBtn" style="padding: 0.5rem 1rem;">
+                            <span class="material-symbols-outlined">refresh</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body" id="usageContent">
+                    <div id="usageLoading" class="usage-loading hidden" data-i18n="common:usage_loading">Cargando uso...</div>
+                    <p class="usage-note" data-i18n="common:usage_note">
+                        Registra cada llamada al modelo con tokens de entrada, salida y costo estimado. Cuando esta pestaña está abierta se actualiza en vivo; los eventos históricos reconstruidos desde checkpoints aparecen como estimados.
+                    </p>
+
+                    <div class="usage-metric-grid">
+                        <div class="usage-metric">
+                            <span data-i18n="common:usage_total_cost">Costo total</span>
+                            <strong id="usageTotalCost">$0.0000</strong>
+                        </div>
+                        <div class="usage-metric">
+                            <span data-i18n="common:usage_total_tokens">Tokens totales</span>
+                            <strong id="usageTotalTokens">0</strong>
+                        </div>
+                        <div class="usage-metric">
+                            <span data-i18n="common:usage_input">Entrada</span>
+                            <strong id="usagePromptTokens">0</strong>
+                        </div>
+                        <div class="usage-metric">
+                            <span data-i18n="common:usage_output">Salida</span>
+                            <strong id="usageCompletionTokens">0</strong>
+                        </div>
+                        <div class="usage-metric">
+                            <span data-i18n="common:usage_calls">Llamadas</span>
+                            <strong id="usageCallCount">0</strong>
+                        </div>
+                        <div class="usage-metric">
+                            <span data-i18n="common:usage_estimated_events">Eventos estimados</span>
+                            <strong id="usageEstimatedEvents">0</strong>
+                        </div>
+                    </div>
+
+                    <div class="usage-section usage-live-section">
+                        <div class="usage-section-header">
+                            <h3 data-i18n="common:usage_live_title">Procesos en vivo</h3>
+                            <span id="usageLiveStatus" data-i18n="common:usage_live_status_default">Actualización automática al abrir esta pestaña</span>
+                        </div>
+                        <div id="usageLiveJobsList" class="usage-live-list"></div>
+                        <p id="usageLiveEmpty" class="usage-empty hidden" data-i18n="common:usage_live_empty">No hay procesos activos con gasto de tokens en este momento.</p>
+                    </div>
+
+                    <div class="usage-section">
+                        <div class="usage-section-header">
+                            <h3 data-i18n="common:usage_daily_title">Gasto diario</h3>
+                            <span data-i18n="common:usage_daily_subtitle">Tokens procesados por día</span>
+                        </div>
+                        <canvas id="usageDailyChart" class="usage-chart" height="180"></canvas>
+                    </div>
+
+                    <div class="usage-section">
+                        <div class="usage-section-header">
+                            <h3 data-i18n="common:usage_books_title">Por libro o proceso</h3>
+                            <span data-i18n="common:usage_books_subtitle">Se conserva aunque borres archivos de salida</span>
+                        </div>
+                        <div id="usageBooksList" class="usage-books-list"></div>
+                        <p id="usageBooksEmpty" class="usage-empty hidden" data-i18n="common:usage_empty">Sin datos todavía.</p>
+                    </div>
+
+                    <div class="usage-two-col">
+                        <div class="usage-section">
+                            <div class="usage-section-header">
+                                <h3 data-i18n="common:usage_models_title">Por modelo</h3>
+                            </div>
+                            <div class="usage-table-wrap">
+                                <table class="file-table usage-table">
+                                    <thead>
+                                        <tr><th data-i18n="common:usage_model">Modelo</th><th data-i18n="common:usage_calls">Llamadas</th><th data-i18n="common:usage_tokens">Tokens</th><th data-i18n="common:usage_cost">Costo</th></tr>
+                                    </thead>
+                                    <tbody id="usageModelsBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="usage-section">
+                            <div class="usage-section-header">
+                                <h3 data-i18n="common:usage_phases_title">Por fase</h3>
+                            </div>
+                            <div class="usage-table-wrap">
+                                <table class="file-table usage-table">
+                                    <thead>
+                                        <tr><th data-i18n="common:usage_phase">Fase</th><th data-i18n="common:usage_calls">Llamadas</th><th data-i18n="common:usage_tokens">Tokens</th><th data-i18n="common:usage_cost">Costo</th></tr>
+                                    </thead>
+                                    <tbody id="usageProcessesBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="usage-section">
+                        <div class="usage-section-header">
+                            <h3 data-i18n="common:usage_recent_events">Eventos recientes</h3>
+                            <span data-i18n="common:usage_recent_subtitle">No guarda prompts completos, solo hashes y métricas</span>
+                        </div>
+                        <div class="usage-table-wrap">
+                            <table class="file-table usage-table usage-events-table">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="common:usage_date">Fecha</th>
+                                        <th data-i18n="common:usage_phase">Fase</th>
+                                        <th data-i18n="common:usage_book">Libro</th>
+                                        <th data-i18n="common:usage_model">Modelo</th>
+                                        <th data-i18n="common:usage_input">Entrada</th>
+                                        <th data-i18n="common:usage_output">Salida</th>
+                                        <th data-i18n="common:usage_cost">Costo</th>
+                                        <th data-i18n="common:usage_status">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usageEventsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /#tab-usage -->
+
+        <!-- Tab: Files -->
+        <div id="tab-files" class="hidden">
+
+        <!-- File Management Section -->
+        <div class="main-card">
+            <div class="card-header">
+                <span class="material-symbols-outlined">folder_open</span>
+                <h2 data-i18n="files:title">File Management</h2>
+                <div style="margin-left: auto; display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="openOutputFolder()" data-i18n-attr="title:files:open_folder_title" title="Open translations folder" style="padding: 0.5rem 1rem;">
+                        <span class="material-symbols-outlined">folder_open</span>
+                        <span data-i18n="files:open_folder">Open folder</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="refreshFileList()" data-i18n-attr="title:files:refresh_list_title" title="Refresh file list" style="padding: 0.5rem 1rem;">
+                        <span class="material-symbols-outlined">refresh</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div id="fileManagementSection">
+                    <div class="file-actions" style="margin-bottom: 20px; display: flex; gap: 10px;">
+                        <button class="btn btn-primary" disabled id="batchDownloadBtn">
+                            <span class="material-symbols-outlined">download</span>
+                            <span data-i18n="files:download_selected">Download Selected (Zip)</span>
+                        </button>
+                        <button class="btn btn-danger" disabled id="batchDeleteBtn">
+                            <span class="material-symbols-outlined">delete</span>
+                            <span data-i18n="files:delete_selected">Delete Selected</span>
+                        </button>
+                        <label style="margin-left: auto; display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="selectAllFiles">
+                            <span data-i18n="files:select_all">Select All</span>
+                        </label>
+                    </div>
+
+                    <div id="fileQualityPanel" class="file-quality-panel hidden">
+                        <div class="file-quality-panel-title">
+                            <span class="material-symbols-outlined">fact_check</span>
+                            <div>
+                                <h3 data-i18n="files:quality_title">Pre-download review</h3>
+                                <p data-i18n="files:quality_subtitle">Review editorial quality and EPUB structure before downloading.</p>
+                            </div>
+                        </div>
+                        <div id="fileQualityContent">
+                            <div class="file-quality-empty">
+                                <span class="material-symbols-outlined">ads_click</span>
+                                <p data-i18n="files:quality_empty">Choose a file review button to inspect it before downloading.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="fileListLoading" style="text-align: center; padding: 20px;">
+                        <p data-i18n="common:loading">Loading files...</p>
+                    </div>
+
+                    <div id="fileManagementContainer" style="display: none;">
+                        <table class="file-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 36px;"></th>
+                                    <th data-i18n="files:filename_column">Filename</th>
+                                    <th data-i18n="files:actions_column" style="width: 100px; text-align: center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fileTableBody">
+                            </tbody>
+                        </table>
+
+                        <div id="fileListEmpty" style="text-align: center; padding: 40px; display: none;">
+                            <p data-i18n="files:no_files" style="color: var(--text-muted-light);">No files found in the translated files directory</p>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-light);">
+                        <p style="color: var(--text-muted-light); font-size: 0.875rem;">
+                            <strong data-i18n="files:total_label">Total:</strong> <span id="totalFileCount">0</span> <span data-i18n="files:files_unit">files</span>,
+                            <span id="totalFileSize">0 MB</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        </div><!-- /#tab-files -->
+
+        <!-- Tab: Glossaries -->
+        <div id="tab-glossaries" class="hidden">
+
+            <!-- LIST VIEW -->
+            <div class="main-card" id="glossaryListView">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">menu_book</span>
+                    <h2 data-i18n="glossary:title">Glossaries</h2>
+                    <button type="button" class="btn btn-primary" id="glossaryNewBtn" style="margin-left: auto; padding: 0.5rem 1rem;">
+                        <span class="material-symbols-outlined" style="font-size: 1rem;">add</span>
+                        <span data-i18n="glossary:new_glossary">New glossary</span>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <p data-i18n-html="glossary:list_intro" style="color: var(--text-muted-light); font-size: 0.9rem; margin: 0 0 15px; line-height: 1.5;">
+                        Tired of seeing the same character's name translated three different ways? A glossary gives the model a <strong>fixed mapping</strong> for any term you want to control: <strong>names, places, domain vocabulary, or stylistic choices</strong>. <strong>Reusable across jobs</strong>. <strong>Assign</strong> one below (or via <em>Settings → Translation Options</em>) to inject it into every chunk's prompt.
+                    </p>
+                    <div class="profile-glossary-section">
+                        <div class="profile-glossary-heading">
+                            <div>
+                                <h3 data-i18n="glossary:profile_glossaries_title">Editorial profile glossaries</h3>
+                                <p data-i18n="glossary:profile_glossaries_help">Book-specific glossaries generated by profile preparation, including pending suggestions.</p>
+                            </div>
+                        </div>
+                        <div id="profileGlossaryListContainer" class="neu-inset-light" style="padding: 12px; background: var(--background-light);">
+                            <div id="profileGlossaryListLoading" data-i18n="common:loading" style="text-align: center; padding: 20px;">Loading...</div>
+                            <div id="profileGlossaryListEmpty" class="hidden" style="padding: 22px 16px; color: var(--text-muted-light);" data-i18n="glossary:profile_glossaries_empty">
+                                No editorial profile glossaries yet.
+                            </div>
+                            <div id="profileGlossaryBulkBar" class="hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--border-color-light); border-radius: 8px; background: rgba(96, 165, 250, 0.08);">
+                                <span id="profileGlossaryBulkLabel" style="font-size: 0.88rem; color: var(--text-muted-light);">0</span>
+                                <div style="display: inline-flex; align-items: center; gap: 8px;">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="profileGlossaryBulkClearBtn" data-i18n="glossary:profile_glossary_bulk_clear">Limpiar</button>
+                                    <button type="button" class="btn btn-danger btn-sm" id="profileGlossaryBulkDeleteBtn">
+                                        <span class="material-symbols-outlined" style="font-size: 0.9rem;">delete</span>
+                                        <span data-i18n="glossary:profile_glossary_bulk_delete">Eliminar seleccionados</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <table id="profileGlossaryListTable" class="file-table hidden">
+                                <colgroup>
+                                    <col style="width: 42px;">
+                                    <col>
+                                    <col style="width: 170px;">
+                                    <col style="width: 118px;">
+                                    <col style="width: 90px;">
+                                    <col style="width: 90px;">
+                                    <col style="width: 95px;">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th class="col-center">
+                                            <input type="checkbox" id="profileGlossarySelectAll" data-i18n-attr="title:glossary:profile_glossary_select_all_title" title="Seleccionar todos los perfiles eliminables">
+                                        </th>
+                                        <th data-i18n="glossary:profile_glossary_profile_column">Profile</th>
+                                        <th data-i18n="glossary:profile_glossary_source_column">Source</th>
+                                        <th data-i18n="glossary:profile_glossary_locale_column">Locale</th>
+                                        <th class="col-center" data-i18n="glossary:profile_glossary_approved_column">Approved</th>
+                                        <th class="col-center" data-i18n="glossary:profile_glossary_pending_column">Pending</th>
+                                        <th class="col-right" data-i18n="glossary:actions_column">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="profileGlossaryListBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="glossaryListContainer" class="neu-inset-light" style="padding: 12px; background: var(--background-light);">
+                        <div id="glossaryListLoading" data-i18n="common:loading" style="text-align: center; padding: 20px;">Loading...</div>
+                        <div id="glossaryListEmpty" class="hidden" style="padding: 40px 20px;">
+                            <div class="glossary-empty-cta">
+                                <p data-i18n="glossary:list_empty_message">No glossaries yet. Create one from scratch or import an existing CSV / JSON file.</p>
+                                <div class="glossary-empty-cta-actions">
+                                    <button type="button" class="btn btn-primary glossary-toolbar-btn" id="glossaryEmptyNewBtn">
+                                        <span class="material-symbols-outlined">add</span>
+                                        <span data-i18n="glossary:new_glossary">New glossary</span>
+                                    </button>
+                                    <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryEmptyListImportBtn">
+                                        <span class="material-symbols-outlined">upload</span>
+                                        <span data-i18n="glossary:import_csv_json">Import CSV/JSON</span>
+                                    </button>
+                                    <input type="file" id="glossaryEmptyImportFile" accept=".csv,.json" style="display: none;">
+                                </div>
+                            </div>
+                        </div>
+                        <table id="glossaryListTable" class="file-table hidden">
+                            <colgroup>
+                                <col>
+                                <col style="width: 110px;">
+                                <col style="width: 110px;">
+                                <col style="width: 80px;">
+                                <col style="width: 160px;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="glossary:name_column">Name</th>
+                                    <th data-i18n="glossary:source_lang_column">Source</th>
+                                    <th data-i18n="glossary:target_lang_column">Target</th>
+                                    <th class="col-center" data-i18n="glossary:terms_column">Terms</th>
+                                    <th class="col-right" data-i18n="glossary:actions_column">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="glossaryListBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PROFILE GLOSSARY DETAIL VIEW -->
+            <div class="main-card hidden" id="profileGlossaryDetailView">
+                <div class="card-header">
+                    <button type="button" class="btn btn-secondary" id="profileGlossaryDetailBackBtn" data-i18n-attr="title:glossary:profile_glossary_back_title" title="Back to glossaries" style="padding: 0.5rem;">
+                        <span class="material-symbols-outlined">arrow_back</span>
+                    </button>
+                    <h2 id="profileGlossaryDetailTitle" data-i18n="glossary:profile_glossary_detail_title" style="margin: 0;">Editorial profile glossary</h2>
+                </div>
+                <div class="card-body">
+                    <p id="profileGlossaryDetailSubtitle" data-i18n="glossary:profile_glossary_detail_subtitle" style="color: var(--text-muted-light); font-size: 0.9rem; margin: 0 0 12px; line-height: 1.45;">
+                        Approved entries are injected only when they match a chunk. Pending suggestions are saved for review and are not applied automatically.
+                    </p>
+                    <div class="profile-glossary-detail-meta" id="profileGlossaryDetailMeta"></div>
+                    <div class="profile-knowledge-summary hidden" id="profileKnowledgeSummary"></div>
+                    <div class="profile-glossary-detail-toolbar">
+                        <div class="neu-inset-light">
+                            <input class="form-control" id="profileGlossaryEntryFilter" type="search" data-i18n-attr="placeholder:glossary:profile_glossary_filter_placeholder" placeholder="Filter entries...">
+                        </div>
+                        <div class="neu-inset-light">
+                            <select class="form-control" id="profileGlossaryStatusFilter">
+                                <option value="" data-i18n="glossary:profile_glossary_filter_all">All</option>
+                                <option value="approved" data-i18n="glossary:profile_glossary_filter_approved">Approved</option>
+                                <option value="pending" data-i18n="glossary:profile_glossary_filter_pending">Pending</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="profileGlossaryEntryBulkBar" class="profile-glossary-entry-bulk hidden">
+                        <span id="profileGlossaryEntryBulkLabel">0</span>
+                        <button type="button" class="btn btn-secondary btn-sm" id="profileGlossaryEntryBulkClearBtn" data-i18n="glossary:profile_glossary_entry_clear_selection">Clear</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="profileGlossaryEntryMergeBtn" data-i18n="glossary:profile_glossary_entry_merge_selected">Merge selected</button>
+                    </div>
+                    <div id="profileGlossaryEntriesContainer" class="neu-inset-light" style="padding: 12px; background: var(--background-light);">
+                        <div id="profileGlossaryEntriesLoading" data-i18n="common:loading" style="text-align: center; padding: 20px;">Loading...</div>
+                        <div id="profileGlossaryEntriesEmpty" class="hidden" style="padding: 22px 16px; color: var(--text-muted-light);" data-i18n="glossary:profile_glossary_entries_empty">
+                            No glossary entries found.
+                        </div>
+                        <table id="profileGlossaryEntriesTable" class="file-table hidden">
+                            <colgroup>
+                                <col style="width: 48px;">
+                                <col style="width: 105px;">
+                                <col style="width: 120px;">
+                                <col>
+                                <col>
+                                <col style="width: 28%;">
+                                <col style="width: 170px;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="glossary:profile_glossary_select_column">Select</th>
+                                    <th data-i18n="glossary:profile_glossary_status_column">Status</th>
+                                    <th data-i18n="glossary:profile_glossary_type_column">Type</th>
+                                    <th data-i18n="glossary:profile_glossary_source_term_column">Source</th>
+                                    <th data-i18n="glossary:profile_glossary_target_term_column">Target</th>
+                                    <th data-i18n="glossary:profile_glossary_rationale_column">Rationale</th>
+                                    <th data-i18n="glossary:profile_glossary_actions_column">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profileGlossaryEntriesBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EDITOR VIEW -->
+            <div class="main-card hidden" id="glossaryEditorView">
+                <div class="card-header">
+                    <button type="button" class="btn btn-secondary" id="glossaryEditorBackBtn" data-i18n-attr="title:glossary:editor_back_title" title="Back to list" style="padding: 0.5rem;">
+                        <span class="material-symbols-outlined">arrow_back</span>
+                    </button>
+                    <h2 id="glossaryEditorTitle" data-i18n="glossary:editor_title" style="margin: 0;">Edit glossary</h2>
+                    <button type="button" class="btn btn-secondary" id="glossaryEditorDeleteBtn" data-i18n-attr="title:glossary:editor_delete_title" title="Delete this glossary" style="margin-left: auto; padding: 0.5rem; color: #ef4444;">
+                        <span class="material-symbols-outlined">delete</span>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <!-- Meta -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px; margin-bottom: 20px; align-items: start;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label><span data-i18n="glossary:name_label">Name</span> <span class="glossary-saved-indicator" id="glossaryEditorNameSaved"><span class="material-symbols-outlined">check_circle</span><span class="text" data-i18n="glossary:saved_indicator">Saved</span></span></label>
+                            <div class="neu-inset-light"><input class="form-control" id="glossaryEditorName" type="text"></div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label><span data-i18n="glossary:source_label">Source</span> <span class="glossary-saved-indicator" id="glossaryEditorSourceLangSaved"><span class="material-symbols-outlined">check_circle</span><span class="text" data-i18n="glossary:saved_indicator">Saved</span></span></label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="glossaryEditorSourceLang">
+                                    <option value="">—</option>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_common" label="Most Common">
+                                        <option value="English">English</option>
+                                        <option value="Chinese">Chinese</option>
+                                        <option value="Spanish">Spanish</option>
+                                        <option value="French">French</option>
+                                        <option value="German">German</option>
+                                        <option value="Japanese">Japanese</option>
+                                        <option value="Korean">Korean</option>
+                                        <option value="Portuguese">Portuguese</option>
+                                        <option value="Russian">Russian</option>
+                                        <option value="Arabic">Arabic</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_european" label="European">
+                                        <option value="Italian">Italian</option>
+                                        <option value="Dutch">Dutch</option>
+                                        <option value="Polish">Polish</option>
+                                        <option value="Swedish">Swedish</option>
+                                        <option value="Norwegian">Norwegian</option>
+                                        <option value="Danish">Danish</option>
+                                        <option value="Finnish">Finnish</option>
+                                        <option value="Greek">Greek</option>
+                                        <option value="Hungarian">Hungarian</option>
+                                        <option value="Czech">Czech</option>
+                                        <option value="Slovak">Slovak</option>
+                                        <option value="Romanian">Romanian</option>
+                                        <option value="Bulgarian">Bulgarian</option>
+                                        <option value="Croatian">Croatian</option>
+                                        <option value="Serbian">Serbian</option>
+                                        <option value="Ukrainian">Ukrainian</option>
+                                        <option value="Catalan">Catalan</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_asian" label="Asian">
+                                        <option value="Hindi">Hindi</option>
+                                        <option value="Bengali">Bengali</option>
+                                        <option value="Urdu">Urdu</option>
+                                        <option value="Punjabi">Punjabi</option>
+                                        <option value="Tamil">Tamil</option>
+                                        <option value="Telugu">Telugu</option>
+                                        <option value="Marathi">Marathi</option>
+                                        <option value="Gujarati">Gujarati</option>
+                                        <option value="Vietnamese">Vietnamese</option>
+                                        <option value="Thai">Thai</option>
+                                        <option value="Indonesian">Indonesian</option>
+                                        <option value="Malay">Malay</option>
+                                        <option value="Tagalog">Tagalog</option>
+                                        <option value="Burmese">Burmese</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_middle_east_africa" label="Middle East &amp; Africa">
+                                        <option value="Persian">Persian</option>
+                                        <option value="Turkish">Turkish</option>
+                                        <option value="Hebrew">Hebrew</option>
+                                        <option value="Swahili">Swahili</option>
+                                        <option value="Amharic">Amharic</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_custom" label="Custom">
+                                        <option value="Other" data-i18n="translation:lang_other_option">Other (Specify)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="neu-inset-light" style="margin-top: 10px; display: none;" id="glossaryEditorCustomSourceLangContainer">
+                                <input type="text" class="form-control" id="glossaryEditorCustomSourceLang" data-i18n-attr="placeholder:translation:custom_source_lang_placeholder" placeholder="Enter custom source language">
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label><span data-i18n="glossary:target_label">Target</span> <span class="glossary-saved-indicator" id="glossaryEditorTargetLangSaved"><span class="material-symbols-outlined">check_circle</span><span class="text" data-i18n="glossary:saved_indicator">Saved</span></span></label>
+                            <div class="neu-inset-light">
+                                <select class="form-control" id="glossaryEditorTargetLang">
+                                    <option value="">—</option>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_common" label="Most Common">
+                                        <option value="Chinese">Chinese</option>
+                                        <option value="English">English</option>
+                                        <option value="Spanish">Spanish</option>
+                                        <option value="French">French</option>
+                                        <option value="German">German</option>
+                                        <option value="Japanese">Japanese</option>
+                                        <option value="Korean">Korean</option>
+                                        <option value="Portuguese">Portuguese</option>
+                                        <option value="Russian">Russian</option>
+                                        <option value="Arabic">Arabic</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_european" label="European">
+                                        <option value="Italian">Italian</option>
+                                        <option value="Dutch">Dutch</option>
+                                        <option value="Polish">Polish</option>
+                                        <option value="Swedish">Swedish</option>
+                                        <option value="Norwegian">Norwegian</option>
+                                        <option value="Danish">Danish</option>
+                                        <option value="Finnish">Finnish</option>
+                                        <option value="Greek">Greek</option>
+                                        <option value="Hungarian">Hungarian</option>
+                                        <option value="Czech">Czech</option>
+                                        <option value="Slovak">Slovak</option>
+                                        <option value="Romanian">Romanian</option>
+                                        <option value="Bulgarian">Bulgarian</option>
+                                        <option value="Croatian">Croatian</option>
+                                        <option value="Serbian">Serbian</option>
+                                        <option value="Ukrainian">Ukrainian</option>
+                                        <option value="Catalan">Catalan</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_asian" label="Asian">
+                                        <option value="Hindi">Hindi</option>
+                                        <option value="Bengali">Bengali</option>
+                                        <option value="Urdu">Urdu</option>
+                                        <option value="Punjabi">Punjabi</option>
+                                        <option value="Tamil">Tamil</option>
+                                        <option value="Telugu">Telugu</option>
+                                        <option value="Marathi">Marathi</option>
+                                        <option value="Gujarati">Gujarati</option>
+                                        <option value="Vietnamese">Vietnamese</option>
+                                        <option value="Thai">Thai</option>
+                                        <option value="Indonesian">Indonesian</option>
+                                        <option value="Malay">Malay</option>
+                                        <option value="Tagalog">Tagalog</option>
+                                        <option value="Burmese">Burmese</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_middle_east_africa" label="Middle East &amp; Africa">
+                                        <option value="Persian">Persian</option>
+                                        <option value="Turkish">Turkish</option>
+                                        <option value="Hebrew">Hebrew</option>
+                                        <option value="Swahili">Swahili</option>
+                                        <option value="Amharic">Amharic</option>
+                                    </optgroup>
+                                    <optgroup data-i18n-attr="label:translation:lang_group_custom" label="Custom">
+                                        <option value="Other" data-i18n="translation:lang_other_option">Other (Specify)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="neu-inset-light" style="margin-top: 10px; display: none;" id="glossaryEditorCustomTargetLangContainer">
+                                <input type="text" class="form-control" id="glossaryEditorCustomTargetLang" data-i18n-attr="placeholder:translation:custom_target_lang_placeholder" placeholder="Enter custom target language">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Toolbar -->
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px; align-items: center;">
+                        <button type="button" class="btn btn-primary glossary-toolbar-btn" id="glossaryAutoExtractBtn">
+                            <span class="material-symbols-outlined">auto_fix_high</span>
+                            <span data-i18n="glossary:auto_extract">Auto-extract</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryAddRowBtn">
+                            <span class="material-symbols-outlined">add</span>
+                            <span data-i18n="glossary:add_term">Add a term</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryPreviewBtn" data-i18n-attr="title:glossary:preview_btn_title" title="Preview the glossary block as it will be injected into the prompt">
+                            <span class="material-symbols-outlined">visibility</span>
+                            <span data-i18n="glossary:preview">Preview</span>
+                        </button>
+                        <span style="flex: 1;"></span>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryImportBtn" data-i18n-attr="title:glossary:import_btn_title" title="Import a CSV or JSON file (replaces current terms)">
+                            <span class="material-symbols-outlined">upload</span>
+                            <span data-i18n="glossary:import">Import</span>
+                        </button>
+                        <input type="file" id="glossaryImportFile" accept=".csv,.json" style="display: none;">
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryExportCsvBtn" data-i18n-attr="title:glossary:export_csv_title" title="Export as CSV">
+                            <span class="material-symbols-outlined">download</span>
+                            CSV
+                        </button>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryExportJsonBtn" data-i18n-attr="title:glossary:export_json_title" title="Export as JSON">
+                            <span class="material-symbols-outlined">download</span>
+                            JSON
+                        </button>
+                    </div>
+
+                    <!-- Search/filter row -->
+                    <div class="glossary-search-row">
+                        <input type="search" id="glossaryTermsFilter" data-i18n-attr="placeholder:glossary:filter_terms_placeholder" placeholder="Filter terms (source, target, category)..." autocomplete="off">
+                        <span class="glossary-search-count" id="glossaryTermsFilterCount" aria-live="polite"></span>
+                    </div>
+
+                    <!-- Inflected-forms hint: source-cell convention -->
+                    <div class="glossary-hint" role="note">
+                        <span class="material-symbols-outlined" aria-hidden="true">info</span>
+                        <span data-i18n-html="glossary:inflected_forms_hint">Inflected forms: separate variants with <code>|</code> in the Source cell — e.g. <code>Москва|Москве|Москвы</code> → <code>Moscou</code>. Any form found in the text triggers the same translation.</span>
+                    </div>
+
+                    <!-- Bulk actions bar (shown only when rows are selected) -->
+                    <div id="glossaryBulkBar" class="glossary-bulk-bar" style="display: none;">
+                        <span class="glossary-bulk-count"><span id="glossaryBulkCount">0</span> <span data-i18n="glossary:bulk_selected">selected</span></span>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkDeleteBtn">
+                            <span class="material-symbols-outlined">delete</span>
+                            <span data-i18n="common:delete">Delete</span>
+                        </button>
+                        <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                            <span data-i18n="glossary:bulk_set_category">Set category:</span>
+                            <select id="glossaryBulkCategorySelect">
+                                <option value="">—</option>
+                                <option value="character" data-i18n="glossary:category_character">character</option>
+                                <option value="location" data-i18n="glossary:category_location">location</option>
+                                <option value="organization" data-i18n="glossary:category_organization">organization</option>
+                                <option value="item" data-i18n="glossary:category_item">item</option>
+                                <option value="title" data-i18n="glossary:category_title">title</option>
+                                <option value="concept" data-i18n="glossary:category_concept">concept</option>
+                                <option value="technical" data-i18n="glossary:category_technical">technical</option>
+                                <option value="acronym" data-i18n="glossary:category_acronym">acronym</option>
+                                <option value="other" data-i18n="glossary:category_other">other</option>
+                            </select>
+                        </label>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkSetCategoryBtn" data-i18n="glossary:bulk_apply">Apply</button>
+                        <span class="bulk-spacer"></span>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkClearBtn" data-i18n-attr="title:glossary:bulk_clear_title" title="Clear selection">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+
+                    <!-- Terms table -->
+                    <table id="glossaryTermsTable" class="file-table">
+                        <colgroup>
+                            <col style="width: 36px;">
+                            <col>
+                            <col>
+                            <col style="width: 160px;">
+                            <col style="width: 96px;">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th class="col-center"><input type="checkbox" id="glossaryTermsSelectAll" data-i18n-attr="aria-label:glossary:select_all_aria" aria-label="Select all"></th>
+                                <th class="sortable" data-sort-key="source" data-i18n-attr="title:glossary:source_header_title" title="Source term. Use '|' to separate inflected forms (e.g. Москва|Москве|Москвы) — any form will match."><span data-i18n="glossary:source_header">Source</span> <span class="sort-indicator">⇅</span></th>
+                                <th class="sortable" data-sort-key="target"><span data-i18n="glossary:target_header">Target</span> <span class="sort-indicator">⇅</span></th>
+                                <th class="sortable" data-sort-key="category"><span data-i18n="glossary:category_header">Category</span> <span class="sort-indicator">⇅</span></th>
+                                <th class="col-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="glossaryTermsBody"></tbody>
+                    </table>
+                    <div id="glossaryTermsEmpty" class="hidden" style="text-align: center; padding: 30px;">
+                        <p data-i18n="glossary:terms_empty" style="color: var(--text-muted-light); margin: 0;">No terms yet. Use the toolbar above to add a term, auto-extract candidates, or import a file.</p>
+                    </div>
+
+                    <p data-i18n="glossary:autosave_hint" style="color: var(--text-muted-light); font-size: 0.8rem; margin-top: 10px;">
+                        Edits are saved automatically when you leave a field. Empty source rows are dropped on save.
+                    </p>
+                </div>
+            </div>
+        </div><!-- /#tab-glossaries -->
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-links">
+            <a href="https://github.com/hydropix/TranslateBookWithLLM" target="_blank" rel="noopener noreferrer">
+                <span class="material-symbols-outlined">code</span>
+                <span data-i18n="common:footer_github">GitHub</span>
+            </a>
+            <a href="https://github.com/hydropix/TranslateBookWithLLM/issues/new" target="_blank" rel="noopener noreferrer" data-i18n-attr="title:common:footer_report_bug_title" title="Report a bug">
+                <span class="material-symbols-outlined">bug_report</span>
+                <span data-i18n="common:footer_report_bug">Report Bug</span>
+            </a>
+            <a href="https://github.com/hydropix/TranslateBookWithLLM/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" data-i18n-attr="title:common:footer_suggest_feature_title" title="Suggest a feature">
+                <span class="material-symbols-outlined">lightbulb</span>
+                <span data-i18n="common:footer_suggest_feature">Suggest Feature</span>
+            </a>
+        </div>
+    </footer>
+
+    <!-- NER auto-extract review modal (built lazily) -->
+    <div id="ner-modal" class="modal-overlay hidden">
+        <div class="modal-content ner-modal-content">
+            <div class="modal-header">
+                <h3 class="ner-modal-title">
+                    <span class="material-symbols-outlined" aria-hidden="true">auto_fix_high</span>
+                    <span data-i18n="glossary:ner_modal_title">Auto-extract candidates</span>
+                </h3>
+                <button class="close-btn" id="ner-modal-close" data-i18n-attr="aria-label:common:close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body" id="ner-modal-body">
+                <div id="ner-input-step">
+                    <p class="ner-modal-intro" data-i18n-html="glossary:ner_intro">
+                        Pick a source file (TXT, SRT, EPUB, DOCX, PDF). The local scan reads the document without using tokens; LLM modes only send <strong id="ner-budget-label">6000</strong> characters from <strong id="ner-samples-label">10</strong> excerpts. Review and edit candidates before they join the glossary.
+                    </p>
+                    <input type="file" id="ner-file-input" accept=".txt,.srt,.epub,.docx,.pdf" style="display: none;">
+                    <div id="ner-drop-zone" class="glossary-ner-dropzone">
+                        <div class="ner-dropzone-primary">
+                            <button type="button" class="btn btn-secondary" id="ner-pick-file-btn">
+                                <span class="material-symbols-outlined">folder_open</span>
+                                <span data-i18n="glossary:ner_choose_file">Choose file</span>
+                            </button>
+                            <span class="ner-dropzone-or" data-i18n="glossary:ner_or_drop_here">or drop a file here</span>
+                        </div>
+                        <div class="ner-dropzone-hint">TXT · SRT · EPUB · DOCX · PDF</div>
+                    </div>
+                    <div id="ner-file-pill" class="glossary-ner-file-pill hidden">
+                        <span class="material-symbols-outlined" aria-hidden="true">description</span>
+                        <span id="ner-file-pill-name" class="ner-file-pill-name"></span>
+                        <span id="ner-file-pill-size" class="ner-file-pill-size"></span>
+                        <button type="button" id="ner-file-clear-btn" class="ner-file-clear-btn" data-i18n-attr="aria-label:glossary:ner_clear_file_aria" aria-label="Clear file">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div class="ner-settings-row">
+                        <div class="ner-settings-field ner-mode-field">
+                            <label for="ner-mode" class="ner-settings-label" data-i18n="glossary:ner_mode">Mode</label>
+                            <select id="ner-mode" class="ner-settings-input ner-settings-select">
+                                <option value="local" data-i18n="glossary:ner_mode_local">Full local scan</option>
+                                <option value="hybrid" data-i18n="glossary:ner_mode_hybrid">Local + LLM sample</option>
+                                <option value="llm" data-i18n="glossary:ner_mode_llm">LLM sample only</option>
+                            </select>
+                        </div>
+                        <div class="ner-settings-field">
+                            <label for="ner-max-terms" class="ner-settings-label" data-i18n="glossary:ner_max_terms">Max terms</label>
+                            <input type="number" id="ner-max-terms" class="ner-settings-input" value="120" min="10" max="500">
+                        </div>
+                        <div class="ner-settings-field">
+                            <label for="ner-min-occurrences" class="ner-settings-label" data-i18n="glossary:ner_min_occurrences">Min. uses</label>
+                            <input type="number" id="ner-min-occurrences" class="ner-settings-input" value="2" min="1" max="20">
+                        </div>
+                        <div id="ner-llm-settings" class="ner-llm-settings hidden">
+                            <div class="ner-settings-field">
+                                <label for="ner-max-chars" class="ner-settings-label" data-i18n="glossary:ner_total_chars">LLM chars</label>
+                                <input type="number" id="ner-max-chars" class="ner-settings-input" value="6000" min="500" max="6000">
+                            </div>
+                            <div class="ner-settings-field">
+                                <label for="ner-sample-count" class="ner-settings-label" data-i18n="glossary:ner_samples">Samples</label>
+                                <input type="number" id="ner-sample-count" class="ner-settings-input" value="10" min="1" max="50">
+                            </div>
+                        </div>
+                        <span id="ner-status" class="ner-status"></span>
+                    </div>
+                </div>
+                <div id="ner-results-step" class="hidden">
+                    <div id="ner-warnings" class="ner-warnings hidden"></div>
+                    <div class="ner-results-header">
+                        <span class="ner-results-count-label">
+                            <strong id="ner-results-count">0</strong> <span data-i18n="glossary:ner_candidates_count">candidates</span><span id="ner-results-new-count" class="ner-results-new-count"></span>
+                        </span>
+                        <span class="ner-results-hint" data-i18n="glossary:ner_results_hint">Pairs where source = target are dimmed — click to include them.</span>
+                    </div>
+                    <div class="ner-results-table-wrap">
+                        <table id="ner-candidates-table" class="file-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"><input type="checkbox" id="ner-select-all" checked></th>
+                                    <th data-i18n="glossary:source_header">Source</th>
+                                    <th data-i18n="glossary:ner_target_editable">Target (editable)</th>
+                                    <th style="width: 110px;" data-i18n="glossary:category_header">Category</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ner-candidates-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="ner-modal-cancel" data-i18n="common:cancel">Cancel</button>
+                <button class="btn btn-primary" id="ner-extract-btn">
+                    <span class="material-symbols-outlined">play_arrow</span>
+                    <span data-i18n="glossary:ner_extract_btn">Extract</span>
+                </button>
+                <button class="btn btn-primary hidden" id="ner-add-selected-btn">
+                    <span class="material-symbols-outlined">add</span>
+                    <span data-i18n="glossary:ner_add_selected">Add selected</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Apply glossary correction modal -->
+    <div id="glossary-apply-modal" class="modal-overlay hidden">
+        <div class="modal-content glossary-apply-content">
+            <div class="modal-header">
+                <h3 class="ner-modal-title">
+                    <span class="material-symbols-outlined" aria-hidden="true">find_replace</span>
+                    <span data-i18n="glossary:apply_modal_title">Apply term correction</span>
+                </h3>
+                <button class="close-btn" id="glossary-apply-close" data-i18n-attr="aria-label:common:close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="ner-modal-intro" data-i18n="glossary:apply_modal_intro">
+                    Replace an already translated form in an editable output file. A corrected copy is created by default.
+                </p>
+                <div class="glossary-apply-term">
+                    <span class="glossary-apply-label" data-i18n="glossary:source_header">Source</span>
+                    <strong id="glossaryApplySource"></strong>
+                </div>
+                <div class="glossary-apply-grid">
+                    <div class="form-group">
+                        <label for="glossaryApplyOldTarget" data-i18n="glossary:apply_find_label">Find in document</label>
+                        <div class="neu-inset-light"><input class="form-control" id="glossaryApplyOldTarget" type="text"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="glossaryApplyNewTarget" data-i18n="glossary:apply_replace_label">Replace with</label>
+                        <div class="neu-inset-light"><input class="form-control" id="glossaryApplyNewTarget" type="text"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="glossaryApplyFileSelect" data-i18n="glossary:apply_file_label">Translated file</label>
+                    <div class="neu-inset-light">
+                        <select class="form-control" id="glossaryApplyFileSelect"></select>
+                    </div>
+                </div>
+                <label class="glossary-apply-checkbox">
+                    <input type="checkbox" id="glossaryApplyInPlace">
+                    <span data-i18n="glossary:apply_in_place">Overwrite the selected file instead of creating a copy</span>
+                </label>
+                <div id="glossaryApplyStatus" class="ner-status"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="glossaryApplyCancel" data-i18n="common:cancel">Cancel</button>
+                <button class="btn btn-primary" id="glossaryApplySubmit">
+                    <span class="material-symbols-outlined">find_replace</span>
+                    <span data-i18n="glossary:apply_submit">Apply correction</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Glossary preview-block modal -->
+    <div id="glossary-preview-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 760px;">
+            <div class="modal-header">
+                <h3 style="margin: 0;">
+                    <span class="material-symbols-outlined" style="vertical-align: middle;">visibility</span>
+                    <span data-i18n="glossary:preview_modal_title">Preview prompt block</span>
+                </h3>
+                <button class="close-btn" id="glossary-preview-close" data-i18n-attr="aria-label:common:close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p data-i18n="glossary:preview_modal_intro" style="margin-top: 0; color: var(--text-muted-light); font-size: 0.9rem;">
+                    Paste a sample chunk to see exactly which glossary terms would be matched and how the block would be inserted into the system prompt.
+                </p>
+                <textarea id="glossary-preview-input" rows="6" data-i18n-attr="placeholder:glossary:preview_input_placeholder" style="width: 100%; padding: 8px; font-family: monospace; font-size: 0.85rem; background: var(--background-outer); color: var(--text-dark); border: 1px solid var(--border-light); border-radius: 6px; resize: vertical;" placeholder="Paste a sample chunk here..."></textarea>
+                <div style="display: flex; gap: 12px; margin: 8px 0; align-items: center;">
+                    <button type="button" class="btn btn-primary glossary-toolbar-btn" id="glossary-preview-render">
+                        <span class="material-symbols-outlined">play_arrow</span>
+                        <span data-i18n="glossary:preview_render">Render</span>
+                    </button>
+                    <span id="glossary-preview-meta" style="color: var(--text-muted-light); font-size: 0.85rem;"></span>
+                </div>
+                <pre id="glossary-preview-output" data-i18n="glossary:preview_output_placeholder" class="preview-block-output">(Click "Render" to compute the block.)</pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="glossary-preview-cancel" data-i18n="common:close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick LLM test overlay (body filled lazily by quick-test.js) -->
+    <div id="quickTestModal" class="modal-overlay hidden">
+        <div class="modal-content quick-test-content">
+            <div class="modal-header">
+                <div class="quick-test-header-titles">
+                    <h3 style="margin: 0;">
+                        <span class="material-symbols-outlined" style="vertical-align: middle;">science</span>
+                        <span data-i18n="translation:quicktest_title">Quick LLM test</span>
+                        <span id="quickTestSpinner" class="quick-test-spinner hidden" aria-hidden="true"></span>
+                    </h3>
+                    <button type="button" id="quickTestCompareBtn" class="quick-test-compare-link">
+                        <span class="material-symbols-outlined" aria-hidden="true">compare_arrows</span>
+                        <span data-i18n="translation:quicktest_compare">Full test: compare several LLMs</span>
+                        <span class="material-symbols-outlined quick-test-compare-arrow" aria-hidden="true">arrow_forward</span>
+                    </button>
+                </div>
+                <button class="close-btn" id="quickTestCloseBtn" data-i18n-attr="aria-label:common:close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="quick-test-intro" data-i18n="translation:quicktest_intro">
+                    A quick taste of how the selected LLM translates 5 excerpts from this file, using your current options. No commitment — just a preview before the full run.
+                </p>
+                <div id="quickTestSummary" class="quick-test-summary"></div>
+                <button type="button" id="quickTestGoSettings" class="btn btn-secondary hidden" style="margin-bottom: 12px;">
+                    <span class="material-symbols-outlined">settings</span>
+                    <span data-i18n="translation:quicktest_go_settings">Pick a model in Settings</span>
+                </button>
+                <div id="quickTestBody" class="quick-test-cards"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger hidden" id="quickTestStopBtn">
+                    <span class="material-symbols-outlined">stop_circle</span>
+                    <span data-i18n="translation:quicktest_stop">Stop</span>
+                </button>
+                <button class="btn btn-primary" id="quickTestDoneBtn" data-i18n="common:close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/vendor/socket.io.min.js"></script>
+    <script type="module" src="/static/js/index.js?v={{ asset_version|default(app_version|default('dev')) }}"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+Additional audiobook-profile guidance for faithful translation:
+
+- Translate faithfully first. Preserve every fact, number, name, title, quotation, argument, scene, and relationship from the source.
+- Do not summarize, censor, soften, moralize, or add unsupported explanations.
+- Keep chapter and section headings clear.
+- If the source contains an informative image caption, translate it accurately as content that can later be made narratable.
+- If the source contains only an image credit, URL, page marker, watermark, or source-download label, do not expand it into prose.
+- Do not leave raw links, EPUB note targets, or download-site watermarks in the translated body when they are layout artifacts rather than book content.
+- Footnote/endnote content may be translated, but inline note calls should not interrupt the main narrative when the audiobook companion is generated.

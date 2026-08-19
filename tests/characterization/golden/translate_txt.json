@@ -1,0 +1,43 @@
+{
+  "output": {
+    "kind": "text",
+    "text": "﻿Ceci est paragraphe numero 1. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 2. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 3. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 4. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 5. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 6. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition."
+  },
+  "sequence": [
+    {
+      "completed_chunks": 0,
+      "failed_chunks": 0,
+      "total_chunks": 6
+    },
+    {
+      "completed_chunks": 1,
+      "failed_chunks": 0,
+      "total_chunks": 6
+    },
+    {
+      "completed_chunks": 2,
+      "failed_chunks": 0,
+      "total_chunks": 6
+    },
+    {
+      "completed_chunks": 3,
+      "failed_chunks": 0,
+      "total_chunks": 6
+    },
+    {
+      "completed_chunks": 4,
+      "failed_chunks": 0,
+      "total_chunks": 6
+    },
+    {
+      "completed_chunks": 5,
+      "failed_chunks": 0,
+      "total_chunks": 6
+    },
+    {
+      "completed_chunks": 6,
+      "failed_chunks": 0,
+      "total_chunks": 6
+    }
+  ]
+}

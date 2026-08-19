@@ -1,0 +1,332 @@
+/*
+   TBL Design System
+   -----------------
+   Shared UI contracts for the Flask template and modular JavaScript views.
+   Keep this file generic: no feature-specific IDs, no data-loading behavior,
+   and no page-only layout rules. Existing classes are bridged with :where()
+   so the legacy stylesheet can keep visual precedence while new surfaces can
+   opt into stable component primitives.
+*/
+
+@layer ds.tokens, ds.primitives, ds.components, ds.utilities;
+
+@layer ds.tokens {
+    :root {
+        color-scheme: light dark;
+
+        --ds-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --ds-bg: var(--background-outer, #f5f7fb);
+        --ds-surface: var(--surface-card, #ffffff);
+        --ds-surface-muted: var(--surface-soft, rgba(47, 111, 221, 0.07));
+        --ds-control: var(--surface-control, #ffffff);
+        --ds-control-hover: var(--surface-control-hover, #f8fbff);
+        --ds-border: var(--border-light, #dbe2ec);
+        --ds-border-strong: var(--border-strong, #c7d1df);
+        --ds-text: var(--text-dark, #172033);
+        --ds-text-muted: var(--text-muted-light, #66758a);
+        --ds-primary: var(--primary-light, #2f6fdd);
+        --ds-success: var(--success-light, #159a68);
+        --ds-danger: var(--danger-light, #e03131);
+        --ds-warning: var(--accent-amber, #d97706);
+        --ds-radius-sm: var(--radius-tight, 6px);
+        --ds-radius-md: var(--radius-ui, 8px);
+        --ds-radius-lg: 12px;
+        --ds-shadow-panel: var(--shadow-panel, 0 10px 28px rgba(15, 23, 42, 0.08));
+        --ds-shadow-elevated: var(--shadow-elevated, 0 18px 45px rgba(15, 23, 42, 0.10));
+        --ds-focus-ring: 0 0 0 3px color-mix(in srgb, var(--ds-primary) 18%, transparent);
+        --ds-gap-xs: 0.35rem;
+        --ds-gap-sm: 0.6rem;
+        --ds-gap-md: 1rem;
+        --ds-gap-lg: 1.35rem;
+        --ds-tap-target: 44px;
+    }
+}
+
+@layer ds.primitives {
+    html {
+        min-height: 100%;
+        background-color: var(--ds-bg);
+    }
+
+    body {
+        min-height: 100dvh;
+        background-color: var(--ds-bg);
+    }
+
+    :where(.ds-stack) {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ds-gap-md);
+    }
+
+    :where(.ds-cluster) {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--ds-gap-sm);
+    }
+
+    :where(.ds-grid) {
+        display: grid;
+        gap: var(--ds-gap-md);
+    }
+
+    :where(.ds-scroll-x) {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    :where(.ds-visually-hidden) {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+}
+
+@layer ds.components {
+    .ds-button,
+    :where(.btn) {
+        min-height: var(--ds-tap-target);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        border-radius: var(--ds-radius-md);
+        font-family: var(--ds-font-sans);
+        font-weight: 780;
+        line-height: 1.1;
+        letter-spacing: 0;
+        cursor: pointer;
+        transition:
+            background 0.16s ease,
+            border-color 0.16s ease,
+            color 0.16s ease,
+            box-shadow 0.16s ease,
+            transform 0.16s ease;
+    }
+
+    .ds-button:focus-visible,
+    :where(.btn:focus-visible, .tab-btn:focus-visible, .file-action-btn:focus-visible) {
+        outline: none;
+        box-shadow: var(--ds-focus-ring);
+    }
+
+    .ds-button:disabled,
+    :where(.btn:disabled) {
+        cursor: not-allowed;
+        opacity: 0.55;
+        transform: none;
+    }
+
+    .ds-button--primary {
+        background: var(--ds-primary);
+        border: 1px solid color-mix(in srgb, var(--ds-primary) 86%, #000 14%);
+        color: #fff;
+        box-shadow: 0 10px 22px color-mix(in srgb, var(--ds-primary) 24%, transparent);
+    }
+
+    .ds-button--secondary {
+        background: var(--ds-control);
+        border: 1px solid var(--ds-border);
+        color: var(--ds-text);
+    }
+
+    .ds-button--danger {
+        background: var(--ds-danger);
+        border: 1px solid color-mix(in srgb, var(--ds-danger) 86%, #000 14%);
+        color: #fff;
+        box-shadow: 0 10px 22px color-mix(in srgb, var(--ds-danger) 24%, transparent);
+    }
+
+    .ds-icon-button,
+    :where(.file-action-btn) {
+        min-width: var(--ds-tap-target);
+        min-height: var(--ds-tap-target);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--ds-radius-md);
+    }
+
+    .ds-tabs,
+    :where(.tab-nav) {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--ds-gap-sm);
+        min-width: 0;
+    }
+
+    .ds-tab,
+    :where(.tab-nav .tab-btn) {
+        min-height: var(--ds-tap-target);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        white-space: nowrap;
+        border-radius: var(--ds-radius-md) var(--ds-radius-md) 0 0;
+    }
+
+    .ds-card,
+    :where(.main-card, .progress-section, .profile-prep-card, .glossary-info-card, .usage-section) {
+        border: 1px solid var(--ds-border);
+        border-radius: var(--ds-radius-md);
+        background: var(--ds-surface);
+        box-shadow: var(--ds-shadow-panel);
+    }
+
+    .ds-card__header,
+    :where(.card-header) {
+        display: flex;
+        align-items: center;
+        gap: var(--ds-gap-sm);
+        padding: 1rem 1.15rem;
+    }
+
+    .ds-card__body,
+    :where(.card-body) {
+        padding: clamp(1rem, 2.4vw, 1.45rem);
+    }
+
+    .ds-progress,
+    :where(.progress-bar-container, .usage-bar, .usage-live-progress, .profile-prep-progress) {
+        min-height: 10px;
+        overflow: hidden;
+        border: 1px solid var(--ds-border);
+        border-radius: var(--ds-radius-md);
+        background: color-mix(in srgb, var(--ds-border) 52%, transparent);
+    }
+
+    .ds-progress__bar,
+    :where(.progress-bar) {
+        min-height: inherit;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--ds-primary), var(--ds-success));
+    }
+
+    .ds-table,
+    :where(.file-table) {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        border: 1px solid var(--ds-border);
+        border-radius: var(--ds-radius-md);
+        overflow: hidden;
+    }
+
+    .ds-table--fixed {
+        table-layout: fixed;
+    }
+
+    .ds-table th,
+    .ds-table td,
+    :where(.file-table th, .file-table td) {
+        vertical-align: middle;
+    }
+
+    .ds-modal,
+    :where(.modal-overlay) {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+    }
+
+    .ds-modal__panel,
+    :where(.modal-content) {
+        width: min(100%, 760px);
+        max-height: min(90vh, 900px);
+        overflow: auto;
+        border: 1px solid var(--ds-border);
+        border-radius: var(--ds-radius-lg);
+        background: var(--ds-surface);
+        box-shadow: var(--ds-shadow-elevated);
+    }
+
+    .ds-modal__header,
+    :where(.modal-header) {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--ds-gap-md);
+    }
+
+    .ds-modal__body,
+    :where(.modal-body) {
+        min-width: 0;
+    }
+
+    .ds-modal__footer,
+    :where(.modal-footer) {
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--ds-gap-sm);
+    }
+
+    .ds-mobile-sheet {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        align-items: end;
+        padding: 0;
+    }
+
+    .ds-mobile-sheet__panel {
+        width: 100%;
+        max-height: 88vh;
+        overflow: auto;
+        border: 1px solid var(--ds-border);
+        border-bottom: none;
+        border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0;
+        background: var(--ds-surface);
+        box-shadow: var(--ds-shadow-elevated);
+    }
+}
+
+@layer ds.utilities {
+    .ds-muted {
+        color: var(--ds-text-muted);
+    }
+
+    .ds-hidden {
+        display: none !important;
+    }
+
+    .ds-truncate {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ds-break-anywhere {
+        overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 768px) {
+        .ds-modal,
+        :where(.modal-overlay) {
+            align-items: end;
+            padding: 0.5rem;
+        }
+
+        .ds-modal__panel,
+        :where(.modal-content) {
+            width: 100%;
+            max-height: 88vh;
+            border-radius: var(--ds-radius-lg);
+        }
+
+        .ds-mobile-full {
+            width: 100%;
+        }
+    }
+}

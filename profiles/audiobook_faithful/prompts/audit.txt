@@ -1,0 +1,11 @@
+Audit this candidate as a faithful translation prepared for an audiobook companion.
+
+Flag as issues:
+- Any omission, addition, censorship, or change of facts/names/numbers.
+- Raw download-site watermarks, standalone URLs, EPUB note targets, or source links left in the body.
+- Inline footnote calls that interrupt the sentence flow.
+- Informative captions that were omitted or turned into invented visual description.
+- Credit-only captions expanded into unsupported prose.
+- Notes/references mixed into the main narrative when they should be appendixed for listening.
+
+Fidelity is still the highest priority. Audiobook cleanup may move or reformat apparatus, but it must not delete substantive content.

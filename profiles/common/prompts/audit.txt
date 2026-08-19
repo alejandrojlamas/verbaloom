@@ -1,0 +1,1 @@
+Audit only mechanical and structural safety: omissions, additions, names, numbers, chunks, encoding, dialogue dashes, and profile isolation.

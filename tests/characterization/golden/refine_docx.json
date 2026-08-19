@@ -1,0 +1,218 @@
+{
+  "output": {
+    "kind": "text",
+    "text": "Caracterisation Echantillon\n\nCeci est paragraphe numero 1. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 2. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 3. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 4. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 5. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 6. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 7. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 8. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 9. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 10. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 11. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 12. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 13. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 14. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 15. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 16. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 17. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 18. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 19. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\nCeci est paragraphe numero 20. Il contient plusieurs phrases afin que le jeton segmenteur a assez matiere pour diviser le document en plus que un fragment. Le rapide brun renard saute par-dessus le paresseux chien pendant que le patient traducteur soigneusement preserve le sens de chaque proposition.\n\n============================================================\nRefined with TranslateBook with LLM (TBL)\nhttps://github.com/hydropix/TranslateBookWithLLM\n============================================================\n"
+  },
+  "sequence": [
+    {
+      "completed_chunks": 0,
+      "failed_chunks": 0,
+      "total_chunks": 20
+    },
+    {
+      "completed_chunks": 0,
+      "failed_chunks": 0,
+      "total_chunks": 20
+    },
+    {
+      "completed_chunks": 1,
+      "completed_tokens": 55,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 5.37,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 2,
+      "completed_tokens": 106,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 10.35,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 3,
+      "completed_tokens": 157,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 15.33,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 4,
+      "completed_tokens": 208,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 20.31,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 5,
+      "completed_tokens": 259,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 25.29,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 6,
+      "completed_tokens": 310,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 30.27,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 7,
+      "completed_tokens": 361,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 35.25,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 8,
+      "completed_tokens": 412,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 40.23,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 9,
+      "completed_tokens": 463,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 45.21,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 10,
+      "completed_tokens": 514,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 50.2,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 11,
+      "completed_tokens": 565,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 55.18,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 12,
+      "completed_tokens": 616,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 60.16,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 13,
+      "completed_tokens": 667,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 65.14,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 14,
+      "completed_tokens": 718,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 70.12,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 15,
+      "completed_tokens": 769,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 75.1,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 16,
+      "completed_tokens": 820,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 80.08,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 17,
+      "completed_tokens": 871,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 85.06,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 18,
+      "completed_tokens": 922,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 90.04,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 19,
+      "completed_tokens": 973,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 95.02,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    },
+    {
+      "completed_chunks": 20,
+      "completed_tokens": 1024,
+      "current_phase": 1,
+      "enable_refinement": false,
+      "failed_chunks": 0,
+      "progress_percent": 100.0,
+      "total_chunks": 20,
+      "total_tokens": 1024
+    }
+  ]
+}

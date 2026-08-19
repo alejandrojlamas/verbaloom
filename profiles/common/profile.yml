@@ -1,0 +1,7 @@
+profile_id: common
+name: Common Mechanical Glossary
+editorial_mode: common_mechanical
+target_locale: ''
+allow_cross_profile_glossary: false
+glossary_files:
+  terms: glossary/terms.yml

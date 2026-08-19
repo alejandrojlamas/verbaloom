@@ -1,0 +1,32 @@
+profile_id: template
+name: New Book Profile
+editorial_mode: book_profile
+target_locale: ''
+modernization_strength: medium
+preserve_author_voice: true
+allow_common_glossary: true
+allow_cross_profile_glossary: false
+loaded_glossaries:
+  - common
+use_profile_glossary: true
+glossary_suggestions_enabled: true
+auto_approve_glossary_suggestions: false
+min_glossary_suggestion_confidence: 0.92
+avoid_hardcoded_editorial_rules: true
+audit_dimensions: editorial_full
+repair_until_pass: true
+min_dimension_score: 8.5
+max_repair_rounds: 2
+prompts:
+  modernize: prompts/modernize.txt
+  voice_restoration: prompts/voice_restoration.txt
+  audit: prompts/audit.txt
+  repair: prompts/repair.txt
+  glossary_discovery: prompts/glossary_discovery.txt
+glossary_files:
+  terms: glossary/terms.yml
+  treatments: glossary/treatments.yml
+  phrases: glossary/phrases.yml
+  character_voices: glossary/character_voices.yml
+  pending_suggestions: glossary/pending_suggestions.yml
+detectors: []

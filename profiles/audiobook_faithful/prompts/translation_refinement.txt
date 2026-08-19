@@ -1,0 +1,7 @@
+Additional audiobook-profile guidance for refinement:
+
+- Improve fluency for listening while preserving source-faithful meaning.
+- Prefer clean, speakable sentences over visually dependent phrasing such as "see above", "shown below", or raw link references.
+- Keep informative captions concise and accurate; do not invent visual details.
+- Do not flatten the author's style. Make the prose listenable without making it generic.
+- Preserve tables, formulas, names, dates, titles, and references accurately; the final audiobook sanitizer will decide whether notes/references belong in the appendix.

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hydropix/TranslateBookWithLLM/schemas/judgments.schema.json",
+  "title": "TBL Benchmark Judgments (per-judge)",
+  "description": "All scores produced by one judge configuration. One file per judge_id. Joined to translations/ by (model_id, text_id, target_lang); output_hash carries integrity check.",
+  "type": "object",
+  "required": ["schema_version", "judge", "run", "scores"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "judge": {
+      "type": "object",
+      "required": ["id", "model", "rubric_version", "provider"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable identifier, e.g. claude-opus-4-7-rubric-v2-poe",
+          "minLength": 1
+        },
+        "model": { "type": "string", "minLength": 1 },
+        "rubric_version": { "type": "string", "pattern": "^v[0-9]+$" },
+        "provider": { "type": "string", "minLength": 1 },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "seed": { "type": "integer" },
+        "thinking": { "type": "string", "enum": ["disabled", "low", "high"] }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": ["id", "started_at", "completed_at"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "started_at": { "type": "string", "format": "date-time" },
+        "completed_at": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "scores": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/score" }
+    }
+  },
+  "$defs": {
+    "score": {
+      "type": "object",
+      "required": ["model_id", "text_id", "target_lang", "output_hash",
+                   "accuracy", "fluency", "style", "overall"],
+      "additionalProperties": false,
+      "properties": {
+        "model_id": {
+          "type": "string",
+          "description": "Model that produced the translation (joins to translations/<slug>.json)",
+          "minLength": 1
+        },
+        "text_id": { "type": "string", "minLength": 1 },
+        "target_lang": { "type": "string", "minLength": 2 },
+        "output_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Integrity check against the translation that was judged"
+        },
+        "accuracy": { "type": "number", "minimum": 1, "maximum": 10 },
+        "fluency":  { "type": "number", "minimum": 1, "maximum": 10 },
+        "style":    { "type": "number", "minimum": 1, "maximum": 10 },
+        "overall":  { "type": "number", "minimum": 1, "maximum": 10 },
+        "feedback": { "type": "string", "maxLength": 1000 },
+        "evaluation_time_ms": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

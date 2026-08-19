@@ -1,0 +1,71 @@
+[
+  {
+    "id": "translation_wrapper_leak",
+    "kind": "output_guard",
+    "input": "# TEXT TO TRANSLATE\n<TRANSLATIONATION>\nHola mundo.\n</TRANSLATIONATION>\nReturn only the translated text.",
+    "expected_text": "Hola mundo.",
+    "expected_issue": "llm_protocol_leak_cleaned"
+  },
+  {
+    "id": "meta_prefix_with_content",
+    "kind": "output_guard",
+    "input": "Here is the translation: Bonjour le monde.",
+    "expected_text": "Bonjour le monde.",
+    "expected_issue": "llm_protocol_leak_cleaned"
+  },
+  {
+    "id": "spanish_meta_prefix_with_content",
+    "kind": "output_guard",
+    "input": "Aquí está la traducción: El mundo siguió su curso.",
+    "expected_text": "El mundo siguió su curso.",
+    "expected_issue": "llm_protocol_leak_cleaned"
+  },
+  {
+    "id": "idempotent_cleanup",
+    "kind": "idempotence",
+    "input": "Assistant: internal note\n\nTexto limpio.",
+    "expected_text": "Texto limpio."
+  },
+  {
+    "id": "style_drift_between_chunks",
+    "kind": "style_drift",
+    "reference": "Ella caminó despacio por la calle. Miró la ventana. Esperó una respuesta. La tarde era tranquila. Nadie habló durante un largo minuto.",
+    "candidate": "Primero: la estructura general del fenómeno requiere una observación amplia; segundo: el sistema de relaciones, aunque funcional, se comporta de manera desigual; tercero: el conjunto permanece estable bajo condiciones externas.",
+    "expected_issue": "possible_style_drift"
+  },
+  {
+    "id": "final_source_sample_missing_numbers",
+    "kind": "source_sample",
+    "source": "The expedition counted 1492 witnesses, 1519 records, and 1521 letters. Cortes wrote again about the warning.",
+    "output": "La expedición contó testigos y registros. El informe repitió la advertencia.",
+    "expected_issue": "numbers_missing_in_output_sample"
+  },
+  {
+    "id": "profile_json_wrapper_leak",
+    "kind": "output_guard",
+    "input": "<PROFILE_TERM_REVIEW_JSON>Texto final limpio.</PROFILE_TERM_REVIEW_JSON>",
+    "expected_text": "Texto final limpio.",
+    "expected_issue": "llm_protocol_leak_cleaned"
+  },
+  {
+    "id": "glossary_discovery_wrapper_leak",
+    "kind": "output_guard",
+    "input": "<GLOSSARY_DISCOVERY_JSON>La escena conserva el mismo sentido.</GLOSSARY_DISCOVERY_JSON>",
+    "expected_text": "La escena conserva el mismo sentido.",
+    "expected_issue": "llm_protocol_leak_cleaned"
+  },
+  {
+    "id": "code_fence_wrapper_leak",
+    "kind": "output_guard",
+    "input": "```\nTexto sin cercas visibles.\n```",
+    "expected_text": "Texto sin cercas visibles.",
+    "expected_issue": "llm_protocol_leak_cleaned"
+  },
+  {
+    "id": "image_description_double_label",
+    "kind": "output_guard",
+    "input": "Descripcion de imagen: Descripción de imagen: La casa seguía en silencio.",
+    "expected_text": "La casa seguía en silencio.",
+    "expected_issue": "reader_artifact_label_cleaned"
+  }
+]

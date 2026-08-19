@@ -1,0 +1,2062 @@
+{
+  "schema_version": "2.0",
+  "model": {
+    "provider": "ollama",
+    "id": "gemma4:31b"
+  },
+  "environment": {
+    "tbl_version": "git-fb75e45",
+    "prompt_version": "v1"
+  },
+  "contributors": [
+    {
+      "by": "github:hydropix",
+      "at": "2026-05-10T10:28:43Z"
+    }
+  ],
+  "translations": [
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "افعلي يا نفسُ افعلي، أهيني ذاتكِ وازدرِيها؛ فما هي إلا برهة حتى ينقضي الوقت المتاح لكِ لتقدير نفسك. إن سعادة كل امرئ تكمن في ذاته، ولكن انظري، لقد أوشكت حياتكِ على الانتهاء، وبينما تفتقرين لتقدير نفسك، جعلتِ سعادتكِ رهينةً في نفوس الآخرين وأوهامهم. لِمَ تسمحين لكل هذه الأمور الخارجية أن تشتت شملكِ إلى هذا الحد؟ امنحي نفسكِ فرصة لتعلم شيء نافع، وكفي عن التخبط والشرود هنا وهناك.",
+      "output_hash": "sha256:7b53bad1de1357e2688ef0a3f0882def291398aec70ae2f150563da1c54ad93f",
+      "translation_latency_ms": 4427,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "করো, হে আত্মা, করো; নিজেকে অপমান করো এবং তুচ্ছ জ্ঞান করো; আর কিছুকাল পরেই তোমার নিজেকে শ্রদ্ধা করার সময় শেষ হয়ে যাবে। প্রতিটি মানুষের সুখ তার নিজের ওপর নির্ভর করে, কিন্তু দেখ, তোমার জীবন প্রায় শেষ হয়ে এসেছে; অথচ নিজেকে কোনো মর্যাদা না দিয়ে তুমি তোমার সুখকে অন্য মানুষের আত্মা এবং তাদের ধারণার ওপর নির্ভরশীল করে তুলেছ। বাইরের জগতের এই ঘটনাগুলো কেন তোমাকে এতটা বিচলিত করছে? নিজেকে কিছু ভালো জিনিস শেখার অবসর দাও, আর এই উদ্দেশ্যহীনভাবে এখানে-সেখানে ঘুরে বেড়ানো বন্ধ করো।",
+      "output_hash": "sha256:d3c36f84c1c147cb7ca33f85fe9a9483f65921e009665226620b13d9dd5db8c2",
+      "translation_latency_ms": 3455,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Gør det, o sjæl, gør det; misbrug og foragt dig selv; blot en lille smule endnu, og tiden hvor du kan have respekt for dig selv, vil være omme. Enhver mands lykke afhænger af ham selv, men se, dit liv er næsten ved veis ende, og mens du nægter dig selv respekt, lader du din lykke afhænge af andre menneskers sjæle og forestillinger. Hvorfor skal alle disse ydre ting forstyrre dig så meget? Giv dig selv tid til at lære noget godt, og ophør med at flakke og vandre hvileløst frem og tilbage.",
+      "output_hash": "sha256:7276b3dd7db14b85c71511cd601ca917c0a1f8d9b2d4e3620dcbdcb5256df3ac",
+      "translation_latency_ms": 4430,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Tue es, oh Seele, tue es; misshandle und verachte dich selbst; noch eine Weile, und die Zeit, in der du dich selbst achten kannst, wird vorüber sein. Das Glück eines jeden Menschen hängt von ihm selbst ab, doch siehe, dein Leben neigt sich fast dem Ende zu; während du dich selbst keiner Achtung schenkst, lässt du dein Glück von den Seelen und Vorstellungen anderer Menschen abhängen. Warum sollten dich all diese äußeren Dinge so sehr zerstreuen? Gib dir selbst die Muße, etwas Gutes zu lernen, und höre auf, rastlos umherzustreifen und hin und her zu wandern.",
+      "output_hash": "sha256:f729e26cbc96855f2cc709be26b0f68540be721859ea2dbdac1db447716f100e",
+      "translation_latency_ms": 11305,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Κάνε το, ψυχή μου, κάνε το· υποτίμησε και περιφρόνησε τον εαυτό σου· γιατί σε λίγο, ο χρόνος για να σε σέβεσαι, θα έχει φθίσει. Η ευτυχία κάθε ανθρώπου εξαρτάται από τον ίδιο, όμως δες, η ζωή σου σχεδόν τελείωσε, και ενώ δεν δείχνεις σεβασμό στον εαυτό σου, αναζητάς την ευτυχία σου στις ψυχές και τις ιδέες των άλλων. Γιατί να σε ταράζουν τόσο όλα αυτά τα εξωτερικά γεγονότα; Δώσε στον εαυτό σου τον χρόνο να μάθει κάτι χρησιμό και σταμάτα να πλανιέσαι και να περιπλανιέσαι εδώ και εκεί.",
+      "output_hash": "sha256:9597b7ac7db6672ed680287345b996151e96f590d5806dff6971344e041529db",
+      "translation_latency_ms": 5285,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Hazlo, alma, hazlo; abúsate y ménospreciate a ti misma; pues falta poco para que el tiempo de respetarte llegue a su fin. La felicidad de cada hombre depende de sí mismo, pero mira que tu vida está casi agotada; mientras no te respetas, haces que tu felicidad consista en las almas y los caprichos de los demás. ¿Por qué han de distraerte tanto todas estas cosas que suceden externamente? Date tiempo para aprender algo bueno y deja de vagar y errar de un lado a otro.",
+      "output_hash": "sha256:00235785f39a2111e6d68040bf8f5a2cb8d915936ba8f634560b2b27660f6e06",
+      "translation_latency_ms": 3662,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Fais-le, ô mon âme, fais-le ; abuse de toi-même et méprise-toi ; car bientôt, le temps où tu pourras t'estimer sera révolu. Le bonheur de chacun dépend de lui-même, mais vois que ta vie touche presque à sa fin ; tout en ne t'accordant aucun respect, tu fais dépendre ton bonheur de l'âme et des opinions d'autrui. Pourquoi toutes ces choses extérieures te troublent-elles ainsi ? Accorde-toi le loisir d'apprendre quelque chose de bon, et cesse d'errer et de vagabonder sans fin.",
+      "output_hash": "sha256:435125752fe0f9aa68fc70ed43371f5059d5e17c6efb201953cdf475dc46eef3",
+      "translation_latency_ms": 4114,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "עשי, לנפשי, עשי; השפילי ובזי את עצמך; עוד זמן קצר והעת שבה תוכלי לכבד את עצמך תגיע לסופה. אושרו של כל אדם תלוי בו עצמו, אך הנה, חייך כמעט פגו, ובעודך אינך מכבדת את עצמך, את מפקידה את אושריך בידיהם של אחרים, בתפיסותיהם ובמחשבותיהם. מדוע כל הדברים המתרחשים בחוץ מסיחים את דעתך כל כך? הקני לעצמך פנאי ללמוד דבר מה טוב, והפסיקי לה להסתובב ולנדוד הלוך ושוב.",
+      "output_hash": "sha256:9036d2c90160d39a40ddb68ea654c4b0754662107eaf80b32f9473f5f995f6f5",
+      "translation_latency_ms": 4944,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "कर, हे आत्मा, कर; स्वयं का अपमान कर और स्वयं को तुच्छ समझ; लेकिन याद रख कि वह समय जल्द ही समाप्त हो जाएगा जब तुझे स्वयं का सम्मान करना था। हर मनुष्य की खुशी उसी पर निर्भर करती है, लेकिन देख, तेरा जीवन लगभग समाप्त होने को है, और स्वयं का सम्मान न करते हुए, तू अपनी खुशी को अन्य लोगों की आत्माओं और उनकी धारणाओं में खोज रहा है। बाहरी दुनिया में घटने वाली ये बातें तुझे इतना विचलित क्यों कर रही हैं? स्वयं को कुछ अच्छा सीखने का समय दे, और इधर-उधर भटकना और घूमना बंद कर।",
+      "output_hash": "sha256:17a11d4acba1632b04fa39efb8164c98c88d48fd75d8ef64d7bf522d872c178b",
+      "translation_latency_ms": 3748,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Wahai jiwa, teruskanlah; hinalah dan remehkanlah dirimu sendiri; namun tak lama lagi waktu bagimu untuk menghargai dirimu akan berakhir. Kebahagiaan setiap orang bergantung pada dirinya sendiri, namun lihatlah hidupmu sudah hampir usai, sementara engkau tak menghargai dirimu, engkau justru menggantungkan kebahagiaanmu pada jiwa dan anggapan orang lain. Mengapa segala hal yang terjadi di luar sana begitu mengganggumu? Berikanlah dirimu waktu untuk mempelajari hal-hal baik, dan berhentilah berkelana serta terombang-ambing ke sana kemari.",
+      "output_hash": "sha256:4787fd77b038e2ab6e02603b57c0a6ba8fca35c763f13d80142e80806a7c249e",
+      "translation_latency_ms": 4019,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Fai, anima, fai; abus di te stessa e sprezzala; ancora per poco e il tempo in cui potrai avere cura di te giungerà al termine. La felicità di ogni uomo dipende da se stesso, ma guarda: la tua vita è quasi finita, e mentre non nutri alcun rispetto per te stessa, affidi la tua felicità alle anime e ai capricci degli altri. Perché tutte queste cose esterne dovrebbero turbarti così tanto? Concediti il tempo di imparare qualcosa di buono e smetti di vagare e randagiare senza meta.",
+      "output_hash": "sha256:e5211c7b298ab092d20909936fd9a0597541ffa4ef81df28706371f00ac9fdbb",
+      "translation_latency_ms": 3714,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "行え、魂よ、行え。己を辱め、軽んじるがよい。だが、己を尊重すべき時は、間もなく尽きようとしている。人の幸福はすべて自分自身に懸かっているというのに、見よ、お前の人生はほぼ終わりに近づいている。それなのに己を尊重することなく、他人の魂や、他人が抱く思いに自らの幸福を委ねているではないか。外側で起こる出来事に、なぜこれほどまで心を乱されるのか。何か良きことを学ぶための時間を自分に与え、あちこちを彷徨い歩くのはもうやめなさい。",
+      "output_hash": "sha256:dfb9cb6eb788e81af616b68f39d5dc2f24d9e007d0b4074773bc0278f1a05d50",
+      "translation_latency_ms": 4049,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "하라, 영혼아, 하라. 자신을 학대하고 경멸하라. 머지않아 스스로를 돌볼 시간조차 끝이 날 것이다. 모든 이의 행복은 자신에게 달려 있거늘, 보라, 네 삶은 거의 다해가는데도 정작 자신은 돌보지 않은 채 타인의 영혼과 생각에 네 행복을 맡기고 있구나. 외적인 일들이 어찌 너를 이토록 혼란스럽게 하는가? 방황하며 여기저기 떠도는 것을 멈추고, 선한 것을 배울 수 있도록 스스로에게 여유를 주어라.",
+      "output_hash": "sha256:9e09e5ad48a6d9513d51f5e25c48a3432b22e269bf9b2ca3a9686fd2655b618d",
+      "translation_latency_ms": 3877,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Doe dan, o ziel, doe; misbruik en minacht jezelf; nog een korte tijd en de tijd waarin je jezelf respect kon tonen, is voorbij. Het geluk van ieder mens hangt van hemzelf af, maar zie, je leven loopt bijna ten einde; terwijl je jezelf geen eer geeft, laat je je geluk afhangen van de zielen en de grillen van anderen. Waarom zouden deze externe zaken je zozeer uit het veld slaan? Gun jezelf de tijd om iets goeds te leren, en staak het dwalen en rondzwerven.",
+      "output_hash": "sha256:122d1a49b7da12c12cd4a25546f53489a5c1e1b7cd230af584c567033be3bda7",
+      "translation_latency_ms": 3856,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Działaj, duszo, działaj; nadużywaj siebie i gardź sobą; lecz jeszcze chwila i czas, w którym mogłabyś o siebie zadbać, dobiegnie końca. Szczęście każdego człowieka zależy od niego samego, a przecież spójrz – twoje życie niemalże się kończy, a ty, nie okazując sobie szacunku, upatrujesz swojego szczęścia w duszach i mniemaniach innych ludzi. Dlaczego te wszystkie zewnętrzne zdarzenia tak bardzo cię mącą? Daj sobie czas, by nauczyć się czegoś dobrego, i przestań błądzić i krążyć bez celu.",
+      "output_hash": "sha256:ee1ffbc8c1d4853b6ad902fda7520a4f92d9b0eea9621297299e819dbd2b419d",
+      "translation_latency_ms": 4468,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "Faz, ó alma, faz; abusa de ti mesma e despreza-te; pois falta pouco para que o tempo de te respeitares chegue ao fim. A felicidade de cada homem depende de si mesmo, mas olha: a tua vida está quase no fim e, não tendo consideração por ti, fazes a tua felicidade depender das almas e dos caprichos de outrem. Por que razão todas essas coisas externas te distraem tanto? Dá a ti mesma o tempo necessário para aprender algo de bom, e deixa de vagar e perambular sem rumo.",
+      "output_hash": "sha256:6b500eeecfe09217d3d2d08192f5af2e48e537aec82d6ec415461972d164bd8a",
+      "translation_latency_ms": 3692,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Действуй, душа, действуй; предавайся самобичеванию и презирай себя; ведь пройдет совсем немного времени, и час, когда ты мог бы проявить уважение к себе, подойдет к концу. Счастье каждого человека зависит от него самого, но посмотри: твоя жизнь почти истлела, а ты, не почитая себя, вверяешь свое счастье душам и прихотям других людей. Почему всё это внешнее столь сильно смущает тебя? Дай себе время постичь что-то благое и прекрати свои бесцельные скитания и блуждания.",
+      "output_hash": "sha256:7bd6a0bef936bf46a96b37e549e0141285a4271cf5d26aa912fd5d61ee081be1",
+      "translation_latency_ms": 4011,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Gör det, själ, gör det; förakt och förnedra dig själv; snart är tiden ute för dig att visa dig själv respekt. Varje människas lycka beror på henne själv, men se, ditt liv är nästan till ända, och medan du förvägrar dig själv respekt, låter du din lycka bero på andra människors själar och nycker. Varför låter du dessa yttre ting distrahera dig så mycket? Ge dig själv tid att lära dig något gott, och upphör att flacka och vandra fram och tillbaka.",
+      "output_hash": "sha256:61c6dc83d732a4666725169118d99d52d9995ed7bc750d08da115a1efdb62a88",
+      "translation_latency_ms": 3781,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "செய், ஆத்மாவே, செய்; உன்னை நீயே அவமதித்து அலட்சியப்படுத்து; இன்னும் கொஞ்ச நேரத்தில்தான் உன்னை நீயே மதிக்க வேண்டிய காலம் முடிவுக்கு வரும். ஒவ்வொரு மனிதனின் மகிழ்ச்சியும் அவனது சுயக்கட்டுப்பாட்டிலேயே தங்கியுள்ளது, ஆனால் இதோ உன்னுடைய வாழ்க்கை கிட்டத்தட்ட முடிவுக்கு வந்துவிட்டது. உன்னை நீயே மதிக்காமல், உனது மகிழ்ச்சியை மற்றவர்களின் ஆத்மாக்களிலும், எண்ணங்களிலும் தேடுகிறாய். வெளிப்புறத்தில் நடக்கும் இத்தகைய விஷயங்கள் உன்னை ஏன் இவ்வளவு நிலைகுலையச் செய்ய வேண்டும்? உனக்கு நீயே நல்ல விஷயங்களைக் கற்றுக்கொள்ள அவகாசம் அளித்துக் கொள்; அங்கேயும் இங்கேயும் அலைந்து திரிவதை நிறுத்து.",
+      "output_hash": "sha256:ae7455c81bfededd31d5a4cf979d8abda41df4c5b6fee2d3ff870a57818f90ac",
+      "translation_latency_ms": 4697,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "จงทำเถิด ดวงวิญญาณเอ๋ย จงทำ จงดูหมิ่นและเหยียดหยามตนเองต่อไปเถิด เพราะอีกไม่นาน เวลาที่เจ้าจะได้หันกลับมาเคารพตนเองก็จะหมดสิ้นลง ความสุขของมนุษย์ทุกคนนั้นขึ้นอยู่กับตนเอง แต่ดูเถิด ชีวิตของเจ้าใกล้จะถึงจุดสิ้นสุดแล้ว ในขณะที่เจ้าไม่เห็นค่าในตนเอง เจ้ากลับฝากความสุขของเจ้าไว้กับจิตวิญญาณและความคิดเห็นของผู้อื่น เหตุใดสิ่งภายนอกเหล่านี้จึงทำให้เจ้าว้าวุ่นใจได้ถึงเพียงนี้? จงให้เวลาตนเองได้เรียนรู้สิ่งที่ดีงาม และเลิกเร่ร่อนรอนแรมไปอย่างไร้จุดหมายเสียที",
+      "output_hash": "sha256:70953254e4ebcd02cd4618dacece64d67b726e4cb5df4c108486c1764efbd41e",
+      "translation_latency_ms": 4776,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Hãy nhìn lại đi, hỡi linh hồn; ngươi cứ mãi ngược đãi và coi thường chính mình; nhưng rồi sẽ đến lúc thời gian để ngươi tự tôn trọng bản thân sẽ chẳng còn nữa. Hạnh phúc của mỗi người đều nằm ở chính họ, nhưng hãy nhìn xem, cuộc đời ngươi đã gần đi đến hồi kết, vậy mà thay vì trân trọng bản thân, ngươi lại đặt hạnh phúc của mình vào linh hồn và ý muốn của kẻ khác. Tại sao những điều phù phiếm bên ngoài lại khiến ngươi xao nhãng đến thế? Hãy dành thời gian để học lấy một điều tốt đẹp, và thôi đừng mãi rong ruổi, lang thang vô định nữa.",
+      "output_hash": "sha256:05d6d4d2d6ede59b911c1e0008e3d8a72eddc8462e2a8778b661f8d56cda0e64",
+      "translation_latency_ms": 4205,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "aurelius_meditations",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "做吧，灵魂啊，做吧；去虐待你，轻视你吧；再过不久，你尊重自己的机会就将不复存在。每个人的幸福都取决于自己，但你看，你的生命已近终点，而你却不自重，反而将自己的幸福寄托在他人之灵魂与心念之中。为何这些外在之事能如此地令你心乱如麻？给自己一点时间去学习一些良善之物，不要再如此盲目地四处漂泊流浪了。",
+      "output_hash": "sha256:d5e3ace2e5bbb1af667dfcd6dd761a12fe15d9ac85a9f9b99212ec57882fe1a9",
+      "translation_latency_ms": 13415,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "كان المرسم يغص بعبير الورد النفاذ، وحينما كانت نسمات الصيف الخفيفة تداعب أشجار الحديقة، تتسلل عبر الباب المفتوح رائحة الليلك القوية، أو الشذى الأكثر رقة لأزهار العليق الوردية. ومن زاوية الديوان المكسو بالوسائد الفارسية، حيث كان مستلقياً يدخن سجائر لا حصر لها كما هي عادته، استطاع اللورد هنري ووتون أن يلمح بريق أزهار شجرة السرو الذهبية، بلونها العسلي وشذاها الحلو.",
+      "output_hash": "sha256:cd97fa3792eaee60a267ba5c1834abae8c5b389a7ab76888b951d6320611f2f2",
+      "translation_latency_ms": 3973,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "পুরো স্টুডিওটি গোলাপের তীব্র সুগন্ধে ভরে ছিল; আর যখন গ্রীষ্মের মৃদু বাতাস বাগানের গাছপালার মধ্য দিয়ে বয়ে যেত, তখন খোলা দরজা দিয়ে ভেসে আসত লাইল্যাকের গাঢ় ঘ্রাণ, অথবা গোলাপি কাঁটা-ফুলের আরও কোমল সুবাস। পার্সিয়ান স্যাডল-ব্যাগের তৈরি ডিভানের এক কোণে শুয়ে, প্রথা অনুযায়ী অসংখ্য সিগারেট ফুঁকছিলেন লর্ড হেনরি ওটন; ঠিক সেই মুহূর্তে তাঁর চোখে পড়ল একটি ল্যাবুরনাম গাছের মধু-মিষ্টি আর মধু-রঙের ফুলের ঝলক।",
+      "output_hash": "sha256:810cc4014b03419a9c2e43ba20de309d01f3d453353bf8171d3ceaa69c588fa4",
+      "translation_latency_ms": 3657,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Studiet var fyldt med den rige duft af roser, og når den lette sommervind suser gennem haveens træer, strømmede den tunge duft af syren eller den mere delikate parfume fra den lyserøde hagtorn ind gennem den åbne dør. Fra hjørnet af divanen af persiske sadeltasker, hvor han lå og røg utallige cigaretter, som var hans vane, kunne Lord Henry Wotton netop ane glimtet af honningsøde og honningfarvede blomster fra et gyldent regntræ.",
+      "output_hash": "sha256:afa3f09572115953ac54a052bc59008a5fe9383561ac46d8308078d19554ba56",
+      "translation_latency_ms": 3944,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Das Studio war erfüllt vom schweren Duft der Rosen, und wenn der leichte Sommerwind durch die Bäume des Gartens wehte, drang durch die offene Tür das kräftige Aroma des Flieders oder der zartere Duft des rosablühenden Weißdorns herein. Von der Ecke des Divans aus persischen Satteltaschen, auf dem er lag und wie seiner Gewohnheit entsprechend zahllose Zigaretten rauchte, konnte Lord Henry Wotton gerade so den Glanz der honigsüßen und honigfarbenen Blüten eines Goldregens erahnen.",
+      "output_hash": "sha256:a35306ee18b6334f0ff5cb4ef006b1fa412c889242048d965e9cd579a75a4dc3",
+      "translation_latency_ms": 3731,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Το στούντιο ήταν πλημμυρισμένο από το πλούσιο άρωμα των τριαντάφ diperlukan, και όταν ο ελαφρύς καλοκαιρινός άνεμος φυσούσε ανάμεσα στα δέντρα του κήπου, έφτανε μέσα από την ανοιχτή πόρτα η βαριά μυρωδιά της λιλάκιας ή το πιο λεπτό άρωμα του ροζ αγριόφραξου. Από τη γωνία του ντιβάνι με τα περσικά χαλιά πάνω στο οποίο ήταν ξαπλωμένος, καπνίζοντας, όπως συνήθιζε, αμέτρητα τσιγάρα, ο Lord Henry Wotton μπορούσε μόλις να διακρίνει τη λάμψη των μελιένιων και χρυσών ανθοδέσμων ενός λουβούρνου.",
+      "output_hash": "sha256:6b543c53c0f87d306fb98741dc71f06751583344c99bff7bb1d33d3a02b4a4d0",
+      "translation_latency_ms": 5416,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "El estudio estaba impregnado del rico aroma de las rosas, y cuando la ligera brisa estival se agitaba entre los árboles del jardín, entraba por la puerta abierta la densa fragancia de la lila o el perfume más delicado del espino de flores rosadas. Desde la esquina del diván de alforjas persas en el que yacía, fumando, según era su costumbre, innumerables cigarrillos, Lord Henry Wotton alcanzaba a percibir el destello de las flores color miel y de dulzor meloso de una laberna.",
+      "output_hash": "sha256:f5ad11636c2ea8da597beef9403b8cb81d8b9f7cc60d578fe13ac165981848dc",
+      "translation_latency_ms": 3583,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Le studio était imprégné du parfum riche des roses, et quand la légère brise d'été s'agitait parmi les arbres du jardin, s'engouffrait par la porte ouverte l'odeur lourde du lilas ou le parfum plus délicat de l'églantier. Du coin du divan fait de sacoches persanes sur lequel il était allongé, fumant, selon son habitude, d'innombrables cigarettes, Lord Henry Wotton pouvait tout juste apercevoir l'éclat des fleurs couleur de miel et au parfum sucré d'un laburnum.",
+      "output_hash": "sha256:9c4fe94e3be7dbd2f5f6816c4b83883858bb7172aef42dd9d99832fffa8ee4ab",
+      "translation_latency_ms": 3825,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "הסטודיו היה מלא בניחוח עשיר של ורדים, וכשרוח הקיץ הקלילה נשבה בין עצי הגן, חלחל דרך הדלת הפתוחה הניחוח הכבד של הלילך, או הבושם העדין יותר של הדרדר הפורח בורוד. מפינת הדיבון, שעליו היו מונחות שקיות אוכף פרסיות ושם שכב לורד הנרי ווטון כשהוא מעשן, כמנהגו, אינספור סיגריות, הצליח להבחין בנצנוץ פריחתו הדבשית והמתוקה של עץ הלבורנום.",
+      "output_hash": "sha256:f5f1ea4ef1b5c864214ae352bba059208a58a66b2523dce3d0d62ecd8a8af37b",
+      "translation_latency_ms": 4658,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "स्टूडियो गुलाबों की सोंधी महक से भरा हुआ था, और जब बगीचे के पेड़ों के बीच गर्मियों की हल्की हवा चलती, तो खुले दरवाजे से लाइलैक की भारी खुशबू या गुलाबी फूलों वाले कांटेदार झाड़ (थॉर्न) की अधिक सूक्ष्म सुगंध भीतर आने लगती। फारसी सैडल-बैग्स वाले दीवान के कोने में लेटे हुए, अपनी आदत के अनुसार अनगिनत सिगरेट पी रहे लॉर्ड हेनरी वॉटन को, लैबर्नम के शहद जैसी मिठास और शहद जैसे रंग वाले फूलों की चमक साफ दिखाई दे रही थी।",
+      "output_hash": "sha256:a4f691554b90723648b1ab53ea25b32ceca12bdce589e0eebd863b90d542b1dc",
+      "translation_latency_ms": 3680,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Studio itu dipenuhi aroma mawar yang semerbak, dan saat angin musim panas yang ringan berembus di antara pepohonan di taman, terciumlah wangi lilac yang kuat, atau harum bunga thorn merah muda yang lebih lembut, melalui pintu yang terbuka. Dari sudut sofa berbahan tas pelana Persia tempat ia berbaring sembari menghisap rokok dalam jumlah banyak, sebagaimana kebiasaannya, Lord Henry Wotton dapat menangkap sekilas kilauan bunga laburnum yang sewarna madu dan semanis madu.",
+      "output_hash": "sha256:cd5fb5f1b03e31258fa0a665f27b06628914c252f4f9cba869b662851e4982d7",
+      "translation_latency_ms": 3399,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Lo studio era pervaso dal ricco profumo di rose e, quando la leggera brezza estiva agitava gli alberi del giardino, filtrava dalla porta aperta la fragranza intensa del lillà o il profumo più delicato dell'agrifoglio in fiore. Dall'angolo del divano di borse a sella persiane su cui era sdraiato, fumando, come era sua consuetudine, innumerevoli sigarette, Lord Henry Wotton riusciva appena a scorgere il luccichio dei fiori color miele e dal dolce aroma di miele di una ginestra.",
+      "output_hash": "sha256:96e09dd9bcae00cef68e3d73cfebdcea6c98db9988631472db7c864b2b3060e7",
+      "translation_latency_ms": 3866,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "アトリエには薔薇の芳醇な香りが満ちていた。庭の木々の間を初夏の軽い風が吹き抜けると、開いた扉からライラックの濃厚な香りや、あるいはより繊細なピンク色のサンザシの香りが漂ってきた。ペルシャ風のサドルバッグを敷いた長椅子に身を任せ、いつものように数えきれないほどの煙草をふかしていたヘンリー・ウォットン卿の視界には、蜜のように甘く、蜜色に輝く黄金雨のの花がかすかに映っていた。",
+      "output_hash": "sha256:1be724b676238413e1566bfd43b7f53edd4ccb50d318f14667449e59940bb338",
+      "translation_latency_ms": 3634,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "작업실은 진한 장미 향기로 가득 찼다. 정원의 나무들 사이로 가벼운 여름 바람이 불어오면, 열린 문을 통해 라일락의 짙은 향기나 분홍색 가시나무 꽃의 더 섬세한 향기가 스며들었다. 페르시아식 안장 가방 모양의 쿠션이 놓인 디반 위에 누워 평소처럼 수많은 담배를 피우고 있던 헨리 워튼 경은, 꿀처럼 달콤하고 노란 빛깔의 금비나무 꽃이 반짝이는 모습을 언뜻 볼 수 있었다.",
+      "output_hash": "sha256:3a32cb3f4463757dc09828f7945613a600e7ac1feeb10f9ab07db8ba56296bde",
+      "translation_latency_ms": 3828,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "De studio was vervuld van de rijke geur van rozen, en wanneer de lichte zomerwind door de bomen van de tuin woei, drong door de open deur de zware geur van fluweelboom binnen, of het delicatere aroma van de roze bloesem van de meidoorn. Vanaf de hoek van de divan van Perzische zadeltassen waarop hij lag, terwijl hij, zoals in zijn gewoonte, talloze sigaretten rookte, kon Lord Henry Wotton net de glinstering waarnemen van de honingzoete en honingkleurige bloesems van een gouden regen.",
+      "output_hash": "sha256:6fe8ba57470f7537ab52cfaf7c8d7e8fa405aaff4bf0ecaf1a2d8fc2d068f0b0",
+      "translation_latency_ms": 4070,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Studio wypełniał intensywny zapach róż, a gdy lekki, letni wiatr poruszał drzewami w ogrodzie, przez otwarte drzwi wdzierała się ciężka woń bzu lub subtelniejszy aromat różowego głogu. Z narożnika dywanu z perskich siedodłowych, na którym leżał, paląc – zgodnie ze swoim zwyczajem – niezliczone ilości papierosów, Lord Henry Wotton mógł dostrzec blask miodowych i miodowo słodkich kwiatów złotego deszczu.",
+      "output_hash": "sha256:f81bdf178550802d76072eab31840cc2e92b8d50da1b05b4a39c5e065d1c8fc2",
+      "translation_latency_ms": 3689,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "O estúdio estava impregnado do aroma intenso de rosas e, quando a leve brisa de verão soprava entre as árvores do jardim, entrava pela porta aberta o perfume forte do lilás ou a fragrância mais delicada do espinheiro de flores rosadas. Do canto do divã de alforges persas onde estava recostado, fumando, como era seu costume, inúmeros cigarros, Lord Henry Wotton conseguia vislumbrar o brilho das flores cor de mel e doce como mel de uma laburno.",
+      "output_hash": "sha256:58a999df066704ead83440b7f8ec9085bda0ed29b5623bda618c16555118c4cd",
+      "translation_latency_ms": 3376,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Студия была наполнена густым ароматом роз, и когда легкий летний ветерок шелестел в садовых деревьях, в открытую дверь врывался тяжелый запах сирени или более нежный аромат розовоцветущего терновника. С дивана, обтянутого персидскими коврами, на котором он лежал, выкуривая, по своему обыкновению, бесчисленное множество сигарет, лорд Генри Уоттон мог уловить отблеск медово-сладких и медово-золотистых соцветий золотого дождя.",
+      "output_hash": "sha256:200f6bbaccc5d20640c34c046edb4fa1627c8d55607863319b1b789f9c1b62fa",
+      "translation_latency_ms": 3941,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Ateljén var fylld av den rika doften av rosor, och när den lätta sommarvinden rörde sig bland trädgårdens träd, strömmade doften av syren in genom den öppna dörren, eller den mer subtila parfymen från den rosa hagtornsblomningen. Från hörnet av divanen med persiska sadelväskor, där han låg och rökte otaliga cigaretter enligt sin vana, kunde Lord Henry Wotton precis ana glimten av ett gyllengrodträd med sina honungssöta och honungsfärgade blommor.",
+      "output_hash": "sha256:9245a1c37ae35492a2293fc6b9b2cfe2d6896ceb7d8fe7bd382fdd5050c0d287",
+      "translation_latency_ms": 4143,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "அந்த ஸ்டுடியோ முழுவதும் ரோஜாக்களின்浓வான நறுமணம் நிறைந்திருந்தது. தோட்டத்திலிருந்த மரங்களுக்கிடையே மென்மையான கோடைக்காலக் காற்று வீசியபோது, திறந்திருந்த கதவு வழியாக லைலக் மலர்களின் கனமான வாசனையோ அல்லது இளஞ்சிவப்பு நிற முள் மலர்களின் மென்மையான நறுமணமோ உள்ளே நுழைந்தது. பெர்சியன் சேடில்-பாக்ஸ் (Persian saddle-bags) கொண்ட திவானின் மூலையில் படுத்துக்கொண்டு, தனது வழக்கப்படி எண்ணற்ற சிகரெட்டுகளைப் புகைத்துக் கொண்டிருந்த லார்ட் ஹென்றி வாட்டன் (Lord Henry Wotton), தேன் போன்ற இனிமையும் தேன் நிறமும் கொண்ட லேபர்னம் (laburnum) மலர்களின் மின்னும் அழகைச் சற்றுத் தழுவ முடிந்தது.",
+      "output_hash": "sha256:031197352bff083bc40134af1be9e6794f9a6268183a8f9d7a68be06b2413750",
+      "translation_latency_ms": 4691,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "ห้องสตูดิโออบอวลไปด้วยกลิ่นหอมเข้มข้นของกุหลาบ และเมื่อลมฤดูร้อนพัดแผ่วผ่านหมู่ไม้ในสวน กลิ่นหอมรุนแรงของไลแลค หรือกลิ่นหอมอ่อนละมุนของดอกหนามสีชมพูก็ลอยละล่องผ่านประตูที่เปิดกว้างเข้ามา จากมุมของโซฟาบุด้วยผ้าทอเปอร์เซียที่เขากำลังนอนเอกเขนก พร้อมกับสูบบุหรี่จำนวนนับไม่ถ้วนตามความเคยชิน ลอร์ด เฮนรี วอตตอน สามารถมองเห็นประกายของดอกลาเบิร์นัมที่มีสีเหลืองทองและหอมหวานราวกับน้ำผึ้งได้อย่างเลือนราง",
+      "output_hash": "sha256:0fd282c49f9de06e246069f1eda345d6fac94157a4ae8a52f2a55c1ddd2f50c6",
+      "translation_latency_ms": 4596,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Căn phòng ngập tràn hương hoa hồng nồng nàn, và khi làn gió mùa hè nhẹ nhàng lay động những hàng cây trong vườn, từ cánh cửa mở toang bay vào mùi hương đậm đà của hoa tử đinh hương, hay hương thơm thanh tao hơn của loài gai hoa hồng. Từ góc chiếc ghế trường kỷ bọc vải dệt kiểu Ba Tư, nơi ông đang nằm hút thuốc như một thói quen khó bỏ với vô số điếu thuốc lá, Lord Henry Wotton có thể thoáng nhìn thấy những chùm hoa màu mật ong ngọt ngào của cây phi yến.",
+      "output_hash": "sha256:22d964f0b1c53c4730ebbb78e4d6e7f019c522991faf51296888ef6d65d6d4d0",
+      "translation_latency_ms": 3664,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "dorian_gray",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "画室里弥漫着浓郁的玫瑰花香。当夏日的微风在花园的树丛间轻拂时，丁香花的浓香，或是粉色山荆棘更为淡雅的芬芳，便顺着敞开的房门飘入室内。亨利·沃顿勋爵正躺在铺着波斯马鞍垫的沙发角落里，像往常一样抽着数不清的香烟；他此时刚好能瞥见窗外金雨花那如蜂蜜般甜美、色泽如蜜的繁花在闪烁。",
+      "output_hash": "sha256:e1bb9c7e67169bc715e0708f44d36fa20e0485d7de9c81414ee7fb8a31358282",
+      "translation_latency_ms": 3635,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "قبل ظهور نظرية النسبية، كان من المسلم به ضمناً في الفيزياء أن مفهوم الزمن يحمل دلالة مطلقة، أي أنه مستقل عن حالة حركة الجسم المرجعي. ولكننا رأينا للتو أن هذا الافتراض لا يتوافق مع التعريف الأكثر طبيعية للتزامن؛ فإذا تخلينا عن هذا الافتراض، سيزول التعارض بين قانون انتشار الضوء في الفراغ ومبدأ النسبية (الذي تم تناوله في القسم السابع).",
+      "output_hash": "sha256:63f057dbbe490b53e9df724b6a87a5d6e156e0e101e0126215e1954cd853e6dc",
+      "translation_latency_ms": 3174,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "আপেক্ষিকতার তত্ত্ব আগমনের আগে পদার্থবিজ্ঞানে সর্বদা পরোক্ষভাবে ধরে নেওয়া হতো যে, সময়ের ধারণাটি একটি পরম তাৎপর্য বহন করে; অর্থাৎ, এটি নির্দেশক বস্তুর গতির অবস্থার ওপর নির্ভরশীল নয়। কিন্তু আমরা এইমাত্র দেখলাম যে, এই ধারণাটি যুগপৎ ঘটনার সবচেয়ে স্বাভাবিক সংজ্ঞার সাথে অসামঞ্জস্যপূর্ণ; আমরা যদি এই ধারণাটি বর্জন করি, তবে শূন্যস্থানে আলোর propagation বা সঞ্চালনের সূত্র এবং আপেক্ষিকতার নীতির (যা সপ্তম পরিচ্ছেদে আলোচিত হয়েছে) মধ্যকার দ্বন্দ্বটি দূর হয়ে যায়।",
+      "output_hash": "sha256:fa8d2912850fc8858ec9d648348b1777ad1694d9a78eb3a250aa3a76eb464b3c",
+      "translation_latency_ms": 3440,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Før relativitetsteoriens fremkomst havde man i fysikken altid stiltiende antaget, at tidsangivelsen havde en absolut betydning, det vil sige, at den er uafhængig af referencemålestokkens bevægelsestilstand. Men vi har netop set, at denne antagelse er uforenelig med den mest naturlige definition af samtidighed; hvis vi forkaster denne antagelse, forsvinder konflikten mellem loven for lysets udbredelse i vakuum og relativitetsprincippet (som er udfoldet i afsnit VII).",
+      "output_hash": "sha256:1a4f8431d7345d381b0fde40de69f6c06a6099864a8bb04a6c8878793a646703",
+      "translation_latency_ms": 3896,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Vor dem Aufkommen der Relativitätstheorie war in der Physik stets stillschweigend davon ausgegangen, dass die Zeitangabe eine absolute Bedeutung habe, d. h. dass sie unabhängig vom Bewegungszustand des Bezugskörpers sei. Wir haben jedoch gerade gesehen, dass diese Annahme mit der natürlichsten Definition der Gleichzeitigkeit unvereinbar ist; wenn wir auf diese Annahme verzichten, so verschwindet der Konflikt zwischen dem Gesetz der Lichtausbreitung im Vakuum und dem Relativitätsprinzip (das in Abschnitt VII ausgeführt wurde).",
+      "output_hash": "sha256:1035576e34ae9222cd3cfcda9efb6c31a026eeaa5ccec0cc342773193129c5b2",
+      "translation_latency_ms": 3500,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Πριν από την έλευση της θεωρίας της σχετικότητας, στη φυσική θεωρούνταν πάντα σιωπηρά ότι η έννοια του χρόνου έχει μια απόλυτη σημασία, δηλαδή ότι είναι ανεξάρτητη από την κατάσταση κίνησης του σώματος αναφοράς. Όμως μόλις είδαμε ότι αυτή η υπόθεση είναι ασύμβατη με τον πιο φυσικό ορισμό της ταυτόχρονης συν źródισης. Εάν απορρίψουμε αυτή την υπόθεση, τότε η σύγκρουση μεταξύ του νόμου της διάδοσης του φωτός στο κενό και της αρχής της σχετικότητας (που αναλύεται στην Ενότητα VII) εξαλείφεται.",
+      "output_hash": "sha256:05ba258b1ad2e92782a68a998763e651f6dde0074c42a1dc7d5f1c2b4adf918f",
+      "translation_latency_ms": 4688,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Ahora bien, antes del advenimiento de la teoría de la relatividad, en física siempre se había asumido tácitamente que la noción de tiempo tenía un significado absoluto, es decir, que es independiente del estado de movimiento del cuerpo de referencia. Pero acabamos de ver que este supuesto es incompatible con la definición más natural de simultaneidad; si descartamos dicha premisa, entonces desaparece el conflicto entre la ley de propagación de la luz en el vacío y el principio de relatividad (desarrollado en la Sección VII).",
+      "output_hash": "sha256:8967db1759dd28fa0e2992f692393e5284ad1842fbc8ae0fbf068aa1adabf6aa",
+      "translation_latency_ms": 3377,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Désormais, avant l'avènement de la théorie de la relativité, on avait toujours tacitement admis en physique que la notion de temps revêtait une signification absolue, c'est-à-dire qu'elle était indépendante de l'état de mouvement du corps de référence. Or, nous venons de voir que cette hypothèse est incompatible avec la définition la plus naturelle de la simultanéité ; si nous abandonnons cette hypothèse, le conflit entre la loi de propagation de la lumière dans le vide et le principe de relativité (développé à la section VII) disparaît.",
+      "output_hash": "sha256:7d58387f02acc04ae8bc66893698ff2a29083e830cdc4a3af0538a9fd96f7bb7",
+      "translation_latency_ms": 3666,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "כעת, לפני הופעתה של תורת היחסות, תמיד הניחו בפיזיקה במשתמע כי למושג הזמן יש משמעות מוחלטת, כלומר, שהוא אינו תלוי במצב התנועה של גוף הייחוס. אך כ방 ראינו כי הנחה זו אינה עולה בקנה אחד עם ההגדרה הטבעית ביותר של בו-זמניות; אם נזניח הנחה זו, אזי הקונפליקט בין חוק התגלימות של האור בוואקום לבין עיקרון היחסות (שפותח בסעיף VII) ייעלם.",
+      "output_hash": "sha256:1173507bc36ac1f74f6a9d1dac4d558cad7a0f7dfc09517364ee46dfe864a98e",
+      "translation_latency_ms": 4208,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "सापेक्षता के सिद्धांत (theory of relativity) के आगमन से पहले, भौतिकी में यह हमेशा मौन रूप से माना जाता रहा है कि समय के कथन का एक निरपेक्ष महत्व है, अर्थात यह संदर्भ पिंड की गति की अवस्था से स्वतंत्र है। लेकिन हमने अभी देखा कि यह धारणा एककालिकता (simultaneity) की सबसे स्वाभाविक परिभाषा के साथ असंगत है; यदि हम इस धारणा को त्याग दें, तो निर्वात में प्रकाश के संचरण के नियम और सापेक्षता के सिद्धांत (जिसका वर्णन खंड VII में किया गया है) के बीच का टकराव समाप्त हो जाता है।",
+      "output_hash": "sha256:f9bb0cc43c06cecc9ebf1ea2e567b3a0cdad374eef6b93ff3c65dabd1e6febf2",
+      "translation_latency_ms": 3574,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Kini, sebelum munculnya teori relativitas, dalam fisika selalu diasumsikan secara tersirat bahwa pernyataan mengenai waktu memiliki makna absolut, yaitu bahwa waktu tidak bergantung pada keadaan gerak benda referensinya. Namun, kita baru saja melihat bahwa asumsi ini tidak sejalan dengan definisi simultanitas yang paling alami; jika kita mengabaikan asumsi ini, maka pertentangan antara hukum perambatan cahaya dalam ruang hampa dan prinsip relativitas (yang dibahas dalam Bagian VII) akan hilang.",
+      "output_hash": "sha256:a2579a576eb6add43a40a8dc61b70df93aea8e904e5a4aba2ae55167644cd4d2",
+      "translation_latency_ms": 3216,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Ora, prima dell'avvento della teoria della relatività, in fisica si era sempre tacitamente assunto che il concetto di tempo avesse un significato assoluto, ovvero che fosse indipendente dallo stato di moto del corpo di riferimento. Abbiamo però appena visto che tale ipotesi è incompatibile con la definizione più naturale di simultaneità; se quindi scartiamo questa ipotesi, scompare il conflitto tra la legge di propagazione della luce nel vuoto e il principio di relatività (approfondito nella Sezione VII).",
+      "output_hash": "sha256:cf49056ca5908900b97bfeff127058129045ad702e7333b7d13e183c0c6d7c52",
+      "translation_latency_ms": 3156,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "さて、相対性理論が登場するまで、物理学においては、時間の記述は絶対的な意味を持つ、すなわち時間は基準となる物体の運動状態に依存しないということが常に暗黙の了解とされてきました。しかし、この仮定は、同時性の最も自然な定義と相容れないことが先ほど分かりました。もしこの仮定を捨てれば、真空中の光の伝播法則と相対性原理（第VII節で詳述）との間の矛盾は解消されることになります。",
+      "output_hash": "sha256:756478958c141b048bef34adfeb368dd1a2fd6456d4f5919cb0ebfaa66132af4",
+      "translation_latency_ms": 3072,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "상대성 이론이 등장하기 전까지 물리학에서는 시간의 개념이 절대적인 의미를 갖는다는 것, 즉 시간이 기준계의 운동 상태와 무관하다는 것이 언제나 암묵적으로 전제되어 왔습니다. 하지만 우리는 이러한 가정이 동시성의 가장 자연스러운 정의와 양립할 수 없음을 방금 확인했습니다. 만약 이 가정을 버린다면, 진공에서의 빛의 전파 법칙과 (제7절에서 다루는) 상대성 원리 사이의 충돌은 사라지게 됩니다.",
+      "output_hash": "sha256:90d3e0c3782891911d15284b61a6151e9b62952ecad364364f7621f00b77cc74",
+      "translation_latency_ms": 3371,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Vóór de komst van de relativiteitstheorie was in de natuurkunde altijd stilzwijgend vanuitgegaan dat de tijdsaanduiding een absolute betekenis had, d.w.z. dat deze onafhankelijk is van de bewegingstoestand van het referentielichaam. Maar we hebben zojuist gezien dat deze aanname onverenigbaar is met de meest natuurlijke definitie van gelijktijdigheid; als we deze aanname laten varen, verdwijnt het conflict tussen de wet voor de voortplanting van licht in vacuüm en het relativiteitsprincipe (uitgewerkt in sectie VII).",
+      "output_hash": "sha256:6491781ebfe7d477cadd7dd21f578ba955bd46da209f7aed54aa5cecdd0e8eba",
+      "translation_latency_ms": 4039,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Przed pojawieniem się teorii względności w fizyce zawsze milcząco przyjmowano, że pojęcie czasu ma znaczenie absolutne, tzn. że jest on niezależny od stanu ruchu układu odniesienia. Widzieliśmy jednak przed chwilą, że założenie to jest nie do pogodzenia z najbardziej naturalną definicją jednoczesności; jeśli z niego zrezygnujemy, znika konflikt między prawem propagacji światła w próżni a zasadą względności (omówioną w rozdziale VII).",
+      "output_hash": "sha256:f65b69ff83fdd95a1285126cb6d9872cc2dd0a921377c9033bb713ddd2b49259",
+      "translation_latency_ms": 3620,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "Agora, antes do advento da teoria da relatividade, sempre se assumira tacitamente na física que a definição de tempo possuía um significado absoluto, isto é, que seria independente do estado de movimento do corpo de referência. No entanto, acabamos de ver que essa suposição é incompatível com a definição mais natural de simultaneidade; se descartarmos tal premissa, o conflito entre a lei de propagação da luz no vácuo e o princípio da relatividade (desenvolvido na Seção VII) desaparece.",
+      "output_hash": "sha256:c36ccb5e6c435845a21f48b3e4fd044f5033ff6aa32df7c6fc1524ebe48ba28d",
+      "translation_latency_ms": 3471,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "До появления теории относительности в физике всегда молчаливо предполагалось, что понятие времени имеет абсолютный характер, т. е. что оно не зависит от состояния движения системы отсчета. Однако мы только что убедились, что это предположение несовместимо с наиболее естественным определением одновременности; если мы откажемся от этого допущения, то противоречие между законом распространения света в вакууме и принципом относительности (рассмотренным в разделе VII) исчезнет.",
+      "output_hash": "sha256:a969b0e525402b1316b37466b08509c60f3e39fbbf5faa43cf7155f0b20b08a1",
+      "translation_latency_ms": 3285,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Innan relativitetsteorins tillkomst hade man inom fysiken alltid tyst förutsatt att tidsangivelsen hade en absolut betydelse, det vill säga att den är oberoende av referenssystemets rörelsetillstånd. Men vi har just sett att detta antagande är oförenligt med den mest naturliga definitionen av samtidighet; om vi överger detta antagande, försvinner konflikten mellan lagen för ljusets utbredning i vakuum och relativitetsprincipen (som utvecklades i avsnitt VII).",
+      "output_hash": "sha256:7e21111cdde53a61bfc1014ed4c220c3eec2a82622613c8924c6a38b7e350cf4",
+      "translation_latency_ms": 3539,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "சார்புத்தத்துவத்தின் (theory of relativity) வருகைக்கு முன்பு வரை, இயற்பியலில் காலத்தைப் பற்றியக் கூற்று ஒரு முழுமையான முக்கியத்துவத்தைக் கொண்டுள்ளது என்று மறைமுகமாக நம்பப்பட்டு வந்தது; அதாவது, காலமானது அதன் குறிப்புச்சட்டகத்தின் (body of reference) இயக்க நிலையத்தைச் சார்ந்தது அல்ல என்று கருதப்பட்டது. ஆனால், இக்கருதுகோள் நிகழ்நேரத்தன்மை (simultaneity) குறித்த மிகவும் இயல்பான வரையறைக்கு முரணானது என்பதை நாம் இப்போது கண்டோம்; ஒருவேளை நாம் இந்தக் கருதுகோளைக் கைவிட்டால், வெற்றிடத்தில் ஒளியின் பரவல் விவிக்கும் மற்றும் சார்புத்தத்துவக் கொள்கைக்குமிடையே (பிரிவு VII-இல் விவரிக்கப்பட்டது) உள்ள முரண்பாடு நீங்கிவிடும்.",
+      "output_hash": "sha256:1e37d5145fcaed595537beba7652da5ccc3a5c9209735367261effd921370c0a",
+      "translation_latency_ms": 4399,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "ก่อนการอุบัติขึ้นของทฤษฎีสัมพัทธภาพ ในทางฟิสิกส์มักมีการยอมรับกันโดยนัยเสมอมาว่า คำนิยามของเวลาเป็นสิ่งที่มีนัยสมบูรณ์ กล่าวคือ เวลาเป็นอิสระจากสถานะการเคลื่อนที่ของกรอบอ้างอิง แต่เราเพิ่งได้เห็นว่าสมมติฐานนี้ไม่สอดคล้องกับนิยามที่สมเหตุสมผลที่สุดของความพร้อมกัน ซึ่งหากเราละทิ้งสมมติฐานนี้ ความขัดแย้งระหว่างกฎการแพร่กระจายของแสงในสูญญากาศกับหลักการสัมพัทธภาพ (ซึ่งได้ขยายความไว้ในหัวข้อที่ VII) ก็จะหมดไป",
+      "output_hash": "sha256:b06bb8964aaa4595dadc086cf9cf0ef57f65bdda11749e8acec43ceeadfdebd4",
+      "translation_latency_ms": 4413,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Trước khi thuyết tương đối ra đời, trong vật lý luôn có một giả định ngầm rằng khái niệm thời gian mang một ý nghĩa tuyệt đối, tức là nó không phụ thuộc vào trạng thái chuyển động của hệ quy chiếu. Tuy nhiên, chúng ta vừa thấy rằng giả định này không tương thích với định nghĩa tự nhiên nhất về tính đồng thời; nếu chúng ta loại bỏ giả định này, thì mâu thuẫn giữa quy luật truyền ánh sáng trong chân không và nguyên lý tương đối (đã được triển khai trong Phần VII) sẽ biến mất.",
+      "output_hash": "sha256:bb334376d162e7555eab0bab0894effb1fea8e9d4454980992e5482158035b26",
+      "translation_latency_ms": 3404,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "einstein_relativity",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "在相对论出现之前，物理学中一直默认时间具有绝对意义，也就是说，时间独立于参考系的运动状态。但我们刚才已经看到，这一假设与最自然的同步性定义是不兼容的；如果我们摒弃这一假设，那么真空光传播定律与相对性原理（将在第七节中详细阐述）之间的矛盾就随之消失了。",
+      "output_hash": "sha256:3bf07d6838bc263579829ce2157e225c4be9f0c427cf8e8e74e9316d3b3ec760",
+      "translation_latency_ms": 2486,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "ثق بنفسك؛ فكل قلب يرتجف صدىً لتلك الوتر الحديدي. اقبل المكان الذي اختارته لك العناية الإلهية، ومجتمع معاصريك، وتتابع الأحداث. لقد فعل العظماء ذلك دوماً، وسلموا أنفسهم ببراءة الأطفال لعبقرية عصرهم، إدراكاً منهم بأن الموضع الوحيد الجدير بالثقة المطلقة يكمن في أعماق قلوبهم، يعمل من خلال أيديهم، ويهيمن على كيانهم بأكمله.",
+      "output_hash": "sha256:5a65870329d5fdf118fef55f74868bffc8fcd614d29c68eaaead5bd7f2fb2569",
+      "translation_latency_ms": 3608,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "নিজের ওপর বিশ্বাস রাখো: প্রতিটি হৃদয়ে সেই ইস্পাতের তারের স্পন্দন বাজে। বিধাতার পরিকল্পনা তোমার জন্য যে স্থানটি নির্ধারণ করেছে, তোমার সমসাময়িকদের সাহচর্য এবং ঘটনাবলির সংযোগ—সবকিছুকে সানন্দে গ্রহণ করো। মহান ব্যক্তিরা সর্বদা তা-ই করেছেন; তাঁরা তাঁদের যুগের মেধার কাছে শিশুর মতো নিজেদের সঁপে দিয়েছিলেন। তাঁরা বিশ্বাস করেছিলেন যে, পরম বিশ্বাসযোগ্য সত্তাটি তাঁদের হৃদয়েই আসীন, যা তাঁদের হাতের মাধ্যমে কাজ করে এবং তাঁদের সমগ্র সত্তার ওপর প্রভাব বিস্তার করে।",
+      "output_hash": "sha256:f2d517deb6cbbc4dfc1426049275ca7fbb81c7814f921071e327be365e664219",
+      "translation_latency_ms": 3364,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Stol på dig selv: ethvert hjerte vibrerer til den jernstreng. Accepter den plads, som den guddommelige forsyn har fundet til dig, dit samvær med dine samtidige og begivenhedernes sammenhæng. Store mænd har altid gjort dette og betroet sig barnagtigt til deres tids ånd, i erkendelsen af, at det absolut pålidelige sad i deres hjerte, virkede gennem deres hænder og gennemsyrede hele deres væsen.",
+      "output_hash": "sha256:6bf462a5c375ff8120eeec53c5808972238102ba6ea77e1c53704475bfec54d6",
+      "translation_latency_ms": 3426,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Vertraue dir selbst: Jedes Herz schwingt in diesem eisernen Ton. Akzeptiere den Platz, den die göttliche Vorsehung für dich vorgesehen hat, die Gesellschaft deiner Zeitgenossen und die Verknüpfung der Ereignisse. Große Männer haben dies stets so getan und sich kindlich dem Geist ihrer Epoche anvertraut, in der Erkenntnis, dass das absolut Vertrauenswürdige in ihrem Herzen wohnt, durch ihre Hände wirkt und ihr gesamtes Wesen durchdringt.",
+      "output_hash": "sha256:d0e2463c818968e7e30b0bce756fbb88b45db3477662c380f611702f2686d427",
+      "translation_latency_ms": 3311,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Να εμπιστεύεσαι τον εαυτό σου: κάθε καρδιά δονείται σε αυτή την ατσάλινη χορδή. Δέξου τη θέση που η θεία πρόνοια έχει ορίσει για σένα, την κοινωνία των συγχρόνων σου, τη διαπλοκή των γεγονότων. Οι σπουδαίοι άνθρωποι το έκαναν πάντα έτσι, παραδίδοντας τον εαυτό τους με παιδική αθωότητα στο πνεύμα της εποχής τους, αποκαλύπτοντας την αντίληψη ότι αυτό που είναι απόλυτα αξιόπιστο κατοικεί στην καρδιά τους, δρα through τα χέρια τους και κυριαρχεί σε όλο το είναι τους.",
+      "output_hash": "sha256:e0e31efd2981595aef58dc9bd1aa142b0b68348e731869d1904bc52ea5f0d776",
+      "translation_latency_ms": 4644,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Confía en ti mismo: cada corazón vibra al son de esa cuerda de hierro. Acepta el lugar que la divina providencia ha reservado para ti, la sociedad de tus contemporáneos y la concatenación de los acontecimientos. Los grandes hombres siempre lo han hecho, entregándose con inocencia infantil al genio de su época, revelando así su convicción de que aquello en lo que se puede confiar plenamente reside en su corazón, actúa a través de sus manos y predomina en todo su ser.",
+      "output_hash": "sha256:37128c1cbfe759c4ae9b2c578c80eb90f8eb86837610a4a7dbb7bd17ee761539",
+      "translation_latency_ms": 3219,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Fiez-vous à vous-même : chaque cœur vibre à cette corde d'acier. Acceptez la place que la providence divine vous a assignée, la société de vos contemporains et l'enchaînement des événements. Les grands hommes ont toujours agi ainsi, s'abandonnant avec une confiance d'enfant au génie de leur époque, révélant ainsi leur conviction que ce en quoi l'on peut se fier absolument résidait en leur cœur, agissait par leurs mains et prédominait dans tout leur être.",
+      "output_hash": "sha256:dfde801076ce21c8c612cca26fb1dcf9ed3765d4a69497d760162bc6ae86c725",
+      "translation_latency_ms": 3442,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "בטח בעצמך: כל לב רוטט למיתר ברזל זה. קבל את מקומך כפי שקבעה ההשגחה העליונה, את חברת בני דורך ואת רצף האירועים. אנשים גדולים תמיד נהגו כך, והסמיכו כילדים על הגאונות של תקופתם, מתוך הבנה כי הדבר המהימן מכולם שוכן בליבם, פועל דרך ידיהם ושולט בכל הווייתם.",
+      "output_hash": "sha256:c072cfdad4a8051d889ed6340c46d5b54557b60f2d572773bec3c790996c9ff6",
+      "translation_latency_ms": 3619,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "स्वयं पर विश्वास रखें: हर हृदय उस अटल विश्वास की डोर से बंधा होता है। दैवीय विधान ने आपके लिए जो स्थान निर्धारित किया है, आपके समकालीनों का साथ और घटनाओं के क्रम को सहर्ष स्वीकार करें। महान पुरुषों ने सदैव ऐसा ही किया है, और एक अबोध बालक की भांति स्वयं को अपने युग की चेतना को समर्पित कर दिया, क्योंकि उन्हें यह आभास था कि जो पूर्णतः विश्वसनीय है, वह उनके हृदय में विराजमान है, उनके हाथों के माध्यम से कार्य कर रहा है और उनके संपूर्ण अस्तित्व पर व्याप्त है।",
+      "output_hash": "sha256:b06178743e58662dc411d8f4addc7e08fbae0d6544bb10807f7cc31cb08db094",
+      "translation_latency_ms": 3468,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Percayalah pada dirimu sendiri: setiap hati bergetar mengikuti dawai besi itu. Terimalah tempat yang telah ditentukan takdir bagi Anda, lingkungan masyarakat di masa Anda, serta untaian peristiwa yang terjadi. Orang-orang besar selalu melakukannya, dan mereka menyerahkan diri dengan kepolosan seorang anak kepada semangat zamannya, menunjukkan keyakinan bahwa sesuatu yang benar-benar dapat dipercaya bersemayam di dalam hati mereka, bekerja melalui tangan mereka, dan mendominasi seluruh keberadaan mereka.",
+      "output_hash": "sha256:9872199d68e1729692cc7522cd2e59b0a709ffffeb676f5f36875edd2c8e0800",
+      "translation_latency_ms": 3198,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Abbi fiducia in te stesso: ogni cuore vibra a quella corda d'acciaio. Accetta il posto che la divina provvidenza ha riservato per te, la società dei tuoi contemporanei, l'intreccio degli eventi. I grandi uomini hanno sempre fatto così, affidandosi con semplicità infantile al genio della loro epoca, consapevoli che ciò che è assolutamente degno di fiducia risiede nel proprio cuore, agisce attraverso le proprie mani e domina l'intero essere.",
+      "output_hash": "sha256:7e970a2a7d6d56ecd61970f9a8435e85d3316d0f190bd5cfd7debc2753dc5785",
+      "translation_latency_ms": 3081,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "己を信じよ。あらゆる心はこの鉄の弦に共鳴するものだ。神聖なる摂理があなたに設けた居場所、同時代の人々との関わり、そして出来事の連なりを受け入れなさい。偉人たちは常にそうしてきた。彼らは子供のような純真さで時代の精神に身を委ねた。それは、絶対的に信頼すべきものが自らの心に宿り、その手を通じて働き、存在のすべてを支配していることを悟っていたからである。",
+      "output_hash": "sha256:09457cef54a7bc5ab4770acec1f70c3d947da8c555f72bd52a4732a47f2ab61c",
+      "translation_latency_ms": 3145,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "자신을 믿으십시오. 모든 마음은 그 강철 같은 현의 울림에 함께 반응합니다. 신성한 섭리가 당신을 위해 마련한 자리, 당신이 속한 시대의 사회, 그리고 일련의 사건들을 받아들이십시오. 위대한 이들은 언제나 그렇게 하였으며, 마치 아이처럼 자신의 시대를 이끄는 천재성에 자신을 맡겼습니다. 이는 절대적으로 신뢰할 수 있는 존재가 자신의 마음속에 자리 잡아, 손끝을 통해 작용하며, 온 존재를 지배하고 있다는 깨달음의 증거였습니다.",
+      "output_hash": "sha256:e40746ca12bfccd80196096192b548549bd1c52bb7f4cd768a708f305ac7afb7",
+      "translation_latency_ms": 3578,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Vertrouw op jezelf: elk hart trilt mee met die ijzeren snaar. Accepteer de plaats die de goddelijke voorzienigheid voor jou heeft bestemd, de kring van je tijdgenoten, de samenloop van gebeurtenissen. Grote mannen hebben dat altijd gedaan en zich kinderlijk toevertrouwd aan de geest van hun tijd, waarmee zij erkenden dat het absoluut betrouwbare in hun hart huiste, via hun handen werkte en hun gehele wezen beheerst had.",
+      "output_hash": "sha256:a13faebb1caee003e9617a29d6fad01a237a8edb467da2747c67799eb231c122",
+      "translation_latency_ms": 3224,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Ufaj samemu sobie: każde serce drży w rytm tej żelaznej struny. Przyjmij miejsce, które przeznaczyła dla ciebie boska opatrzność, towarzystwo twoich współczesnych oraz splot zdarzeń. Wielcy ludzie zawsze tak postąpili, powierzając się z dziecięcą ufnością geniuszowi swojej epoki, zdradzając tym samym przekonanie, że to, co absolutnie godne zaufania, spoczywa w ich sercach, działa poprzez ich dłonie i dominuje nad całym ich bytem.",
+      "output_hash": "sha256:efbaff0aa1eba1faba8d330a00d39c59a587420a2645121568668a5445a2be56",
+      "translation_latency_ms": 3715,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "Confie em si mesmo: cada coração vibra nessa corda de ferro. Aceite o lugar que a providência divina reservou para você, a sociedade de seus contemporâneos, a sucessão de eventos. Os grandes homens sempre assim fizeram, entregando-se com a inocência de uma criança ao gênio de sua era, revelando a percepção de que aquilo que é absolutamente confiável residia em seus corações, operando através de suas mãos e predominando em todo o seu ser.",
+      "output_hash": "sha256:2851b80eaa9276c628218205cc49d2c1ea19ec549869b3a4f307f96789df89ab",
+      "translation_latency_ms": 3148,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Доверяй себе: каждое сердце откликается на этот стальной звук. Прими место, которое определило тебе божественное провидение, круг твоих современников и сплетение обстоятельств. Так поступали великие люди: они с детской trusting-отданностью доверялись гению своего времени, осознавая, что нечто абсолютно надежное живет в их сердцах, действует через их руки и преобладает во всем их существе.",
+      "output_hash": "sha256:e293e4f659a0b2cdcc9ffc32deb848470a3011f70fb76449ea83a5fe20037740",
+      "translation_latency_ms": 3027,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Lita på dig själv: varje hjärta vibrerar till den järnsträngen. Acceptera den plats som den gudomliga försynen har funnit åt dig, dina samtidas sällskap och händelsernas sammanhang. Stora män har alltid gjort så, och överlämnat sig barnsligt till sin tids genius, i visshet om att det absolut pålitliga satt i deras hjärtan, verkade genom deras händer och dominerade hela deras väsen.",
+      "output_hash": "sha256:19224604c1112e55aeecb7bb4928d1fab03062df54758ce1ec6e1d16ad938599",
+      "translation_latency_ms": 3277,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "உன்னை நீயே நம்பு: ஒவ்வொரு இதயமும் அந்த இரும்புத் தந்தி போன்ற உறுதியான நம்பிக்கையிலேயே அதிர்வதுண்டு. தெய்வீக விதியானது உனக்காக வகுத்த இடத்தையும், உன்னுடன் வாழும் சமகாலியினரையும், நிகழ்வுகளின் தொடர்பையும் அப்படியே ஏற்றுக்கொள். சிறந்த மனிதர்கள் எப்போதும் அவ்வாறே செய்துள்ளனர்; அவர்கள் தங்கள் காலத்தின் மேதமைக்கு ஒரு குழந்தையைப் போலத் தங்களை ஒப்படைத்தார்கள். முற்றிலும் நம்பகமான ஒரு சக்தி தங்கள் இதயத்தில் குடிபுகுந்து, தங்கள் கைகள் வழியாகச் செயல்பட்டு, தங்கள் முழு இருப்பையும் ஆதிக்கம் செலுத்துகிறது என்பதை அவர்கள் உணர்ந்திருந்தனர்.",
+      "output_hash": "sha256:2612821301403aae96ce857bf1e9678d5956fb1cd1a048e828e70933120f4e72",
+      "translation_latency_ms": 3926,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "จงเชื่อมั่นในตนเอง เพราะหัวใจทุกดวงย่อมสั่นไหวไปตามแรงดึงของสายเหล็กเส้นนั้น จงยอมรับในตำแหน่งที่พระผู้สร้างได้กำหนดไว้ให้คุณ ยอมรับสังคมในยุคสมัยของคุณ และความเชื่อมโยงของเหตุการณ์ต่างๆ เหล่าบุรุษผู้ยิ่งใหญ่ล้วนปฏิบัติเช่นนี้ โดยมอบความไว้วางใจต่อจิตวิญญาณแห่งยุคสมัยอย่างบริสุทธิ์ใจดั่งเด็กน้อย ด้วยพวกเขาตระหนักดีว่า สิ่งที่เชื่อถือได้ที่สุดนั้นสถิตอยู่ที่หัวใจของตน ทำงานผ่านมือของตน และครอบคลุมอยู่ในทุกอณูของการดำรงอยู่",
+      "output_hash": "sha256:5a6f0eeab17eeea97fcd4891f7b4e84e1dbac2ac68bb3f049ba2ce6425ffd0d7",
+      "translation_latency_ms": 4160,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Hãy tin vào chính mình: mọi trái tim đều rung động theo sợi dây sắt kiên cường đó. Hãy chấp nhận vị trí mà thiên mệnh đã an bài cho bạn, chấp nhận xã hội của những người cùng thời và sự kết nối của các biến cố. Những bậc vĩ nhân xưa nay đều làm như vậy, họ phó thác bản thân một cách hồn nhiên cho thiên tài của thời đại mình, bởi họ nhận ra rằng điều đáng tin cậy tuyệt đối nằm ngay trong trái tim họ, vận hành thông qua đôi tay họ và ngự trị trong toàn bộ bản thể họ.",
+      "output_hash": "sha256:7f93c97d6b8dbfc72a85a17c0f298976409dc8d58c83fd24ff69dcb9cd5d8544",
+      "translation_latency_ms": 3595,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "emerson_self_reliance",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "相信你自己：每一颗心都在共鸣那根坚韧的弦。接纳天命为你安排的位置，接纳你身处的时代，以及事件的羁绊。伟大之人向来如此，他们如孩童般纯真地信赖时代的精神，因为他们深知，那绝对可靠的力量就深植于自己的心中，通过他们的双手发挥作用，主宰着他们的整个生命。",
+      "output_hash": "sha256:9c8fbe724cf8e095c4b8a9289af7c0ee36c3a7d078d184f40fe950735a3892c4",
+      "translation_latency_ms": 2689,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "hu_shi_reform",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "Many people today speak of reforming literature, and as an unlearned writer of little standing, I am hardly qualified to discuss the matter. However, in recent years, I have pondered this subject repeatedly and debated it with friends; the resulting conclusions strike me as having some value for discussion. I have therefore summarized my views into eight points, detailing each one to provide a point of research for those currently devoted to literary reform. In my view, any discussion of literary reform today must begin with these eight points. What are they? First, writing must have substance. Second, one must not blindly imitate the ancients. Third, one must pay strict attention to grammar. Fourth, one must avoid \"groaning without illness\"—meaning, no forced or superficial sentiment. Fifth, one must strive to eliminate clichés and platitudes. Sixth, one should avoid the excessive use of classical allusions. Seventh, one should forgo the pursuit of formal parallelism. Eighth, one should not shy away from the use of common words and colloquialisms.",
+      "output_hash": "sha256:bf1144ba8a3f2d324b2f7ba3622ac689f8b90bb2bb257bed2271c1358d31114e",
+      "translation_latency_ms": 5925,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "hu_shi_reform",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "今日、文学改良を論じる者は多いが、筆者は学問に疎く、文章に不慣れな身であり、どうしてこの件について語る資格があろうか。しかし、ここ数年、この事柄について繰り返し深く考え、また友人たちとの議論を重ねた結果、得られた結論は、論じるに値する価値があると感じている。そこで、自身の見解をまとめ、八つの項目に分けて述べ、現代の文学改良に心ある方々と共に研究してみたいと思う。私は、今日の文学改良を語るには、次の八点から着手すべきであると考える。その八点とは何か。第一に、語るべき実質的な内容があること。第二に、古人を模倣しないこと。第三に、文法を追求すること。第四に、中身のない空虚な嘆き（無病の呻吟）を書き上げないこと。第五に、陳腐な言い回しや套句を排除すること。第六に、典故を用いないこと。第七に、対仗（対句）にこだわらないこと。第八に、俗字や俗語を避けないことである。",
+      "output_hash": "sha256:c234c180ef965a99e3ad06479a63acf75b8da5d33d509a51191f07a4e32fdd6c",
+      "translation_latency_ms": 6870,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "kokoro",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "I always called him Sensei. Therefore, I will refer to him simply as Sensei here, without revealing his real name. This is not so much out of a desire to avoid public scrutiny as it is because it feels more natural to me. Whenever I recall memories of him, I feel an immediate urge to call him \"Sensei.\" The same holds true when I take up my pen; I cannot bring myself to use something as distant as initials.",
+      "output_hash": "sha256:384c6d8bfb446bb3c04951881a8697bcc055f39a8560850b4b2eb10e4ab2a6aa",
+      "translation_latency_ms": 3084,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "kokoro",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "我一直称呼那个人为先生。因此在这里我也只写“先生”二字，不透露其本名。这与其说是为了顾及世俗而有所保留，不如说对我而言这样更为自然。每当我想起关于他的记忆，立刻就想称呼他为“先生”。即便在动笔写作时，心情也是一样。我实在不愿使用那些显得生疏的姓名缩写。",
+      "output_hash": "sha256:a97897cb57f570be7b267f33e0f69ca0df24dfe156b856cd9465bce51b085f73",
+      "translation_latency_ms": 2958,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "lu_xun_guxiang",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "Braving the bitter cold, I set out for my hometown, a place over two thousand li away from which I had been parted for more than twenty years. It was the dead of winter; as I drew closer to home, the weather turned gloomy and overcast. A cold wind howled as it swept into the cabin, and glancing out through the gaps in the canopy, I saw a few desolate, barren villages scattered across the landscape under a pale, sallow sky—devoid of any sign of life.\n\nI could not help but feel a wave of sorrow. Ah! Was this truly the hometown I had remembered so vividly for twenty years? The home in my memory was nothing like this. My hometown was far more beautiful. Yet, when I tried to recall its beauty or put its charms into words, no images came to mind and no words would follow. It seemed, perhaps, that it really was like this. I then told myself: my hometown had always been this way—though it may not have progressed, it wasn't necessarily as bleak as I felt. This was merely a reflection of my own state of mind, for I had returned home with a heavy heart.",
+      "output_hash": "sha256:b4a26024678331d8486e1d4771919ef146feb3d7fd3ef76f56cc4b74b04368ed",
+      "translation_latency_ms": 6635,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "lu_xun_guxiang",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "厳しい寒さに身をさらし、私は二千余里も離れ、別れて二十余年になる故郷へと向かった。季節は真冬。故郷に近づくにつれ、空はどんよりと曇り、冷たい風が船室に吹き込んでとうとうと鳴り響いていた。帆の隙間から外を眺めれば、薄暗い黄色の空の下、遠近に寂れた荒村が点在しており、生き生きとした気配など微塵もなかった。私の心は、堪えきれぬほどの悲涼感に包まれた。ああ、ここは私が二十年来、片時も忘れずにいた故郷なのだろうか。私の記憶にある故郷は、決してこのような場所ではなかった。私の故郷はずっと美しかったはずだ。だが、その美しさを思い出し、その良さを言葉にしようとしても、記憶の中の映像は消え失せ、言葉も見つからなかった。まるで、現実のこの景色こそが故郷であるかのように。そこで私は自分に言い聞かせた。故郷とは本来このようなところなのだ、と。たとえ発展していなかったとしても、私が今感じているほどの悲涼さはなかったはずだ。これは単に、私自身の心情が変わっただけなのだ。そもそも今回の帰郷は、心躍るような気分で決めたことではなかったのだから。",
+      "output_hash": "sha256:d39254a213db048cd349f8833b150cf9eca3068a8b996e11a1656e2cfe4cb896",
+      "translation_latency_ms": 7696,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "نادوني إسماعيل. قبل سنوات خلت — ولا يهمكم كم من الوقت تحديداً — وبينما لم يكن في جيبي سوى القليل من المال أو لا شيء على الإطلاق، ولم يكن هناك ما يثير اهتمامي على اليابسة، فكرت في أن أبحر قليلاً لأكتشف الجزء المائي من هذا العالم. إنها طريقتي في طرد الضجر وتجديد النشاط في عروقي. فكلما وجدت تقاسيم وجهي تزداد تجهماً، وكلما شعرت بأن روحي غارقة في نوفمبر رطب وممطر، أدركتُ أنه قد آن الأوان لأرتمي في أحضان البحر في أقرب فرصة ممكنة.",
+      "output_hash": "sha256:147f646cf0b99bc306098aea98e8e9eadd362ec03f16e773cb318a4416397fb8",
+      "translation_latency_ms": 4386,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "আমাকে ইশময়েল বলে ডাকুন। বহু বছর আগে—ঠিক কত বছর তা আর কী এসে লাভ—পকেটে তেমন কোনো টাকা ছিল না, আর স্থলের কোনো কিছুতেই আমার বিশেষ আগ্রহ ছিল না; তাই ভাবলাম কিছুটা সমুদ্র ভ্রমণ করি আর পৃথিবীর জলময় অংশটুকু দেখে আসি। মন খারাপ দূর করার আর রক্তসঞ্চালন স্বাভাবিক রাখার এটাই আমার নিজস্ব পদ্ধতি। যখনই দেখি আমার মুখে বিষণ্ণতার ছাপ পড়ছে; যখনই আমার মনে নভেম্বরের সেই স্যাঁতস্যাঁতে, ঝিরঝিরে বৃষ্টির আমেজ নামে, তখনই মনে হয় যত দ্রুত সম্ভব সমুদ্রে বেরিয়ে পড়া এখন সময়ের দাবি।",
+      "output_hash": "sha256:160ff4e53eda9b3d917c987479cecc5c04e55884a1cf9280bb29e3f3e06366e6",
+      "translation_latency_ms": 3752,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Kald mig Ishmael. For nogle år siden – det betyder ikke noget præcis hvor længe – da jeg havde lidt eller ingen penge i pungen og intet særligt på land, der kunne interessere mig, tænkte jeg, at jeg ville sejle lidt omkring og se den våde del af verden. Det er min måde at drive melankolien bort på og få gang i blodomløbet. Hver gang jeg mærker, at mit ansigt bliver dystert; hver gang der er en fugtig og regnfuld november i min sjæl, anser jeg det for høj tid at komme til søs så hurtigt som muligt.",
+      "output_hash": "sha256:86906d948cb19f472d7fd46353bbd0a81c4218d5d14e2405bc9e74257e831843",
+      "translation_latency_ms": 4118,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Nennt mich Ismael. Vor einigen Jahren – es spielt keine Rolle, wie lange es genau her ist – als ich kaum oder gar kein Geld mehr in der Tasche hatte und an Land nichts Besonderes mehr weckte mein Interesse, dachte ich, ich würde ein wenig in die Welt segeln und mir den wässrigen Teil der Erde ansehen. Das ist meine Art, die Melancholie zu vertreiben und den Kreislauf in Schwung zu bringen. Wann immer ich merke, dass mein Gesichtsausdruck grimmig wird; wann immer in meiner Seele ein feuchter, nieselnder November herrscht, halte ich es für höchste Zeit, so schnell wie möglich aufs Meer zu gehen.",
+      "output_hash": "sha256:8e9256b32e30d7913b95e30bb490def97b7c9932136d585237e8d7f1e0f18f4d",
+      "translation_latency_ms": 4215,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Λέγετε μου Ισμαήλ. Πριν από κάποια χρόνια —δεν έχει σημασία πόσα ακριβώς— έχοντας ελάχιστα ή καθόλου χρήματα στο πορτοφόλι μου και τίποτα ιδιαίτερο που να με ενδιαφέρει στη στεριά, σκέφτηκα ότι θα έπλεα λίγο για να δω το υδάτινο τμήμα του κόσμου. Είναι ο τρόπος μου για να διώξω τη μελαγχολία και να αποκαταστήσω την κυκλοφορία μου. Όποτε νιώθω το πρόσωπό μου να σκουραίνει, όποτε μια υγρή, βροχερή Νοέμβριος επικρατεί στην ψυχή μου, θεωρώ ότι ήρθε η ώρα να βγώγω στη θάλασσα το συντομότερο δυνατόν.",
+      "output_hash": "sha256:2ba29c3787670c65825876d0d4a1dec6c7824b8c7959244a808e186282e8267e",
+      "translation_latency_ms": 5461,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Llámenme Ismael. Hace algunos años —no importa cuántos exactamente—, teniendo poco o ningún dinero en el bolsillo y nada en particular que me interesara en tierra, pensé que navegaría un poco para conocer la parte acuática del mundo. Es mi manera de ahuyentar la melancolía y regular la circulación. Siempre que noto que mi semblante se vuelve sombrío; siempre que en mi alma es un noviembre húmedo y gris, considero que ya es hora de hacerme al mar tan pronto como me sea posible.",
+      "output_hash": "sha256:285a7d650997e75f6a922057ff9829f699b502304d2c3bd1cea6c7fa72beb717",
+      "translation_latency_ms": 3459,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Appelez-moi Ismaël. Il y a quelques années — peu importe combien précisément — n'ayant presque plus un sou en poche et rien de particulier qui m'attache à la terre ferme, je me suis dit que j'irais naviguer un peu pour découvrir la partie maritime du monde. C'est ma façon à moi de chasser la mélancolie et de me remettre en circulation. Chaque fois que je sens l'amertume gagner mes lèvres, chaque fois qu'un novembre humide et pluvieux s'installe dans mon âme, j'estime qu'il est grand temps de prendre la mer dès que possible.",
+      "output_hash": "sha256:8869f180350bce91e6a6f0f92e19e572007e78544fbdce3dc9b1120ef27d0155",
+      "translation_latency_ms": 3984,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "קראו לי ישמעאל. לפני מספר שנים – לא משנה כמה בדיוק – כשבכיסי לא נותר כמעט כסף ואין דבר מיוחד שמעניין אותי ביבשה, חשבתי כי אשייט מעט ואראה את חלקו המימי של העולם. זו דרכי להדוף את המרה ולהסדיר את זרימת הדם. בכל פעם שאני מרגיש פניי מזמזמות; בכל פעם שנפשי עטופה בנובמבר לח וגשום, אני קובע כי הגיע הזמן לצאת לים במהירות שניתן.",
+      "output_hash": "sha256:0c4bc811eac48d5f667c319e9336d0f3da858233a7218c0bc695793b8a584edb",
+      "translation_latency_ms": 4000,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "मुझे इश्माइल कहिए। कुछ साल पहले—ठीक कितने साल हुए, यह छोड़िए—जब मेरी जेब में बहुत कम या बिल्कुल पैसे नहीं थे, और तट पर ऐसी कोई खास चीज़ नहीं थी जिसमें मेरी रुचि हो, तो मैंने सोचा कि क्यों न थोड़ा समुद्री सफर किया जाए और दुनिया के जलीय हिस्से को देखा जाए। यह मेरा मन हल्का करने और अपनी इंद्रियों को संतुलित करने का एक तरीका है। जब भी मुझे लगता है कि मेरा चेहरा उदासी से भर रहा है; जब भी मेरी आत्मा में नवंबर की उस नमी और बूंदाबांदी जैसी उदासी छा जाती है, तो मुझे लगता है कि अब समय आ गया है कि मैं जितनी जल्दी हो सके समुद्र की ओर निकल जाऊं।",
+      "output_hash": "sha256:cfac224a1ae0b700f6162081eb14f566cfc0dc1932990317f5d7286136b03fb2",
+      "translation_latency_ms": 4168,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Panggil aku Ishmael. Beberapa tahun lalu—tak perlu tahu persis berapa lama—karena uang di dompetku tinggal sedikit atau bahkan tidak ada, dan tidak ada hal menarik yang menantiku di daratan, aku berpikir untuk berlayar sejenak dan menjelajahi bagian dunia yang berair. Ini adalah caraku untuk mengusir rasa jenuh dan menyeimbangkan kembali sirkulasi jiwaku. Kapan pun aku merasa raut wajahku mulai menjadi masam; kapan pun jiwaku terasa seperti bulan November yang lembap dan gerimis, aku menganggap itulah saat yang tepat untuk segera pergi melaut.",
+      "output_hash": "sha256:8430ebe53fa28886e150e06720edebaeee56d755cb9e8e92ea783f1fa50b0c6b",
+      "translation_latency_ms": 3783,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Chiamatemi Ismaele. Qualche anno fa — non importa esattamente quanto — avendo poco o nessun denaro in tasca e nulla di particolare che mi interessasse a terra, pensai che sarei stato bene a navigare un po' per vedere la parte acquatica del mondo. È un mio modo per scacciare la malinconia e regolare la circolazione. Ogni volta che sento l'espressione farsi cupa; ogni volta che nella mia anima è un novembre umido e piovigginoso, ritengo sia giunto il momento di prendere il mare il prima possibile.",
+      "output_hash": "sha256:6062d9ad9ba4b4640e397ae71ee18302409c929e1b437c2575414bf63bea99be",
+      "translation_latency_ms": 3707,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "私のことをイシュメールと呼んでくれ。数年前のことだ――正確にどれくらい前かは気にしないでほしい。懐に金はほとんどなく、陸上にいて心を惹かれるものも特に何もなかった私は、少々船で旅に出て、この世の水上の世界を眺めてみようと考えた。それは私にとって、憂鬱を追い払い、心身の調子を整えるための習慣なのだ。口角が下がり、険しい表情になっていることに気づいたとき、あるいは私の魂が、湿っぽく霧に包まれた11月のような心地になったとき、私はできるだけ早く海に出るべき時が来たと思うのである。",
+      "output_hash": "sha256:80634ded018c306a3feb68dc19b408ff529c64f8290780e9fe77ed2bcf20f55d",
+      "translation_latency_ms": 3927,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "내 이름은 이스마엘이라고 불러주길 바란다. 정확히 몇 년 전인지는 중요하지 않지만, 주머니에는 돈이 거의 없었고 육지에서는 딱히 흥미를 끄는 일도 없었기에, 나는 바다로 나가 세상의 물결을 따라 여기저기 돌아다녀 보기로 했다. 그것은 내가 우울함을 떨쳐내고 마음의 안정을 찾는 나름의 방식이다. 입가가 굳어지며 냉소적으로 변할 때면, 혹은 내 영혼에 눅눅하고 가랑비 내리는 11월이 찾아왔을 때면, 나는 가능한 한 빨리 바다로 나가야 할 때라고 생각한다.",
+      "output_hash": "sha256:0be0b2b56ab0d1d5ab180ad96716bd6ee5078762c4b6f1127f897678a18403df",
+      "translation_latency_ms": 4233,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Noem me Ismaël. Enkele jaren geleden—het doet er niet toe hoe lang precies—met weinig of geen geld in mijn zak en niets bijzonders aan land dat mijn interesse wekte, dacht ik dat ik een tijdje zou gaan varen om het waterrijke deel van de wereld te verkennen. Het is een manier van mij om de melancholie te verdrijven en de bloedsomloop te reguleren. Telkens wanneer ik merk dat mijn gezichtsuitdrukking grimmig wordt; telkens wanneer het in mijn ziel een klamme, miezerige novembermaand is, acht ik het hoog tijd om zo snel mogelijk naar zee te gaan.",
+      "output_hash": "sha256:7230e7d903036f1d14d4379d95005c4c4e41932d55db78384485e970a9643e37",
+      "translation_latency_ms": 4062,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Zwiecie mnie Izmaelem. Przed pewnym czasem — nieistotne, jak dawno dokładnie — nie mając w kieszeni niemal żadnych pieniędzy i nie znajdując na lądzie niczego, co by mnie szczególnie zainteresowało, uznałem, że wypłynę w świat, by zwiedzić wodną część globu. To mój sposób na odpędzenie melancholii i poprawę krążenia. Ilekroć czuję, że twarz mi tężeje w grymasie; ilekroć w mojej duszy panuje wilgotny, mżawkowy listopad, uznaję, że nadszedł najwyższy czas, by jak najszybciej udać się w morze.",
+      "output_hash": "sha256:d36093e011c6b855d72c7966a2b65665ae333f755183d69160bda09b98766a0b",
+      "translation_latency_ms": 4537,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "Chamem-me Ishmael. Alguns anos atrás — não importa exatamente quantos — tendo pouco ou nenhum dinheiro na bolsa, e nada em particular que me interessasse em terra, pensei que navegaria um pouco para conhecer a parte aquática do mundo. É a minha maneira de afastar a melancolia e regular a circulação. Sempre que sinto que meu semblante se torna sombrio; sempre que sinto em minha alma um novembro úmido e garoado, julgo ser a hora exata de ir para o mar o quanto antes.",
+      "output_hash": "sha256:b034cf29778dabedd06b55dae2740d0fa08ca5d8b21babb9de64863f77e8d572",
+      "translation_latency_ms": 3401,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Зовите меня Измаил. Несколько лет назад — неважно, сколько именно — когда в моем кошельке почти не осталось денег, а на берегу не было ничего, что могло бы меня заинтересовать, я решил немного поплавать и посмотреть на водную часть света. Это мой способ прогнать хандру и привести в порядок кровообращение. Стоит мне почувствовать, что лицо мое становится угрюмым, стоит на душе воцариться сырому и дождливому ноябрю, я считаю, что пришло самое время как можно скорее отправиться в море.",
+      "output_hash": "sha256:46a61460241d19f31186df62bf519c190bb55deabb0a58d3012c6cf4e522626a",
+      "translation_latency_ms": 3683,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Kalla mig Ismael. För några år sedan – det spelar ingen roll exakt hur länge sedan – när jag hade lite eller inga pengar i plånboken och inget särskilt på land som intresserade mig, tänkte jag att jag skulle segla ut en stund och se den vattniga delen av världen. Det är mitt sätt att driva bort melankolin och få igång cirkulationen. Vart och när jag än märker att jag blir bister i ansiktet; när det är en fuktig och regnig november i min själ, anser jag att det är hög tid att ta mig till sjöss så snart jag kan.",
+      "output_hash": "sha256:b20ec8010880674da1ddcabae70aa228dc5f5846921702cbec015f200bcf9cc9",
+      "translation_latency_ms": 4179,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "என்னை இஸ்மாயல் என்று அழைத்துக்கொள்ளுங்கள். சில ஆண்டுகளுக்கு முன்பு—துல்லியமாக எவ்வளவு காலம் என்று எனக்குத் தெரியவில்லை—எனது பணப்பையில் மிகக் குறைந்த அளவிலான பணத்தோடு, நிலப்பரப்பில் என்னை ஈர்க்கும் வகையில் எதுவுமில்லாதபோது, உலகத்தின் நீர்ப்பகுதிகளைக் காணக் கொஞ்சம் கடல் பயணம் மேற்கொள்ளலாம் என்று நினைத்தேன். எனது மனச்சோர்வை விரட்டியடிக்கவும், மனநிலையைச் சீரமைத்துக் கொள்ளவும் நான் பின்பற்றும் முறை இது. எப்போதெல்லாம் எனது முகம் வாடி, மனதிற்குள் நவம்பர் மாதத்தின் ஈரப்பதமான தூறல் போன்ற உணர்வு ஏற்படுகிறதோ, அப்போதெல்லாம் எவ்வளவு சீக்கிரம் முடியுமோ அவ்வளவு சீக்கிரம் கடலுக்குச் செல்ல வேண்டிய தருணம் வந்துவிட்டது என்று நான் கருதுகிறேன்.",
+      "output_hash": "sha256:160fa44f67e9ab55ec3bd084f1032f92b042790e4d618a17da7b8dcf31f5f3f7",
+      "translation_latency_ms": 4701,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "เรียกฉันว่า อิชมาเอล เมื่อหลายปีก่อน—ไม่ต้องสนใจหรอกว่านานแค่ไหน—ในวันที่เงินในกระเป๋าแทบไม่มี และไม่มีสิ่งใดบนบกที่ดึงดูดใจเป็นพิเศษ ฉันจึงคิดว่าควรจะออกล่องเรือไปทั่วสักหน่อย เพื่อไปดูโลกในส่วนที่เป็นผืนน้ำ สิ่งนี้เป็นวิธีที่ฉันใช้ขับไล่ความหม่นหมองและปรับสมดุลให้ชีวิต เมื่อใดก็ตามที่ฉันรู้สึกว่าใบหน้าเริ่มบึ้งตึง เมื่อใดที่จิตวิญญาณของฉันเหมือนตกอยู่ในเดือนพฤศจิกายนที่ชื้นแฉะและมีฝนพรำ ฉันจะถือว่าถึงเวลาแล้วที่ต้องออกทะเลให้เร็วที่สุดเท่าที่จะทำได้",
+      "output_hash": "sha256:ea88fa0df458d30aae6cc12825d97a240804d64d257f60d97125ca626d43fe53",
+      "translation_latency_ms": 4633,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Cứ gọi tôi là Ishmael. Cách đây vài năm—chẳng quan trọng chính xác là bao lâu—khi trong túi chẳng còn bao nhiêu, hoặc gần như chẳng còn đồng nào, và trên đất liền cũng chẳng có điều gì đặc biệt thu hút tôi, tôi nghĩ mình nên dong buồm đi đây đi đó một chút để ngắm nhìn thế giới thủy cung. Đó là cách tôi dùng để xua đi nỗi chán chường và điều hòa lại tâm hồn. Bất cứ khi nào tôi thấy mình trở nên cau có; bất cứ khi nào linh hồn tôi chìm trong những ngày tháng mười một ẩm ướt và mưa phùn, tôi biết đã đến lúc mình phải ra khơi càng sớm càng tốt.",
+      "output_hash": "sha256:b6e92208259892786b32e45ceeae31bb1afe4e1104ed24b9e63b4ba3f0ba369c",
+      "translation_latency_ms": 4361,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "moby_dick",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "叫我以实玛利就好。多年前——具体多久就不用在意了——当时我兜里几乎没钱，陆地上也没有什么特别能吸引我的事情，于是我想，不如出海航行一段，去看看这个世界的海洋部分。这是我排遣忧郁、调理心境的一种方式。每当我感到心情阴郁，每当我的内心像十一月一样阴冷潮湿，我就觉得是时候尽快出海了。",
+      "output_hash": "sha256:ec4daa8989da19eca55adedfd08de8530cf78ee812dae072c79a9ec603bc20ce",
+      "translation_latency_ms": 2954,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "إن هذا الملخص الذي أنشره الآن لا بد أن يشوبه بعض القصور؛ إذ لا يتسع لي المجال هنا لذكر المراجع والأدلة التي استندت إليها في بياناتي المختلفة، لذا فإني أترك الأمر للقارئ ليضع ثقته في دقة ما أوردت. ولا شك أن بعض الأخطاء قد تسللت إلى النص، رغم أنني آمل أن أكون قد توخيت الحذر دائمًا بالاعتماد على المصادر الموثوقة فحسب. ولا يسعني هنا إلا تقديم الاستنتاجات العامة التي توصلت إليها، مع إيراد بعض الحقائق التوضيحية التي آمل أن تكون كافية في معظم الحالات.",
+      "output_hash": "sha256:d7ad132cfca901212cb5b8137081f35452b47d5e05d3064bdbf0ea8a97f70822",
+      "translation_latency_ms": 4291,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "আমি এখন এই সারাংশটি প্রকাশ করছি, যা অনিবার্যভাবেই কিছু ত্রুটিপূর্ণ হতে পারে। এখানে আমার প্রতিটি বক্তব্যের সপক্ষে আমি রেফারেন্স বা প্রামাণিক দলিল প্রদান করতে পারছি না; তাই আমাকে পাঠকের ওপরই ভরসা করতে হবে যে তারা আমার নির্ভুলতার ওপর আস্থা রাখবেন। এতে সন্দেহ নেই যে কিছু ভুল চলে এসেছে, যদিও আমি আশা করি যে আমি সর্বদা কেবল নির্ভরযোগ্য তথ্যের ওপর ভরসা করার বিষয়ে সতর্ক ছিলাম। আমি এখানে আমার উপনীত হওয়া সাধারণ সিদ্ধান্তগুলো এবং উদাহরণ হিসেবে কিছু তথ্যের কথা উল্লেখ করতে পারছি, যা আমি আশা করি অধিকাংশ ক্ষেত্রে যথেষ্ট হবে।",
+      "output_hash": "sha256:cf6903a4c2fca81fc1e7d4b35ea1fbc6b8e62466095e28ea4adf60688e7e1ca6",
+      "translation_latency_ms": 3496,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Dette resumé, som jeg nu udgiver, må nødvendigvis være ufuldstændigt. Jeg kan ikke her angive referencer og kilder for mine forskellige udsagn, og jeg må derfor stole på, at læseren har tillid til min nøjagtighed. Der vil uden tvivl være indslupet fejl, selvom jeg håber, at jeg altid har været varsom med kun at stole på anerkendte kilder. Jeg kan her kun præsentere de overordnede konklusioner, jeg er kommet frem til, sammen med enkelte eksempler, som jeg håber vil være tilstrækkelige i de fleste tilfælde.",
+      "output_hash": "sha256:1e97ddce691d09fd6a2454e1eddb9ec2dc79e6a09174173ae9b70e01fb7cff19",
+      "translation_latency_ms": 4273,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Dieses Abstract, das ich nun veröffentliche, muss notwendigerweise unvollkommen sein. Ich kann hier keine Verweise und Belege für meine verschiedenen Ausführungen anführen; daher muss ich darauf vertrauen, dass der Leser meiner Genauigkeit eine gewisse Zuversicht entgegenbringt. Zweifellos haben sich Fehler eingeschlichen, wenngleich ich hoffe, stets vorsichtig gewesen zu sein und mich nur auf verlässliche Quellen zu stützen. Ich kann hier lediglich die allgemeinen Schlussfolgerungen wiedergeben, zu denen ich gelangt bin, ergänzt um einige beispielhafte Fakten, die jedoch, so hoffe ich, in den meisten Fällen ausreichen werden.",
+      "output_hash": "sha256:1f5c7937bcd3bfc71051e55e848fed5d24c0af77515713bbefd574de87c5affd",
+      "translation_latency_ms": 3918,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Αυτή η Περίληψη, την οποία δημοσιεύω τώρα, αναπόφευκτα θα είναι ελλιπής. Δεν μπορώ σε αυτό το σημείο να παραθέσω αναφορές και πηγές για τις διάφορες διαπιστώσεις μου, και έτσι πρέπει να εμπιστευτώ τον αναγνώστη ότι θα δείξει κάποια εμπιστοσύνη στην ακρίβειά μου. Αναμφίβολα θα έχουν εισχωρήσει σφάλματα, αν και ελπίζω να ήμουν πάντα προσεκτικός, βασιζόμενος αποκλειστικά σε αξιόπιστες πηγές. Εδώ μπορώ να παραθέσω μόνο τα γενικά συμπεράσματα στα οποία κατέπλευσα, συνοδευόμενα από μερικά παραδείγματα, τα οποία ελπίζω ότι, στις περισσότερες περιπτώσεις, θα αποδείχθηκαν επαρκή.",
+      "output_hash": "sha256:9fe5725e500bea5d4d50820c137023131063be4bcbf8375847620fd2a42a4723",
+      "translation_latency_ms": 5831,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Este Resumen, que ahora publico, debe ser necesariamente imperfecto. No puedo incluir aquí las referencias y autoridades que respaldan mis diversas afirmaciones; por lo tanto, debo confiar en que el lector deposite cierta confianza en mi exactitud. Sin duda se habrán colado algunos errores, aunque espero haber sido siempre cauteloso al basarme únicamente en fuentes fidedignas. Aquí solo puedo presentar las conclusiones generales a las que he llegado, junto con algunos datos ilustrativos que, espero, resulten suficientes en la mayoría de los casos.",
+      "output_hash": "sha256:162423c4ef68b67a4ff07aa8b451d0fdc7047a9b946baa43b8e8923733f0198e",
+      "translation_latency_ms": 3448,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Ce résumé, que je publie aujourd'hui, est nécessairement imparfait. Je ne peux y fournir les références et les sources appuyant mes diverses affirmations ; je dois donc m'en remettre à la confiance que le lecteur accordera à l'exactitude de mes propos. Des erreurs s'y sont sans doute glissées, bien que j'espère avoir toujours été prudent en ne m'appuyant que sur des sources fiables. Je ne peux présenter ici que les conclusions générales auxquelles je suis parvenu, accompagnées de quelques faits à titre d'illustration qui, je l'espère, seront dans la plupart des cas suffisants.",
+      "output_hash": "sha256:3ba84b3200e0eb2a4a52f13c3942f18d6b3a15668ef8d116398bc2b52e12abd0",
+      "translation_latency_ms": 3881,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "סיכום זה, שאני מפרסם כעת, חייב בהכרח להיות חסר. אין ביכולתי להביא כאן מקורות וביבליוגרפיה לטענותיי השונות; עלי לבטוח בכך שהקורא ינח על דיוקי במידה של אמון. אין ספק שחדרו לכאן טעויות, אף על פי שאני מקווה כי נהגתי תמיד בזהירות והסתמכתי על מקורות מהימנים בלבד. אני יכול להציג כאן רק את המסקנות הכלליות אליהן הגעתי, לצד מספר עובדות להמחשה, אשר אני מקווה כי ברוב המקרים יספיקו.",
+      "output_hash": "sha256:97025b046b3bef5f846642313ba16d78e640dd4536a902b2d06151fa36b84dfd",
+      "translation_latency_ms": 4712,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "यह सार, जिसे मैं अब प्रकाशित कर रहा हूँ, अनिवार्य रूप से अपूर्ण होगा। मैं यहाँ अपने विभिन्न कथनों के लिए संदर्भ और प्रमाण नहीं दे सकता; और मुझे पाठक द्वारा मेरी सटीकता पर भरोसा करने की आशा करनी होगी। इसमें कोई संदेह नहीं कि कुछ त्रुटियाँ रह गई होंगी, हालाँकि मुझे उम्मीद है कि मैंने हमेशा केवल विश्वसनीय स्रोतों पर भरोसा करने में सावधानी बरती है। मैं यहाँ केवल उन सामान्य निष्कर्षों को प्रस्तुत कर सकता हूँ जिन पर मैं पहुँचा हूँ, साथ ही उदाहरण स्वरूप कुछ तथ्य भी, जो मुझे उम्मीद है कि अधिकांश मामलों में पर्याप्त होंगे।",
+      "output_hash": "sha256:a4c1ed4c53b024a9accfa00805d448325ae0f2d55e37e899400a4698fb76c2c7",
+      "translation_latency_ms": 3543,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Abstrak ini, yang kini saya terbitkan, tentu saja tidak akan sempurna. Saya tidak dapat menyertakan referensi dan otoritas untuk berbagai pernyataan saya di sini; maka saya harus mengandalkan kepercayaan pembaca terhadap akurasi saya. Tak pelak, beberapa kesalahan mungkin terselip, meskipun saya berharap saya selalu berhati-hati dengan hanya mengandalkan sumber-sumber yang terpercaya. Di sini saya hanya dapat memberikan kesimpulan umum yang telah saya capai, beserta beberapa fakta sebagai ilustrasi, yang saya harap dalam banyak hal akan sudah mencukupi.",
+      "output_hash": "sha256:2570254cb0fe98aaa77c6d28f834b87f2465d8d2a5ded4dc0211209c39f74fcb",
+      "translation_latency_ms": 3511,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Questo sommario, che ora pubblico, deve necessariamente essere imperfetto. Non posso riportare qui i riferimenti e le fonti a sostegno delle mie diverse affermazioni; devo quindi confidare nel fatto che il lettore riponga fiducia nella mia accuratezza. Senza dubbio si saranno annidrati degli errori, sebbene speri di essere sempre stato prudente nell'affidarsi unicamente a fonti attendibili. Posso fornire qui soltanto le conclusioni generali a cui sono giunto, accompagnate da alcuni fatti a titolo illustrativo che, spero, nella maggior parte dei casi saranno sufficienti.",
+      "output_hash": "sha256:2a944097b53667264eddc4427e74b79db3d8bcb2a1aeb7fb9140df98ae4d284d",
+      "translation_latency_ms": 3646,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "ここに公開する本要約は、必然的に不完全なものとならざるを得ません。個々の記述に対する参照文献や根拠をすべて挙げることはできず、私の正確さを信頼して読み進めていただけることを願うほかありません。信頼に足る権威ある資料のみに基づき、細心の注意を払ったつもりではおりますが、疑いなく誤りも紛れ込んでいることでしょう。ここでは私が到達した概括的な結論と、それを裏付けるいくつかの事例を示すにとどまりますが、多くの場合、それで十分であると考えております。",
+      "output_hash": "sha256:8fe391ce020b1fc8929ea25e558f0d931c8f469d62882be8753843a1522eb3f1",
+      "translation_latency_ms": 3491,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "지금 발표하는 이 요약본은 필연적으로 불완전할 수밖에 없습니다. 여기에서 제가 서술한 여러 내용에 대한 참고 문헌이나 근거를 일일이 제시할 수는 없기에, 독자 여러분께서 저의 정확성을 어느 정도 신뢰해 주시기를 바랄 뿐입니다. 물론 오류가 일부 섞여 있을 수 있으나, 오직 믿을 만한 근거에만 의존하려 노력하며 항상 신중을 기했습니다. 여기서는 제가 도달한 일반적인 결론과 이를 뒷받침하는 몇 가지 사례만을 제시할 수 있지만, 대부분의 경우 이것만으로도 충분하기를 바랍니다.",
+      "output_hash": "sha256:f07f94e8638497dc0405a86b60ba34423b26923840d4ba180db0d153e3a256af",
+      "translation_latency_ms": 4057,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Deze samenvatting, die ik nu publiceer, moet noodzakelijkerwijs onvolmaakt zijn. Ik kan hier geen bronvermeldingen en autoriteiten geven voor mijn diverse beweringen; ik moet erop vertrouwen dat de lezer een zeker vertrouwen stelt in mijn nauwkeurigheid. Er zullen ongetwijfeld fouten zijn ingeslopen, hoewel ik hoop dat ik altijd voorzichtig ben geweest door uitsluitend op betrouwbare bronnen te vertrouwen. Ik kan hier slechts de algemene conclusies geven tot welke ik ben gekomen, vergezeld van enkele illustratieve feiten die, zo hoop ik, in de meeste gevallen voldoende zullen zijn.",
+      "output_hash": "sha256:7502a18c2798fc1cda0fc91b3fcd9339ebf0405c75b1b4a3f99544b1889914f7",
+      "translation_latency_ms": 4244,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Niniejsze streszczenie, które teraz publikuję, musi być z konieczności niedoskonałe. Nie mogę w tym miejscu podać odniesień i źródeł dla moich licznych stwierdzeń; muszę zatem zaufać czytelnikowi, że obdarzy on moją rzetelność pewnym kredytem zaufania. Bez wątpienia wkradły się do niego błędy, choć mam nadzieję, że zawsze zachowywałem ostrożność, polegając wyłącznie na wiarygodnych źródłach. Mogę tutaj przedstawić jedynie ogólne wnioski, do których doszedłem, wraz z kilkoma faktami na ich potwierdzenie, które – mam nadzieję – w większości przypadków okażą się wystarczające.",
+      "output_hash": "sha256:47c496b54ec357b8ca9940652e795d4e9ba114ac39bb8b40ea00c83b8c66ef33",
+      "translation_latency_ms": 4825,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "Este Resumo, que agora publico, deve necessariamente ser imperfeito. Não posso aqui fornecer referências e autoridades para as minhas diversas afirmações; e devo confiar que o leitor deposite alguma confiança na minha precisão. Sem dúvida, alguns erros terão surgido, embora eu espere ter sido sempre cauteloso ao confiar apenas em boas fontes. Posso apresentar aqui apenas as conclusões gerais a que cheguei, acompanhadas de alguns fatos para ilustração que, espero, na maioria dos casos, serão suficientes.",
+      "output_hash": "sha256:0228ca0c9479fbe566f1233d00f0f8637d12dd8d8058b2336bcacd8048c14ba1",
+      "translation_latency_ms": 3233,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Этот краткий обзор, который я теперь публикую, неизбежно будет несовершенным. Я не могу привести здесь ссылки и авторитетные источники для каждого из своих утверждений, и мне остается лишь надеяться, что читатель доверится моей точности. Несомненно, в текст закрались ошибки, хотя я надеюсь, что всегда проявлял осторожность, полагаясь лишь на надежные источники. Здесь я могу представить только общие выводы, к которым пришел, и несколько иллюстративных фактов, которых, надеюсь, в большинстве случаев будет достаточно.",
+      "output_hash": "sha256:52a3ca893229409277c9072b2e9088663d141c563302b7904d22d7810bb88145",
+      "translation_latency_ms": 3467,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Detta sammanbrott, som jag nu publicerar, måste nödvändigtvis vara bristfälligt. Jag kan inte här ange referenser och källor för mina olika påståenden, och jag måste lita på att läsaren hyser ett visst förtroende för min noggrannhet. Tvivelsmål om att felaktigheter kan ha smugit sig in, även om jag hoppas att jag alltid har varit försiktig och endast förlitat mig på tillförlitliga källor. Jag kan här endast redogöra för de allmänna slutsatser jag har dragit, tillsammans med ett antal illustrerande fakta, vilka jag hoppas kommer att vara tillräckliga i de flesta fall.",
+      "output_hash": "sha256:88d4c03b7b3f7d80a064d7013f636d1cb69f245c35a5e79550dd4f7b5774020e",
+      "translation_latency_ms": 4529,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "நான் இப்போது வெளியிடும் இந்தச் சுருக்கம் (Abstract), இயல்பாகவே சில குறைபாடுகளைக் கொண்டிருக்கக்கூடும். எனது பல்வேறு கூற்றுகளுக்கான ஆதாரங்களையும் குறிப்புகளையும் இங்கே என்னால் வழங்க இயலவில்லை; எனவே, எனது துல்லியத்தின் மீது வாசகர்கள் நம்பிக்கை கொள்வதையே நான் நம்பியிருக்கிறேன். நம்பகமான ஆதாரங்களை மட்டுமே பின்பற்றி நான் எச்சரிக்கையுடன் செயல்பட்டிருந்தாலும், சில தவறுகள் இதில் புகுந்திருக்க வாய்ப்புள்ளது. நான் எட்டிய பொதுவான முடிவுகளை, சில விளக்கக் காரணங்களுடன் மட்டுமே இங்கே வழங்க முடிகிறது; இருப்பினும், பெரும்பாலான சந்தர்ப்பங்களில் இவை போதுமானதாக இருக்கும் என்று நம்புகிறேன்.",
+      "output_hash": "sha256:35e6a1f9183834af0618d125d939db131dcef123e2f3b694758a4c8b362f6d40",
+      "translation_latency_ms": 3838,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "บทคัดย่อฉบับนี้ที่ข้าพเจ้าตีพิมพ์ในขณะนี้ ย่อมมีความไม่สมบูรณ์เป็นธรรมดา ข้าพเจ้าไม่สามารถระบุแหล่งอ้างอิงและเอกสารยืนยันสำหรับข้อความต่างๆ ในที่นี้ได้ทั้งหมด จึงต้องขอให้ผู้อ่านไว้วางใจในความถูกต้องของข้อมูลตามสมควร แม้ข้าพเจ้าจะพยายามระมัดระวังโดยอ้างอิงจากแหล่งข้อมูลที่เชื่อถือได้เท่านั้น แต่ก็เป็นไปได้ว่าอาจมีข้อผิดพลาดหลุดรอดมาบ้าง ในที่นี้ข้าพเจ้าสามารถนำเสนอได้เพียงข้อสรุปโดยรวมที่ได้ค้นพบ พร้อมด้วยข้อเท็จจริงบางประการเพื่อประกอบคำอธิบาย ซึ่งข้าพเจ้าหวังว่าในกรณีส่วนใหญ่ สิ่งเหล่านี้จะเพียงพอต่อการทำความเข้าใจ",
+      "output_hash": "sha256:5422d759f600208759556fe4ebf1fe365a1bec0a54f172d37dcc904b6052b711",
+      "translation_latency_ms": 5043,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Bản Tóm tắt mà tôi công bố lúc này chắc chắn không tránh khỏi những thiếu sót. Tại đây, tôi không thể đưa ra các trích dẫn và căn cứ cho mọi luận điểm của mình; vì vậy, tôi hy vọng độc giả sẽ tin tưởng vào sự chính xác trong cách trình bày của tôi. Chắc chắn sẽ có những sai sót xuất hiện, dù tôi hy vọng mình đã luôn cẩn trọng khi chỉ dựa vào những nguồn tài liệu uy tín. Tôi chỉ có thể đưa ra những kết luận chung mà tôi đã đạt được, cùng với một vài dẫn chứng minh họa, nhưng tôi hy vọng trong hầu hết các trường hợp, bấy nhiêu đó là đủ.",
+      "output_hash": "sha256:4f414732a2275cb2568e61869aa60e78171ba198e0e21045d5a5a0ce0782e506",
+      "translation_latency_ms": 4056,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "origin_species",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "我现在公布的这份摘要难免会有不足之处。我无法在此为各项陈述提供详细的参考文献和权威依据，因此只能希望读者对我论述的准确性抱有一定的信心。尽管我一直谨慎地仅依赖可靠的权威资料，但文中无疑仍会存在一些疏漏。在此，我只能给出我所达成的总体结论，并辅以少量事实作为说明，但希望在大多数情况下，这些说明已足够充分。",
+      "output_hash": "sha256:b5abe9019d178e6d74d63d7f4931d7743bd3337ef22b45ca4e141b70caff2014",
+      "translation_latency_ms": 2981,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "ثمة حقيقة مُسلّم بها عالمياً، وهي أن الرجل العازب الذي يمتلك ثروة طائلة، لا بد وأنه بحاجة إلى زوجة. ومهما كانت مشاعر هذا الرجل أو وجهات نظره مجهولة عند دخوله حيّاً جديداً لأول مرة، فإن هذه الحقيقة تظل راسخة في أذهان العائلات المجاورة لدرجة تجعلهم يعتبرونه ملكاً شرعياً لإحدى بناتهم.",
+      "output_hash": "sha256:cba03942da6b8e32ebad60f7a0613b7329498b92775e150df13894a654d368d5",
+      "translation_latency_ms": 3131,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "এটি সর্বজনস্বীকৃত এক সত্য যে, যথেষ্ট সম্পদশালী একজন অবিবাহিত পুরুষের অবশ্যই একজন স্ত্রী প্রয়োজন। কোনো ব্যক্তি যখন প্রথমবার কোনো এলাকায় এসে বসবাস শুরু করেন, তখন তাঁর ব্যক্তিগত অনুভূতি বা দৃষ্টিভঙ্গি সম্পর্কে কেউ খুব কম জানলেও, আশেপাশের পরিবারগুলোর মনে এই বিশ্বাস এতটাই বদ্ধমূল থাকে যে, তাঁরা তাঁকে তাঁদের কোনো না কোনো কন্যার উপযুক্ত জীবনসঙ্গী হিসেবেই গণ্য করেন।",
+      "output_hash": "sha256:0fd2b46f9bfdbad8d3f4c9bb9af4ad4e3dbfc6d93e0ce5ba6faecfb890905b06",
+      "translation_latency_ms": 2528,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Det er en universelt anerkendt sandhed, at en ugift mand i besiddelse af en formue må have brug for en hustru. Uanset hvor lidt man kender til en sådan mands følelser eller holdninger, når han for første gang flytter ind i et nabolag, er denne sandhed så fast indprentet i de omkringboende familiers bevidsthed, at han betragtes som det retmæssige bytte for en eller anden af deres døtre.",
+      "output_hash": "sha256:032dba6a585d53c53caedf314bf1dc945c2d8d7cffd39d72cf41241f896a878b",
+      "translation_latency_ms": 3358,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Es ist eine allgemein anerkannte Wahrheit, dass ein Junggeselle mit einem beträchtlichen Vermögen notwendigerweise eine Frau sucht. Wie wenig auch die Gefühle oder Ansichten eines solchen Mannes bei seinem ersten Einzug in eine Nachbarschaft bekannt sein mögen, so tief ist diese Wahrheit in den Köpfen der umliegenden Familien verwurzelt, dass er als das rechtmäßige Eigentum einer oder anderen ihrer Töchter betrachtet wird.",
+      "output_hash": "sha256:05f6d82da402ae3e01a390e1f58376ccaa849e8a5b796d7ebac7b993b2b6697e",
+      "translation_latency_ms": 2919,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Είναι μια παγκοσμίως αναγνωρισμένη αλήθεια ότι ένας μονοerχός άνδρας που διαθέτει μια μεγάλη περιουσία, πρέπει αναπόφευκτα να αναζητά σύζυγο. Όσο λίγο κι αν είναι γνωστά τα συναισθήματα ή οι απόψεις ενός τέτοιου άνδρα όταν εγκαθίσταται για πρώτη φορά σε μια γειτονιά, αυτή η αλήθεια είναι τόσο βαθιά χαραγμένη στη σκέψη των γύρω οικογενειών, που θεωρείται ως το νόμιμο κτήμα κάποιας από τις κόρες τους.",
+      "output_hash": "sha256:2271d16305058806f26d7a8c258a9cc9746e9036bf6b078cb97bac11eebdb50c",
+      "translation_latency_ms": 4187,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Es una verdad universalmente reconocida que un hombre soltero, poseedor de una gran fortuna, debe de sentir la necesidad de casarse. Por poco que se conozcan los sentimientos o las opiniones de dicho caballero al llegar a un nuevo vecindario, esta verdad está tan arraigada en la mente de las familias circundantes, que se le considera propiedad legítima de alguna de sus hijas.",
+      "output_hash": "sha256:949c901638e3a0409d192967a3369af46ad8a27a1bbb91540e786d7267ed2ad7",
+      "translation_latency_ms": 2606,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "C'est une vérité universellement reconnue qu'un célibataire pourvu d'une belle fortune doit être à la recherche d'une épouse. Cependant, aussi peu connus que puissent être les sentiments ou les opinions d'un tel homme lors de son arrivée dans un voisinage, cette vérité est si bien ancrée dans l'esprit des familles environnantes qu'il est considéré comme la propriété légitime de l'une ou l'autre de leurs filles.",
+      "output_hash": "sha256:d226d56a823a1589b865c73463f13af082e895b7d733279e2d52ee1ce77cdfa9",
+      "translation_latency_ms": 3006,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "זוהי אמת מוכרת בכל מקום, שגבר רווק בעל הון רב, ודאי חפץ באישה. גם אם רגשותיו או השקפותיו של גבר כזה אינם ידועים בעת כניסתו הראשונה לשכונה, אמת זו נטועה כל כך בתודעתן של המשפחות סביבו, עד שהוא נחשב כמי ששייך, בזכות מלאה, לאחת מבנותיהן.",
+      "output_hash": "sha256:c0f7eea99d2d6b4f178c3b81c651cb72598dede05df167c270fb9046280b67b5",
+      "translation_latency_ms": 3358,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "यह एक सर्वमान्य सत्य है कि अच्छी संपत्ति वाला अविवाहित पुरुष निश्चित रूप से एक पत्नी की तलाश में होगा। भले ही किसी नए पड़ोस में आने पर ऐसे व्यक्ति की भावनाओं या विचारों के बारे में बहुत कम जानकारी हो, लेकिन आस-पास के परिवारों के मन में यह बात इतनी गहराई से बैठ चुकी होती है कि वे उसे अपनी किसी न किसी बेटी की जायदाद समझने लगते हैं।",
+      "output_hash": "sha256:559ff034461623b7f5a7a871b4957cbc4b4e5d877d79037e7b45bc9e2054676d",
+      "translation_latency_ms": 2639,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Sudah menjadi rahasia umum bahwa seorang pria lajang dengan kekayaan yang melimpah, pastilah sedang mencari seorang istri. Meskipun perasaan atau pandangan pria tersebut mungkin tidak diketahui saat ia pertama kali pindah ke suatu lingkungan, kebenaran ini telah tertanam begitu kuat di benak keluarga-keluarga di sekitarnya, sehingga ia dianggap sebagai milik sah dari salah satu putri mereka.",
+      "output_hash": "sha256:4223127ffe15b5d15fd6430707b41700acc233190e5c65e6fc156d4d82e09813",
+      "translation_latency_ms": 2580,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "È una verità universalmente riconosciuta che un uomo celibe, possedente una discreta fortuna, debba aver bisogno di una moglie. Per quanto i sentimenti o le opinioni di tale uomo possano essere ignoti al momento del suo arrivo in un vicinato, questa verità è così radicata nella mente delle famiglie circostanti che egli viene considerato di diritto la proprietà di una delle loro figlie.",
+      "output_hash": "sha256:c1a5d1d8eb9d8d90da5a0d95fe7b0092c3590357a13c6051b7990638eb4fe688",
+      "translation_latency_ms": 2607,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "相当な財産を持つ独身男性には、妻が必要であるというのは、世間で誰もが認める真理である。そのような男性が近所に越してきたとき、本人がどのような心情で、どのような考えを持っているかはほとんど知られていないが、周辺の家族たちの心にはこの真理が深く刻み込まれているため、彼は必然的に、誰か娘たちの正当な所有物であると考えられている。",
+      "output_hash": "sha256:8ce12355896bab27b6b08677888b8db083d3d49e31468e9d7ff9dc867656ff93",
+      "translation_latency_ms": 2643,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "재산이 많은 독신 남성에게는 아내가 필요하다는 것이 세상 어디서나 통용되는 진리이다. 그런 남자가 어느 마을에 처음 이사 왔을 때 그가 어떤 생각이나 감정을 가지고 있는지는 거의 알려지지 않았지만, 주변 이웃들은 이 진리를 너무나 확고하게 믿고 있어서 그를 누군가의 딸이 당연히 차지해야 할 소유물로 여긴다.",
+      "output_hash": "sha256:866ce1c9bbb5488a2d1392298a5efbfab675970ec79911577152f1b7c37bf9e3",
+      "translation_latency_ms": 2784,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Het is een universeel erkende waarheid dat een vrijgezel met een aanzienlijk vermogen wel een vrouw moet zoeken. Hoe weinig men bij zijn komst in een buurt ook op de hoogte is van de gevoelens of opvattingen van zo'n man, deze waarheid zit zo diep geworteld in de hoofden van de omwonende families, dat hij wordt beschouwd als het rechtmatige eigendom van een of andere dochter van hen.",
+      "output_hash": "sha256:e1fe53e418c594aa94c5d7097d262684561c338a60433c895b05240d4445b26f",
+      "translation_latency_ms": 3110,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Powszechnie przyjętym jest mniemanie, że kawaler w posiadaniu znacznego majątku musi pragnąć żony. Choć uczucia i poglądy takiego mężczyzny w chwili przybycia do nowej okolicy mogą pozostać nieznane, prawda ta jest tak mocno utrwalona w umysłach okolicznych rodzin, że uznaje się go za prawowitą własność którejś z ich córek.",
+      "output_hash": "sha256:025176c959d3c4351c60e2ce8628c2a1f2c9142bbe081d79ef0145bdbc3f0e26",
+      "translation_latency_ms": 2953,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "É uma verdade universalmente reconhecida que um homem solteiro, possuidor de uma grande fortuna, deve estar necessitado de uma esposa. Por menos que se conheçam os sentimentos ou as opiniões de tal homem ao chegar a uma vizinhança, esta verdade está tão arraigada na mente das famílias locais que ele é considerado a propriedade legítima de alguma das suas filhas.",
+      "output_hash": "sha256:7b0880c0de4cb1f4e8d6073f38230047a86c9f92818c20e4557f69d748def44a",
+      "translation_latency_ms": 2617,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Общепризнанно, что холостяк, располагающий приличным состоянием, должен испытывать потребность в жене. Как бы мало ни были известны чувства и взгляды такого человека при его появлении в округе, эта истина настолько прочно укоренилась в умах окрестных семей, что он считается законной добычей одной из их дочерей.",
+      "output_hash": "sha256:05872c95d9438649650475c99a95ce014fa99a2ee6ce8e17bedca6566d2ccdcc",
+      "translation_latency_ms": 2601,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Det är en allmänt erkänd sanning att en ung man med en betydande förmögenhet måste vara i behov av en hustru. Hur lite kända en sådan mans känslor eller åsikter än må vara när han för första gången anländer till ett grannskap, är denna sanning så fast rotad i de omkringboendes medvetande att han betraktas som den rättmätiga egendomen för någon eller annan av deras döttrar.",
+      "output_hash": "sha256:180fe5852a5207f91fb8fa23e04a463f52214f6daccee0c6a68e495b3bcabe73",
+      "translation_latency_ms": 3144,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "நல்ல வசதி வாய்ப்புகளுடன் இருக்கும் ஒரு தனிமகன், கண்டிப்பாக ஒரு மனைவியை விரும்பியிருப்பான் என்பது உலகளவில் அங்கீகரிக்கப்பட்ட ஒரு உண்மையாகும். ஒரு மனிதன் ஒரு புதிய பகுதிக்கு குடிபெயரும்போது, அவனது உணர்வுகளோ அல்லது கருத்துக்களோ யாருக்கும் தெரியாமல் இருக்கலாம்; இருப்பினும், அவனை அங்கிருக்கும் குடும்பங்களின் மகள்களில் ஒருவருக்கான தகுதியான வாழ்க்கைத் துணையாகக் கருதும் எண்ணம், அவர்களை ஆழமாகப் பதிந்திருக்கும்.",
+      "output_hash": "sha256:0aa611ff3a247e09942e0f204a418cec9a533be5185f4d80b1a479cad52e13a3",
+      "translation_latency_ms": 3064,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "เป็นที่ยอมรับกันโดยทั่วไปว่า ชายโสดผู้มีทรัพย์สินมั่งคั่ง ย่อมต้องมีความต้องการภรรยาสักคน แม้ว่าความรู้สึกหรือมุมมองของชายผู้นั้นจะเป็นอย่างไรเมื่อย้ายเข้ามาอยู่ในละแวกบ้านเป็นครั้งแรก จะไม่มีใครล่วงรู้ได้เลย แต่ความจริงข้อนี้กลับฝังรากลึกอยู่ในใจของครอบครัวโดยรอบ จนทำให้เขากลายเป็นเป้าหมายที่ถูกมองว่าเป็นสมบัติอันชอบธรรมของลูกสาวคนใดคนหนึ่งในบ้านเหล่านั้น",
+      "output_hash": "sha256:fd36ad3105186e36e2f38a6599a38cbedc4cfb19d49f29be26b684111537dc6f",
+      "translation_latency_ms": 3373,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Có một sự thật hiển nhiên mà ai cũng công nhận, đó là một người đàn ông độc thân có gia sản lớn chắc chắn phải muốn tìm một người vợ. Dẫu cho tâm tư hay quan điểm của người đàn ông ấy có ít được biết đến khi anh ta mới chuyển đến một vùng xóm giềng, thì sự thật này đã hằn sâu trong tâm trí những gia đình xung quanh đến mức họ coi anh ta như một \"món hời\" chính đáng cho một trong số các cô con gái nhà mình.",
+      "output_hash": "sha256:b8f7dca16487f360b94d3388eaeae155abe5fa8f74ae87f93b4aff896185af47",
+      "translation_latency_ms": 3307,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "pride_prejudice",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "一个单身且家财万贯的男人，必然渴望娶一个妻子，这在社交界被认为是一个普遍真理。无论这样一个男人在初次进入一个社区时，其内心想法或观点多么不为人知，但这一真理在周围家庭的心中已根深蒂固，以至于他被视为他们某个女儿理所应当的财产。",
+      "output_hash": "sha256:c45f198054fb049e06917a9dffafff883d9981c56f8ef6d136d539cd412bad99",
+      "translation_latency_ms": 2523,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "\"أرى أنك كنت في أفغانستان\".\nسألته بدهشة: \"كيف عرفت ذلك بحق السماء؟\".\nأجاب وهو يقهقه في نفسه: \"لا يهم، السؤال الآن عن الهيموغلوبين. لا شك أنك تدرك أهمية هذا الاكتشاف الذي توصلتُ إليه؟\".\nفأجبته: \"إنه مثير للاهتمام من الناحية الكيميائية بلا شك، ولكن من الناحية العملية—\".\n\"يا رجل، إنه الاكتشاف الطبي الشرعي الأكثر عملية منذ سنوات. ألا ترى أنه يمنحنا اختباراً لا يخطئ لبقع الدم؟\"",
+      "output_hash": "sha256:707aed539f69ddf8c618ab04f5fcb0769f939a34e0838ae008d7d7f80a9b6d2f",
+      "translation_latency_ms": 4045,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "\"আমার মনে হচ্ছে আপনি আফগানিস্তানে ছিলেন।\" \"আপনি এটা জানলেন কীভাবে!\" আমি অবাক হয়ে জিজ্ঞেস করলাম। \"সেটা থাক,\" তিনি মৃদু হেসে বললেন। \"এখন প্রশ্ন হলো হিমোগ্লোবিন নিয়ে। আমার এই আবিষ্কারের গুরুত্ব নিশ্চয়ই বুঝতে পারছেন?\" \"রাসায়নিকভাবে এটা অবশ্যই আকর্ষণীয়,\" আমি উত্তর দিলাম, \"কিন্তু ব্যবহারিক দিক থেকে—\" \"আরে মশাই, গত কয়েক বছরের মধ্যে চিকিৎসা-আইনি ক্ষেত্রে এটিই সবচেয়ে কার্যকর আবিষ্কার। আপনি কি বুঝতে পারছেন না যে এটি রক্তদাগ শনাক্ত করার জন্য আমাদের এক অমোঘ পদ্ধতি দিচ্ছে?\"",
+      "output_hash": "sha256:8fdd0c9f293d8610abae52d81ab4975c05783c5c9b571137245b1046f4a0fb8f",
+      "translation_latency_ms": 3545,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "\"De har været i Afghanistan, formoder jeg.\" \"Hvordan i alverden ved De det?\" spurgte jeg forbløffet. \"Det får vi at se på,\" sagde han og klukkede for sig selv. \"Spørgsmålet nu drejer sig om hæmoglobin. De indser vel betydningen af denne opdagelse?\" \"Den er uden tvivl kemisk interessant,\" svarede jeg, \"men rent praktisk—\" \"Men herre, det er den mest praktiske retsmedicinske opdagelse i årevis. Kan De ikke se, at den giver os en ufejlbarlig test for blodpletter?\"",
+      "output_hash": "sha256:a3ff6ca3dece09eb02f735e9f1e2dc0b8d7c315b66d6a177b51702c4f22fe9ad",
+      "translation_latency_ms": 4103,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "„Sie waren in Afghanistan, wie ich sehe.“ „Woher zum Teufel wissen Sie das?“, fragte ich erstaunt. „Schwamm drüber“, sagte er und kicherte vor sich hin. „Die Frage ist nun das Hämoglobin. Sie erkennen sicher die Bedeutung meiner Entdeckung?“ „Chemisch gesehen ist sie zweifellos interessant“, antwortete ich, „aber in der Praxis—“ „Mein lieber Freund, es ist die praktischste medizinisch-forensische Entdeckung seit Jahren. Erkennen Sie denn nicht, dass sie uns einen unfehlbaren Test für Blutflecken liefert?“",
+      "output_hash": "sha256:1a0cc7d8610e4947732cd7709ad99abe196df7ef1f7a7736bcc577596296231d",
+      "translation_latency_ms": 3803,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "«Έχετε været στο Αφγανιστάν, όπως αντιλαμβάνομαι». «Πώς στον κόσμο το μάθατε αυτό;» ρώτησα κατάπληκτος. «Δεν έχει σημασία», είπε εκείνος, γελώντας σιγά σιγά προς τον εαυτό του. «Το ζήτημα τώρα είναι η αιμοσφαιρίνη. Αμφιβόλητα αντιλαμβάνεστε τη σημασία αυτού του ανακάλυψή μου;» «Είναι ενδιαφέρουσα, χημικά, χωρίς αμφιβολία», απάντησα, «αλλά πρακτικά—» «Μα, άνθρωπε, είναι η πιο πρακτική ιατροδικαστική ανακάλυψη εδώ και χρόνια. Δεν βλέπετε ότι μας δίνει μια αλά mistaken δοκιμασία για τους αιματηρούς λεκέδες;»",
+      "output_hash": "sha256:8e78666c19e722023c196559779c283999944ac79ff1f33f800cac3f85314342",
+      "translation_latency_ms": 5723,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "—Ha estado en Afganistán, percibo.\n—¿Cómo diablos lo sabe? —pregunté asombrado.\n—No importa —dijo él, riendo entre dientes—. La cuestión ahora es la hemoglobina. Sin duda comprende la trascendencia de este descubrimiento mío, ¿verdad?\n—Desde el punto de vista químico es interesante, sin duda —respondí—, pero en la práctica...\n—¡Pero hombre, es el descubrimiento médico-legal más práctico de los últimos años! ¿No ve que nos proporciona una prueba infalible para las manchas de sangre?",
+      "output_hash": "sha256:d4e5469fc3f068388a9341200ec1a73287d479a8faac1dd2bfe576000878632c",
+      "translation_latency_ms": 3678,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "« Vous avez été en Afghanistan, je présume. » « Mais comment diable pouvez-vous savoir cela ? » demandai-je avec stupéfaction. « Peu importe », répondit-il dans un petit rire. « La question actuelle concerne l'hémoglobine. Vous saisissez sans doute l'importance de ma découverte ? » « Elle est intéressante, sur le plan chimique, sans doute, répondis-je, mais concrètement... » « Mais enfin, mon cher, c'est la découverte médico-légale la plus concrète depuis des années. Ne voyez-vous pas qu'elle nous offre un test infaillible pour les taches de sang ? »",
+      "output_hash": "sha256:c191b10e0e2f88c6219c76a5f9629ab50719abe19a12566f714e2982fa75c3a6",
+      "translation_latency_ms": 4138,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "\"היית באפגניסטן, אני מסיק,\" אמר. \"איך לעזאזל ידעת את זה?\" שאלתי בתדהמה. \"לא משנה,\" השיב תוך כדי צחוק קט רשמי לעצמו. \"השאלה כעת היא לגבי ההמוגלובין. אין ספק שאתה מבין את חשיבותו של התגלית שלי?\" \"מבחינה כימית היא מעניינת, ללא ספק,\" עניתי, \"אבל מבחינה מעשית—\" \"איש, זו התגלית הפורנזית המעשית ביותר מזה שנים. אתה לא מבין שזה מעניק לנו בדיקה חסינה לכתמי דם?\"",
+      "output_hash": "sha256:a135fdb7c749cbd6380cafd005efe90176792eb70b7481fec88083ddf61444b0",
+      "translation_latency_ms": 4844,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "\"मुझे लगता है कि आप अफगानिस्तान में रह चुके हैं।\" \"आपको यह बात आखिर कैसे पता चली?\" मैंने हैरानी से पूछा। \"छोड़िए इसे,\" उन्होंने खुद ही मंद-मंद मुस्कुराते हुए कहा। \"अब बात हीमोग्लोबिन के बारे में है। निसंदेह आप मेरी इस खोज के महत्व को समझते होंगे?\" \"रासायनिक रूप से यह दिलचस्प है, इसमें कोई शक नहीं,\" मैंने उत्तर दिया, \"लेकिन व्यावहारिक तौर पर—\" \"अरे भाई, यह पिछले कई सालों की सबसे व्यावहारिक मेडिको-लीगल खोज है। क्या आप नहीं देख रहे कि यह हमें खून के धब्बों की जाँच के लिए एक अचूक तरीका देता है?\"",
+      "output_hash": "sha256:ba4dc2ac367b3dc9de367710ec3973cd4cd11afd2b0c3c1ce1c07450ce6ba4a6",
+      "translation_latency_ms": 4118,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "\"Anda pernah ke Afghanistan, saya rasa.\" \"Bagaimana bisa Anda tahu?\" tanya saya dengan heran. \"Sudahlah,\" ucapnya sambil terkekeh sendiri. \"Pertanyaannya sekarang adalah soal hemoglobin. Anda pasti menyadari pentingnya penemuan saya ini?\" \"Secara kimiawi memang menarik, tidak diragukan lagi,\" jawab saya, \"tapi secara praktis—\" \"Astaga, kawan, ini adalah penemuan mediko-legal paling praktis selama bertahun-tahun. Tidakkah Anda lihat bahwa ini memberi kita metode pengujian yang tidak mungkin salah untuk noda darah?\"",
+      "output_hash": "sha256:eebec0d39b86604b58c503ab6aea4cc65177fca5dfee651afd88d2e00ccd7ccc",
+      "translation_latency_ms": 3683,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "\"Sei stato in Afghanistan, immagino.\" \"Ma come diavolo lo sa?\" chiesi stupito. \"Non importa,\" rispose lui, ridacchiando tra sé. \"La questione ora riguarda l'emoglobina. Immagino che ne comprenda l'importanza, di questa mia scoperta?\" \"Dal punto di vista chimico è interessante, senz'altro,\" risposi, \"ma a livello pratico—\" \"Ma caro mio, è la scoperta medico-legale più pratica degli ultimi anni. Non capisce che ci fornisce un test infallibile per le macchie di sangue?\"",
+      "output_hash": "sha256:1b502030eaa027d59463b241d302a1b24383851718701f13ab8a402ba8be6987",
+      "translation_latency_ms": 3710,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "「アフガニスタンに行かれたことがありますね」\n「一体どうしてそれが分かったのですか」私は驚いて問い返した。\n「それはいい」彼は独り言のようにくすくすと笑った。「今重要なのはヘモグロビンの話だ。私のこの発見がどれほどの意味を持つか、お分かりでしょう？」\n「化学的な観点からは確かに興味深いと思いますが」と私は答えた。「ですが、実用面では――」\n「何を言っているんですか。ここ数年で最も実用的な法医学的発見ですよ。血痕を判別するための、絶対的に確実な検査法になることが分からないのですか」",
+      "output_hash": "sha256:6c97cb2a89c7716eac5fa576f267c584503a4e645c3b73fd066d954dcc785965",
+      "translation_latency_ms": 4023,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "\"아프가니스탄에 다녀오신 모양이군요.\" \"대체 그걸 어떻게 아셨습니까?\" 내가 깜짝 놀라 물었다. \"그건 됐고,\" 그는 혼자 낄낄거리며 말했다. \"지금 중요한 건 헤모글로빈에 관한 것입니다. 내 이번 발견이 얼마나 중요한지 분명히 알고 계시겠지요?\" \"화학적으로는 분명 흥미로운 결과입니다만,\" 내가 대답했다. \"실제적으로는—\" \"이보세요, 이건 수년 만에 나온 가장 실용적인 법의학적 발견이란 말이오. 혈흔을 판별할 수 있는 절대적인 검사법이 된다는 게 보이지 않소?\"",
+      "output_hash": "sha256:848a7fb5477a8a440a9d62c2ee55ffbc2d89503350ecae6b3cf215a41ee94126",
+      "translation_latency_ms": 4253,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "\"U bent in Afghanistan geweest, neem ik aan.\" \"Hoe in hemelsnaam wist u dat?\" vroeg ik verbijsterd. \"Dat maakt niet uit,\" zei hij, terwijl hij zachtjes lachte. \"De vraag nu gaat over hemoglobine. U ziet ongetwijfeld het belang van deze ontdekking van mij?\" \"Chemisch gezien is het ongetwijfeld interessant,\" antwoordde ik, \"maar praktisch gezien—\" \"Maar man, dit is de meest praktische medico-legale ontdekking van de afgelopen jaren. Begrijpt u dan niet dat het ons een onfeilbare test geeft voor bloedvlekken?\"",
+      "output_hash": "sha256:9026ec44d264f50d7b93443f45593cc5e8e37fd51e3c7cd5f4e4509f24d17896",
+      "translation_latency_ms": 4065,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "— Był pan w Afganistanie, jak mniemam.\n— Skąd pan w ogóle to wie? — zapytałem zdumiony.\n— Nieważne — odparł, cicho się śmiejąc. — Teraz przejdźmy do hemoglobiny. Zapewne dostrzega pan wagę mojego odkrycia?\n— Z chemicznego punktu widzenia jest ono bez wątpienia interesujące — odrzekłem — ale w praktyce...\n— Ależ człowieku, to najważniejsze odkrycie medyczno-sądowe od lat! Czy nie widzi pan, że daje nam ono nieomylny sposób badania plam krwi?",
+      "output_hash": "sha256:504be9d408369daed766e7ffb1a260009e5fc6b7d1eedb321b6699b24ef13c41",
+      "translation_latency_ms": 4193,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "— Você esteve no Afeganistão, percebo.\n— Como diabos você sabe disso? — perguntei, perplexo.\n— Não importa — disse ele, rindo para si mesmo. — A questão agora é a hemoglobina. Sem dúvida, você compreende a importância desta minha descoberta?\n— É interessante, do ponto de vista químico, sem dúvida — respondi —, mas na prática...\n— Ora, homem, é a descoberta médico-legal mais prática dos últimos anos. Não percebe que ela nos fornece um teste infalível para manchas de sangue?",
+      "output_hash": "sha256:f6382f4f215bec9b235628b8adb63c286b2fa470450f2c8a531364226a43b82a",
+      "translation_latency_ms": 3663,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "— Вы были в Афганистане, я полагаю.\n— Как, черт возьми, вы об этом узнали? — в изумлении спросил я.\n— Неважно, — ответил он с легким смешком. — Сейчас речь пойдет о гемоглобине. Вы, безусловно, понимаете значимость моего открытия?\n— С точки зрения химии это, несомненно, интересно, — ответил я, — но на практике...\n— Послушайте, друг мой, это самое практичное судебно-медицинское открытие за последние годы. Неужели вы не понимаете, что оно дает нам безошибочный способ определения пятен крови?",
+      "output_hash": "sha256:f785399c88c81359111dab431f8e44842aa019773d368a6756e3c1d6e7d1792f",
+      "translation_latency_ms": 4367,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "\"Ni har varit i Afghanistan, antar jag.\" \"Hur i hela friden vet du det?\" frågade jag förvånat. \"Låt det vara,\" svarade han och småskrattade för sig själv. \"Frågan nu gäller hemoglobin. Ni inser väl betydelsen av min upptäckt?\" \"Den är utan tvekan kemiskt intressant,\" svarade jag, \"men rent praktiskt—\" \"Men herre jäklar, det är den mest praktiska medicinsk-juridiska upptäckten på många år. Förstår ni inte att den ger oss ett ofelbart test för blodfläckar?\"",
+      "output_hash": "sha256:fd75e1ffa7485b0a2f021643137a0f192052d058648104171056df5c52217512",
+      "translation_latency_ms": 4037,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "\"நீங்கள் ஆப்கானிஸ்தானில் இருந்திருக்கிறீர்கள் என்று நினைக்கிறேன்.\" \"உங்களுக்கு அது எப்படித் தெரிந்தது?\" நான் ஆச்சரியத்துடன் கேட்டேன். \"அதையெல்லாம் விடுங்கள்,\" என்று அவர் தனக்குள்ளே சிரித்துக்கொண்டே கூறினார். \"இப்போது ஹீமோகுளோபின் பற்றிய விஷயம். எனது இந்த கண்டுபிடிப்பின் முக்கியத்துவத்தை நீங்கள் நிச்சயமாக உணர்ந்திருப்பீர்கள், இல்லையா?\" \"வேதியியல் ரீதியாக இது ஆர்வமூட்டுவதாக இருக்கிறது, என்பதில் சந்தேகமில்லை,\" என்று நான் பதிலளித்தேன், \"ஆனால் நடைமுறையில்—\" \"என்ன மனிதனே, பல ஆண்டுகளில் கண்டறியப்பட்ட மிக நடைமுறைக்கு ஏற்ற மருத்துவ-சட்ட கண்டுபிடிப்பு இது. இரத்தக் கறைகளைத் துல்லியமாகக் கண்டறிய இது ஒரு தவறற்ற சோதனையை நமக்கு வழங்குகிறது என்பதை நீங்கள் உணரவில்லையா?\"",
+      "output_hash": "sha256:b39afd83e8e41ed05012a18637fa664329318e7887ffcfb324a7889dc9e99ffc",
+      "translation_latency_ms": 4685,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "\"ดูท่าว่าคุณเคยไปอัฟกานิสถานมาสินะ\" \"คุณรู้เรื่องนั้นได้ยังไงกัน?\" ผมถามด้วยความประหลาดใจ \"ช่างมันเถอะ\" เขาพูดพร้อมกับหัวเราะเบาๆ ในลำคอ \"ตอนนี้ประเด็นอยู่ที่เรื่องฮีโมโกลบิน คุณคงเห็นความสำคัญของการค้นพบครั้งนี้ของผมแล้วใช่ไหม?\" \"ในทางเคมีมันก็น่าสนใจครับ ไม่สงสัยเลย\" ผมตอบ \"แต่ในทางปฏิบัติ—\" \"โธ่ เพื่อนเอ๋ย นี่คือการค้นพบทางนิติเวชที่นำไปใช้ประโยชน์ได้จริงที่สุดในรอบหลายปีเลยนะ คุณไม่เห็นหรือว่ามันทำให้เรามีวิธีทดสอบคราบเลือดที่แม่นยำและไม่มีทางพลาดได้เลย\"",
+      "output_hash": "sha256:1a7e0cee1fbd5eee2e546df3bb3c6077005264307109bc03b8251c1cbc4768c3",
+      "translation_latency_ms": 4830,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "\"Tôi đoán là anh đã từng ở Afghanistan,\" ông ta nói. \"Trời đất, làm sao ông biết được điều đó?\" tôi kinh ngạc hỏi. \"Đừng bận tâm,\" ông ta cười thầm, \"vấn đề hiện giờ là về huyết sắc tố. Chắc hẳn anh thấy được tầm quan trọng của khám phá này của tôi chứ?\" \"Về mặt hóa học thì đúng là thú vị,\" tôi trả lời, \"nhưng về mặt thực tiễn thì—\" \"Kìa anh bạn, đây là khám phá pháp y thực tiễn nhất trong nhiều năm qua. Anh không thấy rằng nó cung cấp cho chúng ta một phép thử chính xác tuyệt đối đối với các vết máu sao?\"",
+      "output_hash": "sha256:54e1cdf5131c22fd24c7875aff3a018fdd6bea213f0eed75d563d64260f8caf0",
+      "translation_latency_ms": 4311,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "study_scarlet",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "“我看你曾在阿富汗待过。”\n“天哪，你怎么知道的？”我惊讶地问道。\n“不重要，”他自顾自地轻笑起来，“现在的问题是血红蛋白。毫无疑问，你已经意识到我的这项发现具有重大意义了吧？”\n“从化学角度来看，这确实很有意思，”我回答道，“但在实际应用方面——”\n“好家伙，这可是多年来最具有实际意义的法医学发现了。难道你没意识到，它能为我们提供一种万无一失的血迹检测方法吗？”",
+      "output_hash": "sha256:6a06392bd44029182484f8ce441e341a5cb61c3635c48865bd219bbcbb116c3d",
+      "translation_latency_ms": 3623,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "يبدو لي أنني كلما غمرتني السعادة ظناً مني بأنني اكتشفت أخيراً لوحة أثرية جميلة وتستحق كل الثناء، كانت هذه اللذة ذاتها دليلاً قاطعاً على أن اللوحة ليست جميلة، ولا تستحق الإشادة بأي حال من الأحوال. لقد تكرر هذا الأمر في فينيسيا أكثر مما أستطيع أن أعدّ؛ ففي كل مرة، كان المرشد يطفئ شعلة حماسي المتوقدة بتعليق مقتضب: \"لا قيمة لها.. إنها من عصر النهضة\".",
+      "output_hash": "sha256:dbce3e2a0429b1e419deead1cbb3cfce0318349698dbedb5f6399b728b5f3503",
+      "translation_latency_ms": 3924,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "আমার মনে হয়, যখনই আমি এই ভেবে গর্বিত হই যে অবশেষে আমি এমন একটি প্রাচীন চিত্রকর্ম খুঁজে পেয়েছি যা সুন্দর এবং সব প্রশংসার যোগ্য, তখনই সেই আনন্দই যেন এই অকাট্য প্রমাণ হয়ে দাঁড়ায় যে ছবিটি আসলে সুন্দর নয় এবং কোনোভাবেই প্রশংসার যোগ্য নয়। ভেনিসে আমার সাথে এমন ঘটনা কতবার ঘটেছে তা বলে শেষ করা যাবে না। প্রতিবারই গাইড আমার প্রবল উৎসাহকে এই মন্তব্য দিয়ে ধুলোয় মিশিয়ে দিয়েছেন: \"এর বিশেষ কিছু নেই—এটি রেনেসাঁর আমলের।\"",
+      "output_hash": "sha256:e15b665558655b340dd7c341ccff983b3b59b46ba8bcfd52f447bd051a3cd11d",
+      "translation_latency_ms": 3287,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Det synes mig, at hver gang jeg frydes over tanken om, at jeg for én gangs skyld har opdaget et gammelt maleri, der er smukt og værdigt til al ros, så er den glæde, det giver mig, et ufejlbarligt bevis på, at det hverken er et smukt billede eller på nogen måde værdigt til anerkendelse. Netop dette er sket flere gange, end jeg kan tælle, i Venedig. I hvert eneste tilfælde har guiden knust min voksende begejstring med bemærkningen: ”Det er ikke noget – det er fra renæssancen.”",
+      "output_hash": "sha256:1038fad064e4fc6a766b5e7da25d7bee06fdcc3300a4a09ce012a999a68125d1",
+      "translation_latency_ms": 4141,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Mir scheint es, dass jedes Mal, wenn ich mich voller Stolz darüber freue, endlich einmal ein altes Gemälde entdeckt zu haben, das schön und aller Lob preispriiswürdig ist, mir gerade dieses Vergnügen der unfehlbare Beweis dafür ist, dass es sich eben nicht um ein schönes Bild handelt und in keiner Weise lobenswert ist. Genau dies ist mir in Venedig häufiger passiert, als ich aufzählen kann. In jedem einzelnen Fall hat der Führer meinen schwellenden Enthusiasmus mit der Bemerkung zunichtegemacht: „Das ist nichts – das ist aus der Renaissance.“",
+      "output_hash": "sha256:3b763cf4315845d2542321a6610157c802735e58ad08d297f931d4775d4a48dd",
+      "translation_latency_ms": 3856,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Μου φαίνεται πως κάθε φορά που χαίρομαι σκεφτόμενος ότι επιτέλους ανακάλυψα έναν αρχαίο πίνακα που είναι όμορφος και άξιος κάθε επαίνου, η απόλαυση που μου προσφέρει αποτελεί αδιάψευστη απόδειξη ότι δεν είναι όμορφος πίνακας και σε καμία περίπτωση δεν αξίζειপ্রশляστή. Αυτό ακριβώς έχει συμβεί περισσότερες φορές από αυτές που μπορώ να αναφέρω, στη Βενετία. Σε κάθε περίπτωση, ο ξεναγός έχει καταστείλει τον πληθώρα του ενθουσιασμού μου με το σχόλιο: «Δεν είναι τίποτα —είναι Αναγέννησης».",
+      "output_hash": "sha256:c42ad44b4f2568829e086b1eda7c09a35e4f8eda0c99a7d35a518110494797aa",
+      "translation_latency_ms": 4750,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Me parece que siempre que me regocijo al pensar que, por una vez, he descubierto una pintura antigua que es bella y digna de todo elogio, el placer que me produce es la prueba infalible de que no es un cuadro hermoso ni en modo alguno digno de encomio. Esto mismo ha ocurrido más veces de las que puedo mencionar, en Venecia. En cada uno de los casos, el guía ha aplastado mi creciente entusiasmo con el comentario: “No es nada; es del Renacimiento”.",
+      "output_hash": "sha256:8bfe6a4a6d530532f7c0a52283286973436ae9e420f0fe5c9f782341c8e65f5b",
+      "translation_latency_ms": 3268,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Il me semble que chaque fois que je m'égare en pensant avoir enfin découvert un tableau ancien qui soit beau et digne de tous les éloges, le plaisir que j'en éprouve devient la preuve infaillible que l'œuvre n'est pas belle et qu'elle n'est en rien digne de recommandation. Cela m'est arrivé plus souvent que je ne saurais le dire, à Venise. Dans chaque cas, le guide a douché mon enthousiasme débordant d'une simple remarque : « Ce n'est rien — c'est de la Renaissance. »",
+      "output_hash": "sha256:5668623a36343bf036d71a935745e95e6c645982c9aab34236294ddb20629929",
+      "translation_latency_ms": 3851,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "נראה לי כי בכל פעם שמתמלאת בי תחושת גאווה במחשבה שסוף סוף גיליתי ציור עתיק שהוא יפה וראוי לכל שבח, העונג שהוא מעניק לי הוא הוכחה חסינה לכך שאין זו תמונה יפה, ובשום אופן היא אינה ראויה להמלצה. דבר זה קרה יותר מדי פעמים כדי שניתן יהיה למנותן, בוונציה. בכל מקרה ומקרה, המדריך מחץ את התלהבותי הגואה בהערה: \"זה לא כלום – זה מהרנסנס\".",
+      "output_hash": "sha256:3c8e9d9274714bba237d6042d2b5950d002a487c90603070b0fd8f2ad9c74713",
+      "translation_latency_ms": 4157,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "मुझे ऐसा लगता है कि जब भी मैं इस बात पर गर्व महसूस करता हूँ कि मैंने अंततः एक ऐसी प्राचीन पेंटिंग खोज ली है जो सुंदर है और हर तरह से प्रशंसा के योग्य है, तो उससे मिलने वाला आनंद ही इस बात का अचूक प्रमाण बन जाता है कि वह चित्र सुंदर नहीं है और किसी भी रूप में सराहना के योग्य नहीं है। वेनिस में मेरे साथ ऐसा इतनी बार हुआ है कि मैं उन्हें गिन भी नहीं सकता। हर एक मौके पर गाइड ने मेरी बढ़ती हुई उत्सुकता को इस टिप्पणी से कुचल दिया: \"यह कुछ भी नहीं है—यह पुनर्जागरण काल (Renaissance) की है।\"",
+      "output_hash": "sha256:a74dc0f9d1def77c02bc25a53fbcd7895ef7cf8daac07745a2577f24a5f59ca5",
+      "translation_latency_ms": 3819,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Sepertinya bagi saya, setiap kali saya merasa bangga karena merasa akhirnya menemukan sebuah lukisan kuno yang indah dan patut dipuji, kesenangan yang saya rasakan justru menjadi bukti tak terbantahkan bahwa lukisan itu sebenarnya tidak indah dan sama sekali tidak layak mendapatkan pujian. Hal seperti ini telah terjadi berkali-kali, lebih dari yang bisa saya sebutkan, di Venesia. Dalam setiap kesempatan, pemandu wisata selalu memadamkan antusiasme saya yang meluap-luap dengan komentar: “Ini bukan apa-apa—ini karya zaman Renaisans.”",
+      "output_hash": "sha256:0a9a9c032b01a05363cd33abaa98c865f391c6481200cf4dab4c51d3f3f85732",
+      "translation_latency_ms": 3593,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Mi pare che ogni volta che mi compiaccio di pensare di aver finalmente scoperto un dipinto antico che sia bello e degno di ogni lode, il piacere che ne traggo sia la prova infallibile che non si tratta di un quadro bello, né in alcun modo degno di elogio. Questa stessa cosa è accaduta a Venezia più volte di quante io possa citare. In ogni singola occasione, la guida ha spento il mio crescente entusiasmo con l'osservazione: \"Non è nulla: è del Rinascimento\".",
+      "output_hash": "sha256:3426a2dd28587984d25de89cf34128a51ae39a1ffafc5cd60a77f5bc2a079d3d",
+      "translation_latency_ms": 3342,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "美しく、賞賛に値する古画をようやく見つけ出したと歓喜に浸るたび、その快楽こそが、実はその絵が美しくもなく、いささかも称賛に値しないことの揺るぎない証拠であるように私には思える。ヴェネツィアでは、数えきれないほどにこうしたことがあった。どのたびにも、ガイドは次のような言葉で、私の膨らみ上がった熱情を打ち砕いたものである。「こんなものは大したことありません。ルネサンス期のものですから」",
+      "output_hash": "sha256:3e9c3a25c0626d35b4293f1f9d878c57c53dec93559baf01cf7891455b84912b",
+      "translation_latency_ms": 3522,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "아름답고 칭송받아 마땅한 고대 회화 한 점을 마침내 찾아냈다는 생각에 기뻐할 때마다, 역설적이게도 그 기쁨이야말로 그 그림이 아름답지 않으며 결코 추천할 만한 작품이 아니라는 사실을 입증하는 확실한 증거가 되는 것 같다. 베네치아에서 이런 일을 셀 수 없이 많이 겪었다. 매번 가이드는 내 벅차오르는 열정을 다음과 같은 한마디로 짓밟아 버리곤 했다. \"별거 아닙니다. 르네상스 시대 작품이거든요.\"",
+      "output_hash": "sha256:f755eea7238bcbcbd5bb2a667f0238e4e091f7e37164b6ce1a1b2bdb05dcddbb",
+      "translation_latency_ms": 3881,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Het lijkt me dat telkens wanneer ik mij verblijd met de gedachte dat ik voor eens een oud schilderij heb ontdekt dat mooi is en alle lof waard, het plezier dat dit mij geeft het onweerlegbare bewijs is dat het geen mooi schilderij is en op geen enkele wijze aanbevelenswaardig. Dit is mij in Venetië vaker overkomen dan ik kan tellen. In elk geval heeft de gids mijn opwelling van enthousiasme gesmoord met de opmerking: \"Het is niets bijzonders — het is uit de renaissance.\"",
+      "output_hash": "sha256:1558f29a87785dc2b962d9aa0b3daf81223bd00a1ceebffa5e8053c3cf2ec41b",
+      "translation_latency_ms": 3737,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Wydaje mi się, że za każdym razem, gdy z dumą myślę, iż w końcu odkryłem starodawny obraz piękny i godny wszelkiej pochwały, przyjemność, jaką mi on sprawia, staje się nieomylnym dowodem na to, że nie jest on pięknym obrazem i w żaden sposób nie zasługuje na uznanie. Stało się tak w Wenecji częściej, niż jestem w stanie zliczyć. W każdym pojedynczym przypadku przewodnik gasił mój rozgorzkowany entuzjazm uwagą: „To nic takiego — to renesans”.",
+      "output_hash": "sha256:26a57b145df27a74e81fed89ccb49498cd5ed034c8bbdc9db39910dc6bb229e5",
+      "translation_latency_ms": 3930,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "Parece-me que, sempre que me glorio ao pensar que, por uma vez, descobri uma pintura antiga que é bela e digna de todo o louvor, o prazer que ela me proporciona é a prova infalível de que não se trata de um quadro belo, nem de forma alguma digno de recomendação. Isso ocorreu mais vezes do que posso mencionar, em Veneza. Em cada ocasião, o guia esmagou o meu entusiasmo crescente com a observação: “Não é nada — é do Renascimento.”",
+      "output_hash": "sha256:82120d2d9d087c52bacd1ba2e6e149d3f2564e7a0afadad450b8f554c7a0670e",
+      "translation_latency_ms": 3331,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Мне кажется, что всякий раз, когда я с восторгом думаю, что наконец-то обнаружил старинную картину, прекрасную и достойную всяческой похвалы, само удовольствие от этого открытия становится неопровержимым доказательством того, что картина вовсе не прекрасна и ни в коей мере не заслуживает одобрения. В Венеции со мной случалось подобное чаще, чем я могу перечислить. В каждом отдельном случае гид гасил мой раздувающийся энтузиазм одним лишь замечанием: «Это пустяк — это эпоха Ренессанса».",
+      "output_hash": "sha256:a536e2ed95a169dbddf26404677233abb30d2833cbdc406c097c4a29d5bc640b",
+      "translation_latency_ms": 3776,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Det förefaller mig som att varje gång jag gläds åt tanken på att jag för en gångs skull har upptäckt en gammal målning som är vacker och värdig all beröm, så är just den glädjen ett ofelbart bevis på att det inte är en vacker bild och inte på något sätt värdig rekommendation. Detta har hänt fler gånger än jag kan räkna i Venedig. I varje enskilt fall har guiden krossat min svällande entusiasm med anmärkningen: ”Det är ingenting – det är från renässansen.”",
+      "output_hash": "sha256:06d14e16bb151d016eccbc7ad1ca06e45462ae59dc42389b290b83f104a3d69c",
+      "translation_latency_ms": 3880,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "ஒருமுறை எனக்குப் பிடித்தமான, அழகான மற்றும் எல்லாப் புகழுக்கும் உரிய ஒரு பழங்கால ஓவியத்தைக் கண்டறிந்துவிட்டோமே என்று நான் பெருமிதப்படும் போதெல்லாம், அந்த ஓவியம் எனக்குத் தரும் மகிழ்ச்சியே, அது உண்மையில் ஒரு அழகான ஓவியம் அல்ல என்பதற்கும், எந்த வகையிலும் பாராட்டத்தக்கது அல்ல என்பதற்கும் ஒரு மறுக்க முடியாத ஆதாரமாகத் தெரிகிறது. வெனிஸில் எனக்குக் கணக்கிட முடியாத அளவிற்கு இத்தகைய நிகழ்வுகள் happened. ஒவ்வொரு முறையும், அங்கிருந்த வழிகாட்டி, \"இது ஒன்றுமில்லை - இது மறுமலர்ச்சி காலத்தைச் (Renaissance) சேர்ந்தது\" என்று கூறி, எனது உவகையை முற்றிலுமாகத் தணித்துவிட்டார்.",
+      "output_hash": "sha256:b7fc28669498b6c180c2065d5d820465f38f5dc6987bd33155d913f3eac5b55f",
+      "translation_latency_ms": 3938,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "ดูเหมือนว่าเมื่อใดก็ตามที่ผมปลาบปลื้มใจที่ได้ค้นพบภาพเขียนโบราณที่สวยงามและคู่ควรแก่การสรรเสริญสักครั้งหนึ่ง ความสุขที่ได้รับนั้นกลับกลายเป็นหลักฐานที่บ่งชี้ได้อย่างแม่นยำว่า ภาพนั้นไม่ได้สวยงามและไม่มีสิ่งใดที่ควรค่าแก่การยกย่องเลย สิ่งนี้เกิดขึ้นกับผมในเมืองเวนิสบ่อยครั้งจนเกินจะนับได้ ในทุกครั้งที่ผมตื่นเต้นจนเนื้อเต้น มัคคุเทศก์มักจะดับความกระตือรือร้นของผมให้มอดลงด้วยคำพูดที่ว่า “มันไม่มีอะไรพิเศษหรอก—ก็แค่ภาพยุคเรเนซองส์น่ะ”",
+      "output_hash": "sha256:4b4429d020de8b62e9abe7d94da9cb6ebbff07143672416acd3a53ca9952ae21",
+      "translation_latency_ms": 4543,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Với tôi, dường như cứ mỗi khi tôi hân hoan nghĩ rằng mình cuối cùng cũng tìm thấy một bức họa cổ đẹp đẽ và xứng đáng với mọi lời khen ngợi, thì chính niềm vui sướng đó lại là minh chứng không thể sai lệch rằng đó không phải là một bức tranh đẹp, và chẳng hề xứng đáng được tán dương chút nào. Điều này đã xảy ra nhiều lần không kể xiết khi tôi ở Venice. Trong mọi trường hợp, người hướng dẫn viên luôn dập tắt sự nhiệt huyết đang dâng trào trong tôi bằng một câu nhận xét: “Nó chẳng là gì cả—đó chỉ là đồ thời Phục hưng thôi.”",
+      "output_hash": "sha256:04e461ec47af8527dab016e215c31f81aec0e018a01cf2c03c261caad563deaf",
+      "translation_latency_ms": 4100,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "twain_innocents",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "在我看来，每当我欣喜地认为自己终于发现了一幅精美绝伦、值得赞美的一古画时，这种快感反而成了最无可置疑的证据，证明这幅画其实并不美，也完全不值得称道。在威尼斯，这种情况发生过无数次。每一次，导游都会用这样一句话浇灭我心中澎湃的热情：“这没什么——这只是文艺复兴时期的作品。”",
+      "output_hash": "sha256:5a304bf615852a6c4f058e218825f2aeaab86c7481187d491f52681ff8566701",
+      "translation_latency_ms": 2959,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "unsu_jouen_nal",
+      "source_lang": "en",
+      "target_lang": "en",
+      "output": "The sky was primly overcast, looking as though it might snow, but instead of snow, a drizzling rain—half-frozen—fell steadily.\n\nFor Kim Cheom-ji, a rickshaw puller working within the Dongsomun gate, this was a lucky day, the first in a long while. Starting with the lady from next door, whom he escorted to the tram line as she headed \"inside the gate\" (though it wasn't exactly outside), he lingered around the station, casting almost pleading glances at every passenger who stepped off in hopes of finding a fare. Finally, he managed to secure a passenger—a man in a western suit who looked like a teacher—and agreed to take him to Dongkwang School.\n\nThirty cents for the first trip, fifty cents for the second—such a windfall was rare so early in the morning. For Kim Cheom-ji, who had been so cursed with bad luck that he hadn't seen a cent in nearly ten days, the sound of the ten-cent white coins—three or five of them—clinking into his palm brought him a joy that nearly moved him to tears.",
+      "output_hash": "sha256:69ca0ce6a69a4080d69e2368b48958aaa224d4306eafe09ed6f3cfd0c3534447",
+      "translation_latency_ms": 6982,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "ar",
+      "output": "ذهبتُ إلى الغابة لأنني رغبتُ في أن أحيا حياةً واعية، وأن أواجه الحقائق الجوهرية للحياة فحسب، لأرى إن كان بمقدوري تعلم ما لديها لتعلمه، لكي لا أكتشف، حينما يحين وقت رحيلي، أنني لم أعش قط. لم أكن أرغب في قضاء عمري فيما لا يُسمى حياة، فالحياة عزيزة للغاية؛ ولم أرغب في ممارسة الاستسلام إلا إذا كان ذلك ضروريًا تمامًا. أردتُ أن أحيا بعمق، وأن أمتصّ نخاع الحياة حتى آخره.",
+      "output_hash": "sha256:3c48d900a955d477cf6366f830aba94067780b64a219f79e45dc18c9f55e2baa",
+      "translation_latency_ms": 3965,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "bn",
+      "output": "আমি অরণ্যে চলে গিয়েছিলাম কারণ আমি সচেতনভাবে বাঁচতে চেয়েছিলাম, জীবনের কেবল মৌলিক সত্যগুলোর মুখোমুখি হতে চেয়েছিলাম, এবং দেখতে চেয়েছিলাম যে জীবন যা শেখাতে চায় তা আমি শিখতে পারি কি না; যাতে মৃত্যুর মুখোমুখি হয়ে আমি যেন এই উপলব্ধি না করি যে আমি আসলে বাঁচিনি। আমি এমন কিছুর মাঝে জীবন কাটাতে চাইনি যা জীবন নয়, কারণ জীবন অত্যন্ত মূল্যবান; আর আমি আত্মসমর্পণ করতে চাইনি, যদি না তা একেবারেই অপরিহার্য হয়ে পড়ে। আমি জীবনকে গভীরভাবে অনুভব করতে চেয়েছিলাম এবং এর প্রতিটি নির্যাস শুষে নিতে চেয়েছিলাম।",
+      "output_hash": "sha256:7a5dc4daf8e0c53f47eb47973cce9dc909bf72b617462ab0ecc38dec5720e5c6",
+      "translation_latency_ms": 3520,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "da",
+      "output": "Jeg drog ud i skovene, fordi jeg ønskede at leve bevidst, at stå ansigt til ansigt med livets væsentligste fakta, og se om jeg ikke kunne lære det, livet havde at lære mig, så jeg ikke, når jeg skulle dø, opdagede, at jeg ikke havde levet. Jeg ønskede ikke at leve et liv, der ikke var liv – for livet er så dyrebart; ej heller ønskede jeg at øve mig i resignation, medmindre det var absolut nødvendigt. Jeg ville leve dybt og suge al marven ud af livet.",
+      "output_hash": "sha256:861317c780146a135c0bf206722aa219a72d044f36dee4829bfe291f14ca2a17",
+      "translation_latency_ms": 3888,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "de",
+      "output": "Ich ging in die Wälder, weil ich bewusst leben wollte, mich nur den wesentlichen Tatsachen des Lebens zu stellen und herauszufinden, ob ich nicht lernen könne, was es zu lehren habe, und nicht am Ende meines Lebens feststellen müsste, dass ich nicht gelebt hätte. Ich wollte nicht das leben, was kein Leben ist, denn das Leben ist so kostbar; noch wollte ich mich mit Resignation abfinden, es sei denn, es wäre absolut notwendig. Ich wollte tief leben und das Mark des Lebens bis zum Letzten aussaugen.",
+      "output_hash": "sha256:521517f483c0016e43a607a044a557142cbbf06cbb3b8f6a15a75f497a16c57f",
+      "translation_latency_ms": 3428,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "el",
+      "output": "Πήγα στα δάση επειδή επιθυμούσα να ζήσω συνειδητά, να έρθω αντιμέτωπο μόνο με τα ουσιακά γεγονότα της ζωής και να δω αν θα μπορούσα να μάθω όσα έχει να διδάξει, ώστε, όταν έρθει η ώρα να πεθάνω, να μην ανακαλύψω ότι δεν έζησα. Δεν ήθελα να ζήσω κάτι που δεν ήταν ζωή, καθώς η ζωή είναι τόσο πολύτιμη· ούτε же ήθελα να εξασκηθώ στην αποδοχή, εκτός αν ήταν απολύτως αναγκαίο. Ήθελα να ζήσω βαθιά και να απορροφήσω όλο τον πυρήνα της ζωής.",
+      "output_hash": "sha256:0710219dd3a9b3a08510baf8b6dde2a6076464bbab3c60508800055edae86378",
+      "translation_latency_ms": 4871,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "es",
+      "output": "Me fui al bosque porque deseaba vivir deliberadamente, enfrentarme solo a los hechos esenciales de la vida y ver si no podía aprender aquello que tenía que enseñarme, para no descubrir, al llegar la hora de morir, que no había vivido. No quería vivir lo que no fuera vida, pues vivir es tan precioso; ni tampoco deseaba practicar la resignación, a menos que fuera estrictamente necesario. Quería vivir profundamente y succionar toda la médula de la vida.",
+      "output_hash": "sha256:772b1a6122193259eabb7acf678f2ec5b72855a7c7781862973b0d267183b0a4",
+      "translation_latency_ms": 3058,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "fr",
+      "output": "Je suis allé dans les bois car je souhaitais vivre délibérément, n'affronter que les faits essentiels de la vie, et voir si je ne pouvais pas apprendre ce qu'elle avait à m'enseigner, pour ne pas découvrir, au moment de mourir, que je n'avais pas vécu. Je ne voulais pas vivre ce qui n'était pas la vie, car vivre est si précieux ; et je ne voulais pas non plus m'exercer à la résignation, à moins que cela ne fût absolument nécessaire. Je voulais vivre intensément et en extraire toute la moelle.",
+      "output_hash": "sha256:bf6ed762982b3711c88213eb2d22d4091001ad46ba592c88d24657a41f7c29de",
+      "translation_latency_ms": 3744,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "he",
+      "output": "הלכתי אל היער כי רציתי לחיות במודעות, להתייצב אך ורק מול עובדותיה המהותיות של החיים, ולבדוק אם אוכל ללמוד את מה שיש להם ללמד; כדי שלא אגלה, בבואי למות, כי לא באמת חייתי. לא רציתי לחיות את מה שאינו חיים, שכן החיים יקרים כל כך; ולא רציתי להתרגל להשלמה, אלא אם הדבר היה הכרחי לחלוטין. רציתי לחיות לעומק ולשאוב את כל מחית החיים.",
+      "output_hash": "sha256:b9b47e710c8dded2976abdd1e5bcc01767d9c2b406d37cebb3cbc75e12e6663d",
+      "translation_latency_ms": 4279,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "hi",
+      "output": "मैं जंगलों की ओर इसलिए गया क्योंकि मैं सचेत होकर जीना चाहता था, ताकि जीवन के केवल अनिवार्य तथ्यों का सामना कर सकूँ, और यह देख सकूँ कि क्या मैं वह सीख सकता हूँ जो जीवन सिखाना चाहता है, और ऐसा न हो कि जब मेरी मृत्यु का समय आए, तो मुझे पता चले कि मैं वास्तव में जिया ही नहीं। मैं उस जीवन को नहीं जीना चाहता था जो जीवन ही नहीं था, क्योंकि जीवन अत्यंत बहुमूल्य है; और न ही मैं समर्पण का अभ्यास करना चाहता था, जब तक कि वह पूरी तरह आवश्यक न हो। मैं गहराई से जीना चाहता था और जीवन के संपूर्ण सार को निचोड़ लेना चाहता था।",
+      "output_hash": "sha256:e6b02ad5d4d6e770f98e12564747ab2a9f146d5a1d13a21fde02310509e88e6f",
+      "translation_latency_ms": 3935,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "id",
+      "output": "Aku pergi ke hutan karena aku ingin hidup dengan penuh kesadaran, hanya menghadapi fakta-fakta esensial dari kehidupan, dan melihat apakah aku bisa mempelajari apa yang ingin diajarkannya, agar saat aku menjemput ajal nanti, aku tidak menyadari bahwa aku belum benar-benar hidup. Aku tidak ingin menjalani sesuatu yang bukan merupakan kehidupan, karena hidup itu begitu berharga; aku pun tidak ingin mempraktikkan kepasrahan, kecuali jika itu benar-benar diperlukan. Aku ingin hidup secara mendalam dan menyerap seluruh sari pati kehidupan.",
+      "output_hash": "sha256:76cdfbfeea5f8f6cb94015df412251531ca100a8dfcf398e47f26de8cb3f6aee",
+      "translation_latency_ms": 3410,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "it",
+      "output": "Andai nei boschi perché desideravo vivere deliberatamente, affrontare solo i fatti essenziali della vita e vedere se non fossi stato in grado di imparare ciò che essa aveva da insegnare, per non scoprire, giunto il momento di morire, di non aver vissuto. Non volevo vivere ciò che non era vita, poiché vivere è così prezioso; né volevo praticare la rassegnazione, a meno che non fosse assolutamente necessario. Volevo vivere profondamente e assorbire tutto il midollo della vita.",
+      "output_hash": "sha256:e2041cee8485547b512d900a98dd821288facb27b6867175c191122d292fc069",
+      "translation_latency_ms": 3387,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "ja",
+      "output": "私は森へ向かった。意識的に生き、人生の真髄だけに向き合い、人生が教えてくれることを学べるかどうかを確かめたかったからだ。そして、死に直面したとき、「自分は生きていなかった」と気づくようなことだけは避けたかった。生ではない生き方をしたいとは思わなかった。生きるということは、それほどまでに尊いことだからだ。また、どうしても避けられない場合を除いて、ただ諦めて生きるということもしたくなかった。私は深く生き、人生の髄まで吸い尽くしたかったのだ。",
+      "output_hash": "sha256:ec66b883c1fe005dbd0cb6189c5551ae39782d3febedcbcfc55f7a99c90ab034",
+      "translation_latency_ms": 3496,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "ko",
+      "output": "나는 의도적으로 살아보고 싶어서, 삶의 본질적인 사실들만을 마주하며 그것이 가르쳐 주는 바를 배울 수 있는지 확인하고, 훗날 죽음을 맞이했을 때 내가 진정으로 살지 않았음을 깨닫지 않기 위해 숲으로 갔다. 나는 삶이 아닌 것을 살고 싶지 않았다. 삶은 너무나 소중하기 때문이다. 또한 정말 필요한 경우가 아니라면, 체념하는 법을 익히고 싶지도 않았다. 나는 깊게 살며 삶의 모든 정수를 빨아들이고 싶었다.",
+      "output_hash": "sha256:ad8fad2e382bf53ce3742231393e08d36be6c67e801fc936ea00d82689c2d5ff",
+      "translation_latency_ms": 3485,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "nl",
+      "output": "Ik ging naar de bossen omdat ik bewust wilde leven, om me enkel te richten op de essentiële feiten van het bestaan en te ontdekken of ik kon leren wat het leven mij te leren had, zodat ik aan het einde van mijn leven niet zou ontdekken dat ik niet echt had geleefd. Ik wilde niet leven wat geen leven was, want het leven is zo kostbaar; noch wilde ik mij neerleggen bij het lot, tenzij dat absoluut noodzakelijk was. Ik wilde diep leven en al het merg uit het leven zuigen.",
+      "output_hash": "sha256:59f24da508a4954afd6363e5109473ee57e55527c6e485ddb6298d7758e56840",
+      "translation_latency_ms": 3582,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "pl",
+      "output": "Udałem się do lasu, ponieważ pragnąłem żyć świadomie, mierzyć się jedynie z istotnymi faktami życia i sprawdzić, czy zdołam nauczyć się tego, czego ono ma do nauczenia, aby w chwili śmierci nie odkryć, że wcale nie żyłem. Nie chciałem przeżywać tego, co nie jest życiem, gdyż życie jest zbyt cenne; nie chciałem też uczyć się pokory, chyba że byłoby to absolutnie konieczne. Pragnąłem żyć głęboko i wyssać cały szpik z życia.",
+      "output_hash": "sha256:64bcbada789b99e4a21acafd5c14d2ccdfce397efe32aedeed6c38d3ebcec87a",
+      "translation_latency_ms": 3590,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "pt",
+      "output": "Fui para os bosques porque desejava viver deliberadamente, enfrentar apenas os fatos essenciais da vida, e ver se não poderia aprender aquilo que ela tinha a ensinar, para que, ao chegar a hora de morrer, não descobrisse que não tinha vivido. Não quis viver o que não fosse vida, pois viver é precioso; nem quis praticar a resignação, a menos que fosse absolutamente necessário. Eu queria viver profundamente e sugar toda a medula da vida.",
+      "output_hash": "sha256:b94d0b909947669fd2a66270d9d0c92156e638f2acaf044e745bed5584a56857",
+      "translation_latency_ms": 2965,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "output": "Я ушел в лес, потому что хотел жить осмысленно, сосредоточившись лишь на самых главных истинах бытия, чтобы проверить, смогу ли я извлечь из этого урок, и не обнаружить в час своей смерти, что я так и не жил. Я не хотел тратить жизнь на то, что жизнью не является, ибо жизнь слишком дорога; и я не хотел прибегать к смирению, если в этом не было крайней необходимости. Я хотел жить глубоко и выпить жизнь до самого дна, до последнего глотка.",
+      "output_hash": "sha256:96d3e1b05a15df1f52814ba9be08e1c8f56502cd473aecc075768b2310964daa",
+      "translation_latency_ms": 3420,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "sv",
+      "output": "Jag drog mig ut i skogarna för att jag ville leva medvetet, för att endast möta livets väsentliga fakta och se om jag inte kunde lära mig det livet hade att lära, och inte, när min tid kom att dö, upptäcka att jag inte hade levt. Jag ville inte leva det som inte var liv, ty livet är så dyrbart; och jag ville inte heller öva mig i resignation, såvida det inte var absolut nödvändigt. Jag ville leva djupt och suga ut hela livets märg.",
+      "output_hash": "sha256:5b38741c8ec3de97aa07f15450316487b6e70deb005810d6c08de9db0d54c5ea",
+      "translation_latency_ms": 3553,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "ta",
+      "output": "வாழ்க்கையை ஆழமாக உணர்ந்து வாழ வேண்டும் என்பதற்காகவும், வாழ்க்கையின் மிக முக்கியமான உண்மைகளை மட்டும் நேருக்கு நேர் சந்திக்கவும், வாழ்க்கை கற்றுத்தரும் பாடங்களை என்னால் கற்றுக்கொள்ள முடியுமா என்று பார்க்கவும் நான் காடுகளுக்குச் சென்றேன்; இறுதியில் மரணம் என்னை நெருங்கும்போது, நான் இன்னும் வாழவே இல்லை என்ற உணர்வு எனக்கு ஏற்படக்கூடாது என்பதற்காகவே இதைச் செய்தேன். வாழ்க்கை அல்லாத ஒன்றைத் தழுவி வாழ எனக்கு விருப்பமில்லை, ஏனெனில் வாழ்வு என்பது மிகவும் விலைமதிப்பற்றது; அதேபோல், முற்றிலும் அவசியமில்லாதவரை, எதற்கும் அடிபணிந்து வாழவும் நான் விரும்பவில்லை. நான் வாழ்க்கையின் ஆழத்திற்குச் சென்று, அதன் சாராம்சத்தை முழுமையாக உறிஞ்சி அனுபவிக்க விரும்பினேன்.",
+      "output_hash": "sha256:c3e33b52b4100c6d8f7bbb513eff002df4725be801ea2dd99cd95fda8c6d1de8",
+      "translation_latency_ms": 4366,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "th",
+      "output": "ข้าพเจ้าเข้าป่าเพราะปรารถนาจะใช้ชีวิตอย่างมีความหมาย เพื่อเผชิญหน้ากับความจริงอันเป็นแก่นแท้ของชีวิต และลองดูว่าข้าพเจ้าจะเรียนรู้สิ่งที่ชีวิตพึงสอนได้หรือไม่ เพื่อที่ว่าเมื่อถึงเวลาต้องตาย ข้าพเจ้าจะได้ไม่พบว่าตนเองไม่เคยใช้ชีวิตเลย ข้าพเจ้าไม่ปรารถนาจะใช้ชีวิตในสิ่งที่มิใช่ชีวิต เพราะการมีชีวิตอยู่นั้นมีค่าเหลือเกิน และข้าพเจ้าไม่อยากจะฝึกตนให้ยอมจำนนต่อโชคชะตา เว้นเสียแต่ว่ามันจะเป็นเรื่องจำเป็นจริงๆ ข้าพเจ้าต้องการใช้ชีวิตให้ลึกซึ้ง และตักตวงเอาแก่นแท้ของชีวิตมาให้หมดสิ้น",
+      "output_hash": "sha256:0df0d25d06932eff578e71a0bfd261dc4842e5ad38a40d4cb67337d399e6b09f",
+      "translation_latency_ms": 4650,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "vi",
+      "output": "Tôi tìm đến chốn rừng sâu vì khao khát được sống một cuộc đời tỉnh thức, để chỉ đối diện với những sự thật cốt lõi nhất của kiếp người, và xem liệu mình có thể học được những điều mà cuộc đời truyền dạy, để rồi khi đối mặt với cái chết, tôi không phải bàng hoàng nhận ra rằng mình chưa từng thực sự sống. Tôi không muốn tiêu tốn đời mình cho những điều vô nghĩa, bởi lẽ sự sống vốn dĩ quý giá vô ngần; tôi cũng chẳng muốn tập cách cam chịu, trừ phi điều đó là hoàn toàn tất yếu. Tôi muốn sống một cuộc đời sâu sắc và tận hưởng đến giọt cuối cùng tinh túy của cuộc đời này.",
+      "output_hash": "sha256:be4929a94c3d5b79e0cb935d9b2bac145f6ab2ead3a892497b24a55a3eba4e60",
+      "translation_latency_ms": 4303,
+      "produced_at": "2026-05-10T10:28:43Z"
+    },
+    {
+      "text_id": "walden",
+      "source_lang": "en",
+      "target_lang": "zh-Hans",
+      "output": "我走进森林，是因为我想生活得有意义，只想面对生命最本质的事实，看看我是否能从中学习到它所要教给我的东西，以免在临终之时，才发现自己从未真正生活过。我不愿虚度光阴，因为生命如此可贵；除非万不得已，否则我也不愿习惯于无奈的妥协。我想深刻地生活，吸尽生命所有的精髓。",
+      "output_hash": "sha256:026c4f810b2c7176d93b5838af6326b5dd52a368022648d47afa7fdcfcc7eced",
+      "translation_latency_ms": 2795,
+      "produced_at": "2026-05-10T10:28:43Z"
+    }
+  ]
+}

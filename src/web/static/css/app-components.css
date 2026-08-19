@@ -1,0 +1,955 @@
+/* Top tabs sit flush with the card below. Active tab is marked
+   by an accent stripe on top so it stays visible in light + dark. */
+#topTabNav {
+    margin-bottom: 0 !important;
+    padding: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+#topTabNav .tab-btn {
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+.tab-nav .tab-btn {
+    padding: 0.6rem 1.25rem;
+    border: 1px solid var(--border-light);
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    background: transparent;
+    color: var(--text-muted-light);
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    position: relative;
+}
+.tab-nav .tab-btn::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 3px;
+    background: transparent;
+    transition: background 0.15s;
+}
+.tab-nav .tab-btn:hover {
+    color: var(--text-dark);
+    border-color: var(--primary-light);
+}
+.tab-nav .tab-btn-active {
+    background: var(--background-light);
+    color: var(--text-dark);
+    border-color: var(--border-light);
+    z-index: 2;
+}
+.tab-nav .tab-btn-active::before {
+    background: var(--primary-light);
+}
+/* Cards directly under the tab nav have flat top corners so they
+   visually merge with the active tab. The Glossaries tab swaps
+   between list and editor cards, so both must be flat-topped. */
+#tab-translate > .main-card:first-child,
+#tab-transform > .main-card:first-child,
+#tab-profile-prep > .main-card:first-child,
+#tab-sample > .main-card:first-child,
+#tab-settings > .main-card,
+#tab-glossaries > .main-card,
+#tab-usage > .main-card,
+#tab-files > .main-card {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+.transform-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 0.95fr) minmax(180px, 1fr) minmax(220px, 1.1fr) minmax(130px, 0.45fr);
+    gap: 15px;
+    align-items: end;
+    margin-bottom: 16px;
+}
+.transform-grid.transform-grid-primary {
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.8fr);
+    margin-bottom: 8px;
+}
+.transform-grid.transform-grid-secondary {
+    grid-template-columns: minmax(0, 0.8fr) minmax(220px, 1fr) minmax(130px, 0.5fr);
+    margin: 12px 0 0;
+}
+.transform-advanced-options {
+    margin: 0 0 16px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-ui, 8px);
+    background: color-mix(in srgb, var(--surface-control, var(--background-light)) 88%, transparent);
+    overflow: clip;
+}
+.transform-advanced-options summary {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    color: var(--text-muted-light);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 760;
+    list-style: none;
+}
+.transform-advanced-options summary::-webkit-details-marker {
+    display: none;
+}
+.transform-advanced-options summary::after {
+    content: 'expand_more';
+    margin-left: auto;
+    font-family: 'Material Symbols Outlined';
+    font-size: 1.15rem;
+    line-height: 1;
+    transition: transform 0.16s ease;
+}
+.transform-advanced-options[open] summary {
+    color: var(--text-dark);
+    border-bottom: 1px solid var(--border-light);
+}
+.transform-advanced-options[open] summary::after {
+    transform: rotate(180deg);
+}
+.transform-advanced-options .transform-grid-secondary {
+    padding: 12px;
+}
+.transform-mode-note {
+    color: var(--text-muted-light);
+    font-size: 0.875rem;
+    line-height: 1.45;
+    margin: 0 0 12px 0;
+}
+.transform-file-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 14px;
+}
+.transform-file-row {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    color: var(--text-dark);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.04);
+}
+.transform-file-row span:nth-child(2) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.transform-file-row small,
+.transform-empty {
+    color: var(--text-muted-light);
+    font-size: 0.82rem;
+}
+.profile-prep-card {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    background: rgba(96, 165, 250, 0.08);
+}
+.profile-prep-card-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.profile-prep-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+.profile-prep-body {
+    color: var(--text-muted-light);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    margin: 0;
+}
+.profile-prep-status {
+    min-height: 1.2em;
+    color: var(--text-muted-light);
+    font-size: 0.82rem;
+}
+.profile-prep-status.success { color: #16a34a; }
+.profile-prep-status.error { color: #ef4444; }
+.profile-prep-progress {
+    height: 9px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.22);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+}
+.profile-prep-progress.hidden {
+    display: none;
+}
+.profile-prep-progress-bar {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #60a5fa, #22c55e);
+    transition: width 180ms ease;
+}
+.profile-prep-live-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 14px 0;
+}
+.profile-prep-live-stat {
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(255,255,255,0.04);
+    min-width: 0;
+}
+.profile-prep-live-stat strong {
+    display: block;
+    color: var(--primary-light);
+    font-size: 1.15rem;
+    overflow-wrap: anywhere;
+}
+.profile-prep-live-stat span {
+    display: block;
+    color: var(--text-muted-light);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+}
+.profile-prep-log {
+    display: grid;
+    gap: 8px;
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.12);
+}
+.profile-prep-log-item {
+    display: grid;
+    gap: 3px;
+    color: var(--text-dark);
+    font-size: 0.82rem;
+    line-height: 1.35;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    padding-bottom: 8px;
+}
+.profile-prep-log-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.profile-prep-log-item small {
+    color: var(--text-muted-light);
+    font-size: 0.72rem;
+}
+@media (max-width: 720px) {
+    .transform-grid {
+        grid-template-columns: 1fr;
+    }
+    .transform-grid.transform-grid-primary,
+    .transform-grid.transform-grid-secondary {
+        grid-template-columns: 1fr;
+    }
+    .profile-prep-live-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+/* Compact toolbar buttons used inside the glossary editor card.
+   Override the heavy default .btn (padding, font-weight, shadow). */
+.glossary-toolbar-btn {
+    padding: 0.45rem 0.9rem !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    border-radius: 0.5rem !important;
+    letter-spacing: 0;
+    gap: 0.35rem;
+}
+.glossary-toolbar-btn.btn-primary {
+    box-shadow: 0 4px 10px rgba(54, 118, 216, 0.2);
+}
+.glossary-toolbar-btn.btn-secondary {
+    box-shadow: 2px 2px 5px var(--shadow-dark), -2px -2px 5px var(--shadow-light);
+}
+.glossary-toolbar-btn .material-symbols-outlined {
+    font-size: 1rem;
+}
+/* Glossary tables: fixed layout + full width + identical horizontal
+   padding on th and td so column titles sit directly above their
+   content. */
+#profileGlossaryListTable,
+#profileGlossaryEntriesTable,
+#glossaryListTable,
+#glossaryTermsTable {
+    table-layout: fixed;
+    width: 100%;
+    display: table;
+}
+/* .file-table normally splits thead and tbody into independent
+   display:table blocks (to make tbody scrollable). That breaks
+   <colgroup> column widths because each row computes its own
+   layout. Restore the standard rendering for glossary tables. */
+#profileGlossaryListTable thead,
+#profileGlossaryEntriesTable thead,
+#glossaryListTable thead,
+#glossaryTermsTable thead {
+    display: table-header-group;
+}
+#profileGlossaryListTable tbody,
+#profileGlossaryEntriesTable tbody,
+#glossaryListTable tbody,
+#glossaryTermsTable tbody {
+    display: table-row-group;
+    max-height: none;
+    overflow-y: visible;
+}
+#profileGlossaryListTable tbody tr,
+#profileGlossaryEntriesTable tbody tr,
+#glossaryListTable tbody tr,
+#glossaryTermsTable tbody tr {
+    display: table-row;
+    width: auto;
+}
+#profileGlossaryListTable th,
+#profileGlossaryListTable td,
+#profileGlossaryEntriesTable th,
+#profileGlossaryEntriesTable td,
+#glossaryListTable th,
+#glossaryListTable td,
+#glossaryTermsTable th,
+#glossaryTermsTable td {
+    padding: 0.75rem 0.75rem;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#profileGlossaryListTable td,
+#profileGlossaryEntriesTable td,
+#glossaryListTable td,
+#glossaryTermsTable td {
+    padding: 0.6rem 0.75rem;
+}
+#profileGlossaryListTable .col-center,
+#profileGlossaryListTable td.col-center,
+#profileGlossaryEntriesTable .col-center,
+#profileGlossaryEntriesTable td.col-center,
+#glossaryListTable .col-center,
+#glossaryListTable td.col-center,
+#glossaryTermsTable .col-center,
+#glossaryTermsTable td.col-center {
+    text-align: center;
+}
+#profileGlossaryListTable .col-right,
+#profileGlossaryListTable td.col-right,
+#profileGlossaryEntriesTable .col-right,
+#profileGlossaryEntriesTable td.col-right,
+#glossaryListTable .col-right,
+#glossaryListTable td.col-right,
+#glossaryTermsTable .col-right,
+#glossaryTermsTable td.col-right {
+    text-align: right;
+}
+.profile-glossary-section {
+    margin-bottom: 18px;
+}
+.profile-glossary-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.profile-glossary-heading h3 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.25;
+    color: var(--text-dark);
+}
+.profile-glossary-heading p {
+    margin: 4px 0 0;
+    color: var(--text-muted-light);
+    font-size: 0.84rem;
+    line-height: 1.4;
+}
+.glossary-source-badge {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-muted-light);
+    background: rgba(148, 163, 184, 0.16);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+}
+.glossary-profile-id {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-muted-light);
+    font-size: 0.76rem;
+}
+.profile-glossary-detail-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0 0 14px;
+}
+.profile-glossary-detail-meta span {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: var(--text-muted-light);
+    background: rgba(148, 163, 184, 0.14);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+.profile-knowledge-summary {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 14px;
+    padding: 12px;
+    border: 1px solid rgba(96, 165, 250, 0.22);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.32);
+}
+.profile-knowledge-summary-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.profile-knowledge-summary-head .material-symbols-outlined {
+    color: var(--primary-color);
+    font-size: 1.2rem;
+    line-height: 1;
+}
+.profile-knowledge-summary-head strong,
+.profile-knowledge-warnings strong {
+    display: block;
+    color: var(--text-dark);
+    font-size: 0.88rem;
+}
+.profile-knowledge-summary-head small,
+.profile-knowledge-warnings span,
+.profile-knowledge-action {
+    color: var(--text-muted-light);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+.profile-knowledge-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+.profile-knowledge-summary-grid span {
+    min-width: 0;
+    padding: 8px;
+    border-radius: 8px;
+    background: rgba(148, 163, 184, 0.10);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    color: var(--text-muted-light);
+    font-size: 0.72rem;
+    text-align: center;
+}
+.profile-knowledge-summary-grid strong {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--primary-color);
+    font-size: 1rem;
+    line-height: 1.1;
+}
+.profile-knowledge-warnings,
+.profile-knowledge-action {
+    padding-top: 8px;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+.profile-glossary-detail-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.profile-glossary-entry-bulk {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(96, 165, 250, 0.28);
+    border-radius: var(--radius-ui, 8px);
+    background: rgba(96, 165, 250, 0.08);
+}
+.prompt-context-summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 10px 0 2px;
+}
+.prompt-context-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 7px 9px;
+    border: 1px solid rgba(96, 165, 250, 0.24);
+    border-radius: var(--radius-ui, 8px);
+    background: rgba(96, 165, 250, 0.08);
+    color: var(--text-muted-light);
+    font-size: 0.78rem;
+    line-height: 1.25;
+}
+.prompt-context-chip .material-symbols-outlined {
+    flex: 0 0 auto;
+    color: var(--primary-color);
+    font-size: 17px;
+}
+.profile-impact-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.profile-impact-btn .material-symbols-outlined {
+    font-size: 16px;
+}
+.profile-impact-preview {
+    flex-basis: 100%;
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    color: var(--text-muted-light);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+.profile-impact-preview.is-warning {
+    color: #fbbf24;
+}
+.profile-impact-preview__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.profile-impact-preview__chips span {
+    padding: 4px 7px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: var(--radius-ui, 8px);
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text-muted-light);
+}
+.profile-impact-preview strong,
+.profile-impact-preview small {
+    display: block;
+}
+.profile-impact-preview strong {
+    color: var(--text-dark);
+    font-size: 0.78rem;
+}
+#profileGlossaryEntriesTable td.profile-glossary-rationale {
+    white-space: normal;
+    line-height: 1.35;
+}
+#profileGlossaryEntriesTable .profile-entry-source {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+#profileGlossaryEntriesTable .profile-entry-sub {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-muted-light);
+    font-size: 0.74rem;
+}
+#profileGlossaryEntriesTable .profile-entry-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+#profileGlossaryEntriesTable .profile-entry-action-btn {
+    min-width: 34px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+#profileGlossaryEntriesTable .profile-entry-action-btn .material-symbols-outlined {
+    font-size: 18px;
+}
+@media (max-width: 720px) {
+    .profile-glossary-detail-toolbar {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-knowledge-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #profileGlossaryListTable,
+    #profileGlossaryEntriesTable,
+    #glossaryListTable {
+        display: block;
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        table-layout: auto;
+        border: 0;
+        background: transparent;
+    }
+
+    #profileGlossaryListTable thead,
+    #profileGlossaryEntriesTable thead,
+    #glossaryListTable thead,
+    #profileGlossaryListTable colgroup,
+    #profileGlossaryEntriesTable colgroup,
+    #glossaryListTable colgroup {
+        display: none;
+    }
+
+    #profileGlossaryListTable tbody,
+    #profileGlossaryEntriesTable tbody,
+    #glossaryListTable tbody {
+        display: grid;
+        gap: 10px;
+    }
+
+    #profileGlossaryListTable tbody tr,
+    #profileGlossaryEntriesTable tbody tr,
+    #glossaryListTable tbody tr {
+        display: grid;
+        gap: 8px;
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-ui, 8px);
+        background: var(--surface-control, var(--background-light));
+    }
+
+    #profileGlossaryListTable td,
+    #profileGlossaryEntriesTable td,
+    #glossaryListTable td {
+        display: grid;
+        grid-template-columns: minmax(7.5rem, 0.42fr) minmax(0, 1fr);
+        gap: 8px;
+        align-items: start;
+        padding: 0;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        text-align: left !important;
+    }
+
+    #profileGlossaryListTable td::before,
+    #profileGlossaryEntriesTable td::before,
+    #glossaryListTable td::before {
+        content: attr(data-label);
+        color: var(--text-muted-light);
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.055em;
+        text-transform: uppercase;
+    }
+
+    #profileGlossaryListTable td.col-center,
+    #profileGlossaryListTable td.col-right,
+    #profileGlossaryEntriesTable td.col-center,
+    #profileGlossaryEntriesTable td.col-right,
+    #glossaryListTable td.col-center,
+    #glossaryListTable td.col-right {
+        text-align: left;
+    }
+
+    #glossaryListTable td.col-right > div {
+        justify-content: flex-start !important;
+        flex-wrap: wrap;
+    }
+
+    #profileGlossaryEntriesTable .profile-entry-actions {
+        justify-content: flex-start;
+    }
+
+    body #glossaryListTable,
+    body #glossaryListTable thead,
+    body #glossaryListTable tbody,
+    body #glossaryListTable tbody tr {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        white-space: normal;
+    }
+}
+.glossary-cell-input {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 6px 0;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+    border-radius: 0;
+    font-family: inherit;
+    box-shadow: inset 0 -1px 0 transparent;
+    transition: box-shadow 0.15s, background 0.15s;
+}
+.glossary-cell-input:hover {
+    box-shadow: inset 0 -1px 0 var(--border-light);
+}
+
+@media (max-width: 768px) {
+    html.dark body .tab-nav .tab-btn-active {
+        color: #05070a !important;
+        background: var(--ajl-lime) !important;
+        border-color: var(--ajl-lime) !important;
+        box-shadow: 0 0 0 1px rgba(215, 255, 63, 0.18), 0 12px 28px rgba(215, 255, 63, 0.14) !important;
+    }
+
+    html.dark body .tab-nav .tab-btn-active .material-symbols-outlined {
+        color: #05070a !important;
+    }
+
+    #tab-files #fileManagementContainer .file-table {
+        display: block !important;
+        border: 0;
+        background: transparent;
+    }
+
+    #tab-files #fileManagementContainer .file-table thead {
+        display: none;
+    }
+
+    #tab-files #fileTableBody {
+        display: grid;
+        gap: 10px;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    #tab-files #fileTableBody tr {
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr);
+        gap: 10px;
+        width: 100%;
+        padding: 12px;
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-ui, 8px);
+        background: var(--surface-control, var(--background-light));
+    }
+
+    #tab-files #fileTableBody td {
+        width: auto !important;
+        max-width: none !important;
+        min-width: 0;
+        padding: 0 !important;
+        border: 0 !important;
+        vertical-align: top;
+    }
+
+    #tab-files #fileTableBody td:first-child {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: center;
+    }
+
+    #tab-files #fileTableBody td:nth-child(2) {
+        grid-column: 2;
+        grid-row: 1;
+        align-self: center;
+    }
+
+    #tab-files #fileTableBody td.file-row-actions {
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    #tab-files .clickable-filename {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+        min-width: 0;
+    }
+
+    #tab-files .filename-text {
+        display: block;
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.28;
+    }
+
+    #tab-files .file-action-group,
+    #tab-files .file-action-group--compact {
+        display: flex !important;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 8px;
+    }
+
+    #tab-files .file-row-actions .file-action-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+}
+
+@media (max-width: 720px) {
+    #profileGlossaryListTable tbody tr {
+        position: relative;
+        display: block;
+        padding: 14px;
+    }
+
+    #profileGlossaryListTable td {
+        display: block;
+        padding: 0;
+        min-width: 0;
+    }
+
+    #profileGlossaryListTable td + td {
+        margin-top: 9px;
+    }
+
+    #profileGlossaryListTable td::before {
+        display: block;
+        margin-bottom: 3px;
+        line-height: 1.2;
+    }
+
+    #profileGlossaryListTable td:first-child {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        margin-top: 0;
+    }
+
+    #profileGlossaryListTable td:first-child::before,
+    #profileGlossaryListTable td:last-child::before {
+        display: none;
+    }
+
+    #profileGlossaryListTable td:nth-child(2) {
+        padding-right: 48px;
+        color: var(--text-dark);
+        font-size: 1rem;
+        font-weight: 780;
+        line-height: 1.25;
+    }
+
+    #profileGlossaryListTable td:nth-child(3),
+    #profileGlossaryListTable td:nth-child(4),
+    #profileGlossaryListTable td:nth-child(5),
+    #profileGlossaryListTable td:nth-child(6) {
+        color: var(--text-muted-light);
+        overflow-wrap: anywhere;
+    }
+
+    #profileGlossaryListTable td:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+}
+.glossary-cell-input:focus {
+    outline: none;
+    box-shadow: inset 0 -2px 0 var(--primary-light);
+}
+.glossary-row-deleted { opacity: 0.3; pointer-events: none; }
+#ner-modal .modal-content { max-width: 800px; }
+#ner-candidates-table th, #ner-candidates-table td { padding: 6px 8px; font-size: 0.85rem; }
+#ner-warnings {
+    color: var(--text-dark);
+    background: var(--info-light-bg);
+    border-left: 3px solid var(--info-light);
+    font-size: 0.85rem;
+}
+
+/* Mobile header overflow guard. The provider status text can be long
+   ("DeepSeek (2 modelos)") and should not push the language/theme controls
+   off-screen on Android-sized viewports. */
+@media (max-width: 768px) {
+    .header .status-section {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: stretch;
+    }
+
+    .header .status-indicator {
+        grid-column: 1 / -1;
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+    }
+
+    .header .header-lang-wrapper {
+        min-width: 0;
+    }
+
+    .header #themeToggleBtn {
+        width: 46px;
+        min-width: 46px;
+        padding-inline: 0;
+    }
+}
+
+/* Mobile usage dashboard containment. Usage tables intentionally keep
+   wider desktop columns, but their scroll must stay inside each card instead
+   of widening the whole page on Android. */
+#tab-usage,
+#tab-usage .card-body,
+#usageContent,
+#tab-usage .usage-section,
+#tab-usage .usage-table-wrap,
+#tab-usage .usage-two-col {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+#tab-usage .usage-two-col > .usage-section {
+    min-width: 0;
+}
+
+#tab-usage .usage-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+#tab-usage .usage-table {
+    max-width: none;
+}
+
+@media (max-width: 720px) {
+    #tab-usage .usage-section {
+        padding-inline: 12px;
+    }
+
+    #tab-usage .usage-table {
+        min-width: 560px;
+    }
+
+    #tab-usage .usage-events-table {
+        min-width: 860px;
+    }
+}

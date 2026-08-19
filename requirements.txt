@@ -1,0 +1,35 @@
+flask
+flask-cors
+flask-socketio
+python-socketio
+requests
+tqdm
+httpx
+lxml
+python-dotenv
+aiofiles>=22.0,<25.0
+tiktoken>=0.5.0
+edge-tts>=6.1.9
+pyyaml>=6.0
+jinja2>=3.0
+langdetect>=1.0.9
+Pillow>=10.0.0
+
+# DOCX support
+mammoth>=1.0.0
+python-docx>=1.1.0
+
+# PDF text extraction and output support
+pypdf>=5.0.0
+reportlab>=4.0.0
+
+# LiteLLM gateway (100+ providers, CLI-only) - OPTIONAL
+# Enables --provider litellm. Lazy-imported, so not required unless used.
+#   pip install "litellm>=1.65,<1.85"
+
+# Chatterbox TTS (GPU-accelerated local TTS) - OPTIONAL
+# These dependencies have strict numpy version requirements that may conflict.
+# Install separately if needed:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+#   pip install chatterbox-tts
+# Requires CUDA-capable GPU for optimal performance (CPU fallback available but slow)

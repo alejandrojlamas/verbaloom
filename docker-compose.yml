@@ -1,0 +1,152 @@
+version: '3.8'
+
+# =============================================================================
+# TranslateBookWithLLM — Docker Compose
+# =============================================================================
+# All runtime configuration lives in the `environment:` block below.
+# Uncomment and edit only the variables you need; defaults are sensible.
+# For multi-line documentation of each variable, see .env.example.
+# =============================================================================
+
+services:
+  translate-book:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile
+    image: tbl-personal-lab:local
+    container_name: translate-book
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+
+    volumes:
+      # Translated output files
+      - ./translated_files:/app/translated_files
+      # Application logs
+      - ./logs:/app/logs
+      # Checkpoints (SQLite) and uploaded source files — REQUIRED for resume
+      # capability to survive container restarts. Do NOT remove this mount.
+      - ./data:/app/data
+
+    environment:
+      # -----------------------------------------------------------------------
+      # Server
+      # -----------------------------------------------------------------------
+      - PORT=5000
+      - HOST=0.0.0.0
+      - TBL_ALLOW_NETWORK_BIND=true
+      - OUTPUT_DIR=/app/translated_files
+      - OUTPUT_FILENAME_PATTERN={originalName} ({targetLang}).{ext}
+      - DEBUG_MODE=false
+
+      # -----------------------------------------------------------------------
+      # LLM provider selection
+      # Options: ollama | gemini | openai | openrouter | mistral | deepseek | poe | nim
+      # -----------------------------------------------------------------------
+      - LLM_PROVIDER=ollama
+      - DEFAULT_MODEL=qwen3:14b
+
+      # -----------------------------------------------------------------------
+      # Ollama (local)
+      # On Linux: add `extra_hosts: ["host.docker.internal:host-gateway"]` below
+      # -----------------------------------------------------------------------
+      - OLLAMA_API_ENDPOINT=http://host.docker.internal:11434/api/generate
+      - OLLAMA_NUM_CTX=4096
+
+      # -----------------------------------------------------------------------
+      # Cloud providers — uncomment the ones you use.
+      # Any *_API_KEY accepts a comma-separated list for automatic rotation
+      # on HTTP 429 (see docs/API_KEY_ROTATION.md).
+      # -----------------------------------------------------------------------
+      # - OPENAI_API_ENDPOINT=https://api.openai.com/v1/chat/completions
+      # - OPENAI_API_KEY=
+
+      # - GEMINI_API_KEY=
+      # - GEMINI_MODEL=gemini-2.0-flash
+      # - GEMINI_SAFETY_THRESHOLD=BLOCK_NONE
+
+      # - OPENROUTER_API_KEY=
+      # - OPENROUTER_MODEL=anthropic/claude-4.5-haiku
+
+      # - MISTRAL_API_KEY=
+      # - MISTRAL_MODEL=mistral-large-latest
+
+      # - DEEPSEEK_API_KEY=
+      # - DEEPSEEK_MODEL=deepseek-v4-pro
+      # - DEEPSEEK_DISABLE_THINKING=true
+
+      # - POE_API_KEY=
+      # - POE_MODEL=Claude-Sonnet-4
+
+      # - NIM_API_KEY=
+      # - NIM_MODEL=meta/llama-3.1-8b-instruct
+
+      # -----------------------------------------------------------------------
+      # Translation defaults
+      # -----------------------------------------------------------------------
+      - DEFAULT_SOURCE_LANGUAGE=
+      - DEFAULT_TARGET_LANGUAGE=
+      - REQUEST_TIMEOUT=900
+      - MAX_TRANSLATION_ATTEMPTS=3
+      - TEMPERATURE=0.3
+
+      # -----------------------------------------------------------------------
+      # Token-based chunking
+      # required_ctx ≈ 500 + (MAX_TOKENS_PER_CHUNK * 3) + 50
+      # -----------------------------------------------------------------------
+      - MAX_TOKENS_PER_CHUNK=450
+      - SOFT_LIMIT_RATIO=0.8
+      - AUTO_ADJUST_CONTEXT=true
+      - ADAPTIVE_CONTEXT_INITIAL=2048
+      - ADAPTIVE_CONTEXT_STEP=2048
+
+      # -----------------------------------------------------------------------
+      # Rate-limit handling (HTTP 429)
+      # -----------------------------------------------------------------------
+      - AUTO_PAUSE_ON_RATE_LIMIT=false
+      - RATE_LIMIT_AUTO_RESUME_DELAY=60
+
+      # -----------------------------------------------------------------------
+      # EPUB token alignment fallback
+      # -----------------------------------------------------------------------
+      - EPUB_TOKEN_ALIGNMENT_ENABLED=true
+      - EPUB_TOKEN_ALIGNMENT_METHOD=block_safe
+      - EPUB_MAX_PLACEHOLDERS_PER_CHUNK=24
+
+      # -----------------------------------------------------------------------
+      # SRT subtitles
+      # Subtitles per LLM block, shared by translate and refine.
+      # -----------------------------------------------------------------------
+      - SRT_LINES_PER_BLOCK=10
+
+      # -----------------------------------------------------------------------
+      # Webhook notifications (gotify, ntfy, Discord, Slack, ...)
+      # See docs/NOTIFICATIONS.md for the full reference.
+      # -----------------------------------------------------------------------
+      # - NOTIFY_WEBHOOK_URL=
+      # - NOTIFY_WEBHOOK_METHOD=POST
+      # - NOTIFY_WEBHOOK_HEADERS=
+      # - NOTIFY_WEBHOOK_PAYLOAD=
+      # - NOTIFY_ON_SUCCESS=true
+      # - NOTIFY_ON_FAILURE=true
+      # - NOTIFY_ON_INTERRUPTION=false
+      # - NOTIFY_TIMEOUT_SECONDS=5
+
+      # -----------------------------------------------------------------------
+      # TTS (text-to-speech) — requires ffmpeg in the image
+      # -----------------------------------------------------------------------
+      # - TTS_ENABLED=false
+      # - TTS_PROVIDER=edge-tts
+      # - TTS_VOICE=
+      # - TTS_RATE=+0%
+      # - TTS_BITRATE=64k
+      # - TTS_OUTPUT_FORMAT=opus
+
+      # -----------------------------------------------------------------------
+      # Attribution (please consider keeping enabled to support the project)
+      # -----------------------------------------------------------------------
+      - ATTRIBUTION_ENABLED=true
+
+    # Uncomment on Linux so the container can reach Ollama on the host:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"

@@ -1,0 +1,9 @@
+Discover audiobook-relevant glossary/profile entries for this book.
+
+Suggest only terms that help a faithful translation remain consistent:
+- recurring names, film titles, technical film vocabulary, institutions, movements, and period terms;
+- terms that should be preserved in the source language;
+- terms that should be translated consistently;
+- recurring caption formulas or note/reference patterns that affect audiobook listening.
+
+Do not approve suggestions automatically. Return valid JSON according to the project glossary-discovery schema.

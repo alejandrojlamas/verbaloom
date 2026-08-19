@@ -1,0 +1,52 @@
+profile_id: audiobook_faithful
+name: Audiolibro - traduccion fiel
+protected_profile: true
+editorial_mode: book_profile
+target_locale: ''
+modernization_strength: medium
+preserve_author_voice: true
+allow_common_glossary: true
+allow_cross_profile_glossary: false
+loaded_glossaries:
+  - common
+use_profile_glossary: true
+glossary_suggestions_enabled: true
+auto_approve_glossary_suggestions: false
+min_glossary_suggestion_confidence: 0.92
+avoid_hardcoded_editorial_rules: true
+audit_dimensions: translation_audiobook_full
+repair_until_pass: true
+min_dimension_score: 8.5
+max_repair_rounds: 1
+audiobook:
+  enabled: true
+  generate_companion: true
+  companion_formats:
+    - txt
+    - epub_when_main_epub
+  notes_policy: appendix
+  captions_policy: integrate_informative
+  preserve_source_fidelity: true
+prompts:
+  translation: prompts/translation.txt
+  translation_refinement: prompts/translation_refinement.txt
+  audit: prompts/audit.txt
+  repair: prompts/repair.txt
+  glossary_discovery: prompts/glossary_discovery.txt
+glossary_files:
+  terms: glossary/terms.yml
+  treatments: glossary/treatments.yml
+  phrases: glossary/phrases.yml
+  character_voices: glossary/character_voices.yml
+  pending_suggestions: glossary/pending_suggestions.yml
+detectors:
+  - code: audiobook_inline_link
+    pattern: '\[[^\]]+\]\((?:https?://|[^)]*(?:nota|note|footnote|endnote|#nt\d+)[^)]*)\)'
+    severity: medium
+    message: Link or note call should not remain in audiobook main text.
+    applies_to: candidate
+  - code: audiobook_junk_source
+    pattern: '(?:OceanofPDF|z-?library|1lib\.sk|pdfdrive|libgen)'
+    severity: high
+    message: Source watermark/link should be removed from audiobook output.
+    applies_to: candidate

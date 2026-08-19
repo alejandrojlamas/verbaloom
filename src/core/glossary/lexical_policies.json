@@ -1,0 +1,144 @@
+{
+  "common": {
+    "acronym_stopwords": ["AM", "OK", "PM"]
+  },
+  "english": {
+    "connectors": ["and", "for", "in", "of", "on", "the", "to", "with", "without"],
+    "leading_articles": ["a", "an", "the"],
+    "single_title_stopwords": [
+      "abstract", "according", "actually", "also", "although", "anything",
+      "apparently", "appendix", "careless", "certainly", "chapter", "conclusion",
+      "consider", "curiously", "data", "determine", "discussion", "doubtless",
+      "elsewhere", "english", "everybody", "everyone", "everything", "everywhere",
+      "example", "figure", "figures", "french", "german", "introduction",
+      "meantime", "meanwhile", "model", "models", "moreover", "nevertheless",
+      "otherwise", "paper", "perhaps", "possibly", "presently", "probably",
+      "provided", "references", "remember", "results", "section", "slightly",
+      "solve", "somebody", "something", "sometimes", "somewhere", "spanish",
+      "straight", "suddenly", "table", "tables", "there", "therefore", "though",
+      "training", "unfortunately", "using", "visualize", "whatever", "where",
+      "wherever", "write"
+    ],
+    "titlecase_translatable_words": [
+      "american", "americans", "british", "building", "children", "christianity",
+      "christmas", "communist", "communists", "constable", "constables",
+      "darkness", "december", "english", "englishman", "englishmen",
+      "elizabethan", "european", "europeans", "fascist", "fascists", "french",
+      "german", "government", "indian", "indians", "jewish", "loyalist",
+      "loyalists", "mexican", "mexicans", "municipality", "norwegian",
+      "norwegians", "november", "puritan", "puritans", "republic", "scottish",
+      "senator", "senators", "spanish", "spaniard", "spaniards", "tlaxcalan",
+      "tlaxcalans", "tlaxcaltecan", "tranquillity", "university", "zapotecan"
+    ],
+    "fragment_noise_words": [
+      "also", "and", "he", "i", "in", "no", "of", "perhaps", "she", "that",
+      "that's", "the", "there", "therefore", "these", "this", "though", "to",
+      "we", "what", "where", "wherever", "you"
+    ],
+    "tech_nouns": [
+      "adam", "approach", "approaches", "architecture", "architectures",
+      "attention", "bleu",
+      "concept", "concepts", "convolution", "convolutions", "decoder", "decoders",
+      "distribution", "distributions", "dropout", "embedding", "embeddings",
+      "encoder", "encoders", "formula", "formulas", "kernel", "kernels", "layer",
+      "layers", "method", "methods", "model", "models", "network", "networks",
+      "normalization", "optimizer", "parsing", "probabilities", "probability",
+      "residual", "scenario", "scenarios", "sequence", "sequences", "smoothing",
+      "softmax", "theorem", "theorems", "token", "tokens", "training",
+      "transformer", "translation", "translations", "variable", "variables"
+    ],
+    "tech_modifiers": [
+      "auto", "batch", "convolutional", "cross", "deep", "dot", "dot-product",
+      "feed", "feed-forward", "language", "linear", "machine", "multi",
+      "multi-head", "neural", "positional", "recurrent", "residual", "scaled",
+      "self", "self-attention", "source", "target", "word"
+    ],
+    "high_value_tech_phrases": [
+      "convolutional network", "convolutional networks", "cross attention",
+      "feed-forward network", "feed-forward networks", "multi-head attention",
+      "neural network", "neural networks", "positional embedding",
+      "positional embeddings", "recurrent network", "recurrent networks",
+      "scaled dot-product attention", "self attention", "source attention",
+      "target attention", "word embedding", "word embeddings"
+    ],
+    "translatable_single_words": [
+      "approach", "approaches", "building", "children", "christianity",
+      "christmas", "communist", "communists", "concept", "concepts", "constable",
+      "constables", "darkness", "december", "determine", "englishman",
+      "englishmen", "example", "examples", "formula", "formulas", "government",
+      "loyalist", "loyalists", "method", "methods", "municipality", "november",
+      "probabilities", "probability", "provided", "puritan", "puritans",
+      "remember", "republic", "scenario", "scenarios", "section", "senator",
+      "senators", "solve", "step", "steps", "theorem", "theorems",
+      "tranquillity", "university", "using", "visualize", "write"
+    ],
+    "translatable_phrase_hints": [
+      "algorithm", "analysis", "approach", "architecture", "attention",
+      "classifier", "component", "constraint", "context", "data", "dataset",
+      "datasets", "distribution", "embedding", "engine", "feature", "formula",
+      "framework", "function", "hypothesis", "inference", "information",
+      "language", "layer", "learning", "logic", "loss", "machine", "map",
+      "mapping", "measure", "mechanism", "method", "model", "network",
+      "parameter", "pipeline", "probability", "problem", "process", "profile",
+      "representation", "risk", "scenario", "section", "signal", "step",
+      "stream", "structure", "system", "technique", "theorem", "theory",
+      "token", "tokens", "translation", "tree", "vector"
+    ],
+    "leading_noise_words": [
+      "after", "although", "and", "because", "before", "but", "meanwhile",
+      "then", "therefore", "when"
+    ],
+    "single_word_reject_noise": [
+      "according", "actually", "also", "although", "anything", "apparently",
+      "careless", "certainly", "consider", "curiously", "doubtless", "elsewhere",
+      "everybody", "everyone", "everything", "everywhere", "meantime",
+      "meanwhile", "moreover", "nevertheless", "otherwise", "perhaps",
+      "possibly", "presently", "probably", "slightly", "somebody", "something",
+      "sometimes", "somewhere", "straight", "suddenly", "there", "therefore",
+      "though", "unfortunately", "whatever", "where", "wherever"
+    ],
+    "source_equals_target_translatable_words": [
+      "american", "americans", "british", "christianity", "christmas",
+      "communist", "communists", "english", "englishman", "englishmen",
+      "elizabethan", "european", "europeans", "fascist", "fascists", "french",
+      "german", "indian", "indians", "jewish", "mexican", "mexicans",
+      "norwegian", "norwegians", "puritan", "puritans", "scottish", "senator",
+      "senators", "spanish", "spaniard", "spaniards", "tlaxcalan", "tlaxcalans",
+      "tlaxcaltecan", "zapotecan"
+    ],
+    "trailing_fragment_words": [
+      "and", "he", "i", "in", "no", "of", "perhaps", "she", "that", "that's",
+      "the", "there", "therefore", "these", "this", "though", "to", "we",
+      "what", "where", "wherever", "you"
+    ],
+    "uppercase_word_noise": [
+      "A", "AND", "ARE", "BE", "CAN", "CULTURE", "DIRTY", "DO", "DOES",
+      "FOR", "FROM", "HOW", "IN", "IS", "NO", "OF", "OR", "ORGANIZATION",
+      "PLAY", "PLAYER", "POWER", "RISK", "THE", "THIS", "TO", "TRICK",
+      "VICTIM", "WARNING", "WHAT", "WITH"
+    ]
+  },
+  "spanish": {
+    "connectors": ["de", "del", "e", "el", "la", "las", "los", "y"],
+    "leading_articles": ["el", "la", "las", "los"],
+    "fragment_noise_words": ["de", "del", "no", "y"],
+    "leading_noise_words": ["cuando", "después", "entonces", "luego", "mientras", "pero", "pues", "respondieron"],
+    "trailing_fragment_words": ["de", "del", "no", "y"],
+    "uppercase_word_noise": ["AL", "ES", "ESTE", "EVITE", "NO", "QUE", "SAN", "SUS", "SUYO"]
+  },
+  "french": {
+    "connectors": ["de", "des", "du", "et", "le", "les"],
+    "leading_articles": ["le", "les"]
+  },
+  "german": {
+    "connectors": ["der", "des", "und", "von"],
+    "leading_articles": ["das", "der", "die"],
+    "common_noun_capitalization": true
+  },
+  "lb": {
+    "common_noun_capitalization": true
+  },
+  "luxembourgish": {
+    "common_noun_capitalization": true
+  }
+}

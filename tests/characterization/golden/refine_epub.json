@@ -1,0 +1,397 @@
+{
+  "output": {
+    "kind": "zip",
+    "members": {
+      "META-INF/container.xml": "014cc1b89e997f98f48ec584da90b79eb9f5031cefa37df76074f37bb37a532a",
+      "OEBPS/ch01.xhtml": "58d25b2507135e04270118a9189a83dd4e011b82470c5b40cdd85298f6c1fd1c",
+      "OEBPS/ch02.xhtml": "7c9698cb9d3e13671b19c00e56864d7965f2863f66639bbdb77c129c551db138",
+      "OEBPS/ch03.xhtml": "d7b8c4ff4e99134909e42049d4f81cf9716bd80b83ae8bf9ae88b89dca9f034d",
+      "OEBPS/ch04.xhtml": "b05d8e9c64edaa06d1d3f1f11023b7103fcf8b78b734904a5310b0a10e3f5abd",
+      "OEBPS/ch05.xhtml": "2d6b597c922c7a30bb9cf6e5aa612a4577509054f60836bcd4c15b916517e05b",
+      "OEBPS/ch06.xhtml": "723461dd7696a102f7394f8cda329e570387de5c559f30da9af05bb30df40120",
+      "OEBPS/content.opf": "fba8708847e82b10c04cc4cfab11f9e3237ce806313140b4c101fea40f99406a",
+      "OEBPS/cover.xhtml": "9e2102e2daafc7e5018df117116108bdf8b0ef42e05668395addba9595998127",
+      "OEBPS/foreword.xhtml": "85894240996d99c23a7dab385e8c9146193da17b3847c49135859ba1614fd120",
+      "OEBPS/glossary.xhtml": "ed82d8eb6eb26b1b3be481b20ab68e07be7f05403ec1c80589e6ce5b5bc66478",
+      "OEBPS/images/cover.png": "59781d3b16ca0614e9943ac519fb078f21f6a5f4fc91be0305e16bf07acc68bf",
+      "OEBPS/images/illustration.png": "c6e7af79250bb55144619f2b7896ddc20cedfac1a656b613c01eef7adb7b16cf",
+      "OEBPS/nav.xhtml": "72a87a23b3fde8420f0145d4f61b19a6119033a5adbcf598b52b507432ddc43a",
+      "OEBPS/styles/main.css": "071772d127e65d75e657f5ca2daba7ec2be51891c17f8788f9343828870947ed",
+      "OEBPS/title.xhtml": "389d14c62097fd76c300fe1f6e84b0d06ff59468e4900c0e5f1b0efd0b040a2d",
+      "OEBPS/toc.ncx": "fd01b8ae79c6fab0524aa13037d2934dbd207bb78cd8d734c02b024590d701b6",
+      "mimetype": "e468e350d1143eb648f60c7b0bd6031101ec0544a361ca74ecef256ac901f48b"
+    }
+  },
+  "sequence": [
+    {
+      "completed_chunks": 0,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 1,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 1,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 2,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 3,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 3,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 4,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 5,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 6,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 6,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 7,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 8,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 9,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 10,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 11,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 12,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 13,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 14,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 15,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 16,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 17,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 18,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 19,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 20,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 21,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 22,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 22,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 23,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 24,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 25,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 26,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 27,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 28,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 28,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 29,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 30,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 31,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 32,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 33,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 34,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 35,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 35,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 36,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 37,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 38,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 39,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 40,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 41,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 42,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 43,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 44,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 45,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 46,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 47,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 48,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 49,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 49,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 50,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 51,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 52,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 53,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 53,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 54,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 55,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 56,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 56,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 57,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 58,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 59,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 60,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 61,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 62,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 63,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    },
+    {
+      "completed_chunks": 63,
+      "failed_chunks": 0,
+      "total_chunks": 63
+    }
+  ]
+}

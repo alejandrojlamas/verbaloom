@@ -1,0 +1,1 @@
+Use only general mechanical cleanup. Do not apply book-specific lexical or literary equivalences.

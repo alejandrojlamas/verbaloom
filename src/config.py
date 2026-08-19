@@ -1,0 +1,866 @@
+"""
+Centralized configuration class
+"""
+from __future__ import annotations
+
+import os
+import sys
+import logging
+from pathlib import Path
+from dataclasses import dataclass
+from typing import Optional
+from dotenv import load_dotenv
+
+# Setup debug logger for configuration
+_config_logger = logging.getLogger('config')
+
+# Check for DEBUG_MODE early (before .env is loaded, check environment)
+_debug_mode = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+if _debug_mode:
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    _config_logger.setLevel(logging.DEBUG)
+    _config_logger.debug("🔍 DEBUG_MODE enabled - verbose logging active")
+
+# Get config directory (current working directory)
+_config_dir = Path.cwd()
+
+# Check if .env file exists and provide helpful guidance
+_env_file = _config_dir / '.env'
+_env_example = _config_dir / '.env.example'
+_env_exists = _env_file.exists()
+_cwd = Path.cwd()
+
+if _debug_mode:
+    _config_logger.debug(f"📁 Current working directory: {_cwd}")
+    _config_logger.debug(f"📁 Looking for .env at: {_env_file.absolute()}")
+    _config_logger.debug(f"📁 .env exists: {_env_exists}")
+
+# Whether the .env file is missing. The actual "no .env" warning is emitted
+# later by warn_env_config_missing(), which the entrypoints call AFTER they
+# have resolved their effective settings — so the warning shows the real CLI
+# arguments (provider, endpoint, model) instead of import-time defaults (#187).
+_is_frozen = getattr(sys, 'frozen', False)
+ENV_FILE_MISSING = not _env_exists
+
+if ENV_FILE_MISSING and _is_frozen and _debug_mode:
+    # Running as executable - silently use defaults
+    _config_logger.debug("⚠️  .env not found, using defaults (executable mode)")
+
+# Load .env file if it exists
+_dotenv_result = load_dotenv(_env_file)
+if _debug_mode:
+    _config_logger.debug(f"📁 load_dotenv() returned: {_dotenv_result}")
+    _config_logger.debug(f"📁 Loaded .env from: {_env_file.absolute()}")
+
+# Settings that the web UI can update at runtime via /api/settings.
+# Listed once so the initial load and reload_config() stay in lockstep.
+# Format: (attribute_name, env_var_name, default_value)
+_RELOADABLE_ENV_SETTINGS = (
+    ('OLLAMA_API_ENDPOINT', 'OLLAMA_API_ENDPOINT', 'http://localhost:11434/api/generate'),
+    ('OPENAI_API_ENDPOINT', 'OPENAI_API_ENDPOINT', 'https://api.openai.com/v1/chat/completions'),
+    ('DEFAULT_MODEL',       'DEFAULT_MODEL',       'qwen3:14b'),
+    ('LLM_PROVIDER',        'LLM_PROVIDER',        'ollama'),
+    ('GEMINI_API_KEY',      'GEMINI_API_KEY',      ''),
+    ('GEMINI_MODEL',        'GEMINI_MODEL',        'gemini-2.0-flash'),
+    ('OPENAI_API_KEY',      'OPENAI_API_KEY',      ''),
+    ('OPENROUTER_API_KEY',  'OPENROUTER_API_KEY',  ''),
+    ('OPENROUTER_MODEL',    'OPENROUTER_MODEL',    'anthropic/claude-sonnet-4'),
+    ('MISTRAL_API_KEY',     'MISTRAL_API_KEY',     ''),
+    ('MISTRAL_MODEL',       'MISTRAL_MODEL',       'mistral-large-latest'),
+    ('DEEPSEEK_API_KEY',    'DEEPSEEK_API_KEY',    ''),
+    ('DEEPSEEK_MODEL',      'DEEPSEEK_MODEL',      'deepseek-v4-pro'),
+    ('POE_API_KEY',         'POE_API_KEY',         ''),
+    ('POE_MODEL',           'POE_MODEL',           'Claude-Sonnet-4'),
+    ('NIM_API_KEY',         'NIM_API_KEY',         ''),
+    ('NIM_MODEL',           'NIM_MODEL',           'meta/llama-3.1-8b-instruct'),
+    # LiteLLM gateway (CLI-only). Provider-prefixed model name, e.g.
+    # "anthropic/claude-sonnet-4-6". Keys are read from each provider's native
+    # env var (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), not from a single key.
+    ('LITELLM_MODEL',       'LITELLM_MODEL',       ''),
+    ('OUTPUT_FILENAME_PATTERN', 'OUTPUT_FILENAME_PATTERN', '{originalName} ({targetLang}).{ext}'),
+    ('DISABLE_AUTO_PAUSE',   'DISABLE_AUTO_PAUSE',   'true'),
+    # Webhook notifications — kept here so the web UI can change them at runtime
+    # via /api/settings without a server restart. notifier.py reads these via
+    # `import src.config as cfg; cfg.NOTIFY_*` so reload_config() takes effect.
+    ('NOTIFY_WEBHOOK_URL',     'NOTIFY_WEBHOOK_URL',     ''),
+    ('NOTIFY_WEBHOOK_METHOD',  'NOTIFY_WEBHOOK_METHOD',  'POST'),
+    ('NOTIFY_WEBHOOK_HEADERS', 'NOTIFY_WEBHOOK_HEADERS', ''),
+    ('NOTIFY_WEBHOOK_PAYLOAD', 'NOTIFY_WEBHOOK_PAYLOAD', ''),
+    ('NOTIFY_ON_SUCCESS',      'NOTIFY_ON_SUCCESS',      'true'),
+    ('NOTIFY_ON_FAILURE',      'NOTIFY_ON_FAILURE',      'true'),
+    ('NOTIFY_ON_INTERRUPTION', 'NOTIFY_ON_INTERRUPTION', 'false'),
+    ('NOTIFY_TIMEOUT_SECONDS', 'NOTIFY_TIMEOUT_SECONDS', '5'),
+)
+
+
+_NOTIFY_BOOL_ATTRS = {'NOTIFY_ON_SUCCESS', 'NOTIFY_ON_FAILURE', 'NOTIFY_ON_INTERRUPTION'}
+_NOTIFY_INT_ATTRS = {'NOTIFY_TIMEOUT_SECONDS'}
+
+
+def _apply_reloadable_env_settings():
+    g = globals()
+    for attr, env_var, default in _RELOADABLE_ENV_SETTINGS:
+        raw = os.getenv(env_var, default)
+        if attr in _NOTIFY_BOOL_ATTRS:
+            g[attr] = str(raw).strip().lower() == 'true'
+        elif attr in _NOTIFY_INT_ATTRS:
+            try:
+                g[attr] = int(raw)
+            except (TypeError, ValueError):
+                g[attr] = int(default)
+        else:
+            g[attr] = raw
+    # Legacy alias: API_ENDPOINT falls back to OLLAMA_API_ENDPOINT
+    g['API_ENDPOINT'] = os.getenv('API_ENDPOINT', g['OLLAMA_API_ENDPOINT'])
+
+
+_apply_reloadable_env_settings()
+
+PORT = int(os.getenv('PORT', '5000'))
+REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', '900'))
+# TCP-connect timeout for LLM provider requests, kept short and separate from
+# REQUEST_TIMEOUT (which bounds read/write and must stay long -- a real LLM
+# response can legitimately take minutes). Without this, a provider that is
+# unreachable at the TCP level (dead Ollama/llama.cpp process, DNS/network
+# outage) blocks a chunk for the full REQUEST_TIMEOUT before the first retry
+# even gets a chance to run, which reads to the user as the whole job
+# freezing rather than a fast, retryable connection failure.
+LLM_CONNECT_TIMEOUT = int(os.getenv('LLM_CONNECT_TIMEOUT', '15'))
+# Provider retries must share one wall-clock budget. Without this cap, a
+# per-attempt timeout is multiplied by the provider's internal retry count.
+LLM_CLOUD_OPERATION_TIMEOUT = int(os.getenv('LLM_CLOUD_OPERATION_TIMEOUT', '300'))
+LLM_LOCAL_OPERATION_TIMEOUT = int(
+    os.getenv('LLM_LOCAL_OPERATION_TIMEOUT', str(REQUEST_TIMEOUT))
+)
+OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '4096'))
+
+# A running job that hasn't emitted a single progress/activity event in
+# this long is not "translating a hard chunk" -- it has silently stopped
+# (worker thread stuck with no exception raised, so none of the normal
+# auto-recovery paths ever fire). Scaled off REQUEST_TIMEOUT so it stays
+# safely above the worst-case legitimate duration of a single chunk (up to
+# MAX_TRANSLATION_ATTEMPTS full timeouts back to back) even when a user
+# raises REQUEST_TIMEOUT for a slow local model.
+JOB_WATCHDOG_STALE_SECONDS = int(
+    os.getenv(
+        'JOB_WATCHDOG_STALE_SECONDS',
+        str(max(1200, 4 * LLM_CLOUD_OPERATION_TIMEOUT)),
+    )
+)
+JOB_WATCHDOG_CHECK_INTERVAL_SECONDS = int(os.getenv('JOB_WATCHDOG_CHECK_INTERVAL_SECONDS', '120'))
+
+
+def warn_env_config_missing(provider=None, api_endpoint=None, model=None, port=None):
+    """Warn that no .env was found, listing the settings actually in effect.
+
+    Entrypoints call this after resolving their effective configuration (CLI
+    args for translate.py, config defaults for the web server), so the box
+    reflects what the run will really use instead of hardcoded defaults (#187).
+
+    No-op when a .env exists or when running as a frozen executable.
+    """
+    if not ENV_FILE_MISSING or _is_frozen:
+        return
+
+    provider = LLM_PROVIDER if provider is None else provider
+    api_endpoint = API_ENDPOINT if api_endpoint is None else api_endpoint
+    model = DEFAULT_MODEL if model is None else model
+    port = PORT if port is None else port
+
+    print("\n" + "=" * 70)
+    print("⚠️  WARNING: .env configuration file not found")
+    print("=" * 70)
+    print("\nThe application will run with the settings below, but you may want to")
+    print("save them to a .env file for your specific setup.\n")
+
+    if _env_example.exists():
+        print("📋 QUICK SETUP:")
+        print("   1. Copy the template: copy .env.example .env")
+        print("   2. Edit .env to match your configuration")
+        print("   3. Restart the application\n")
+    else:
+        print("📋 MANUAL SETUP:")
+        print(f"   1. Create a .env file in: {Path.cwd()}")
+        print("   2. Add your configuration (see documentation)")
+        print("   3. Restart the application\n")
+
+    print("🔧 SETTINGS BEING USED:")
+    print(f"   • API Endpoint: {api_endpoint}")
+    print(f"   • LLM Provider: {provider}")
+    print(f"   • Model: {model}")
+    print(f"   • Port: {port}")
+    print("\n💡 TIP: These settings are not persisted. Create a .env file to")
+    print("   keep them across runs.\n")
+    print("=" * 70)
+    print("Press Ctrl+C to stop and configure, or wait 5 seconds to continue...")
+    print("=" * 70 + "\n")
+
+    # Give user time to read and react
+    import time
+    try:
+        time.sleep(5)
+    except KeyboardInterrupt:
+        print("\n\n⏹️  Startup cancelled by user. Please configure .env and try again.\n")
+        sys.exit(0)
+
+# =============================================================================
+# THINKING MODEL CONFIGURATION
+# =============================================================================
+# Models are classified based on their behavior with the 'think' parameter:
+#
+# 1. UNCONTROLLABLE: Models that think even with think=false (need WARNING)
+# 2. CONTROLLABLE: Models that respect think=false (no warning needed)
+# 3. STANDARD: Models that don't think at all (no think param needed)
+#
+# Auto-detection at runtime will classify models by testing with think=true/false
+
+# Models that CANNOT be prevented from thinking - show WARNING to user
+# These models either ignore think=false or don't support the param but still think
+UNCONTROLLABLE_THINKING_MODELS = [
+    "qwen3:30b",      # Qwen3 30B ignores think=false (tested)
+    "qwen3-vl",       # Qwen3 Vision models ignore think=false
+    "phi4-reasoning", # Phi4 reasoning doesn't support think param but always thinks
+    "deepseek-r1",    # DeepSeek R1 reasoning model
+    "qwq",            # Qwen QwQ reasoning model
+    "marco-o1",       # Alibaba reasoning model
+    "exaone-deep",    # LG reasoning model
+]
+
+# Models that respect think=false - controllable, no warning needed
+CONTROLLABLE_THINKING_MODELS = [
+    "qwen3:8b",       # Respects think=false (tested)
+    "qwen3:14b",      # Respects think=false (tested)
+    "qwen3:4b",       # Smaller Qwen3 models likely controllable
+    "qwen3:1.7b",     # Smaller Qwen3 models likely controllable
+    "qwen3:0.6b",     # Smaller Qwen3 models likely controllable
+    "qwen3.5:9b",     # Qwen3.5 tested
+    "qwen3.5:35b",    # Qwen3.5 large - controllable
+]
+
+# Legacy alias for backward compatibility
+THINKING_MODELS = UNCONTROLLABLE_THINKING_MODELS + CONTROLLABLE_THINKING_MODELS
+_max_retries_legacy = os.getenv('MAX_RETRIES')
+if _max_retries_legacy and not os.getenv('MAX_TRANSLATION_ATTEMPTS'):
+    print(
+        f"⚠️  MAX_RETRIES is not a recognized setting and was renamed to "
+        f"MAX_TRANSLATION_ATTEMPTS. Accepting MAX_RETRIES={_max_retries_legacy} "
+        f"for backward compatibility; please rename it in your .env."
+    )
+    try:
+        MAX_TRANSLATION_ATTEMPTS = int(_max_retries_legacy)
+    except ValueError:
+        MAX_TRANSLATION_ATTEMPTS = 3
+else:
+    # Per-chunk attempt budget for a transient LLM request failure (timeout,
+    # malformed/empty response, non-specific 5xx) before giving up on that
+    # chunk. Raised from 2 to 3: every provider's plain-transient retry now
+    # goes through a shared circuit breaker (src/core/adapters/retry_manager.py,
+    # wired into every provider in src/core/llm/providers/*.py) that trips
+    # after a sustained run of failures and fails fast without a network
+    # call, so a book-length job facing a real outage no longer pays for
+    # the extra attempt on every remaining chunk -- only for chunks that hit
+    # a genuine one-off blip, which is exactly what the extra attempt is
+    # for. This also matches src/utils/env_helper.py's own generated .env
+    # template, which already wrote 3 here; the hardcoded fallback and
+    # .env.example were the only two places still saying 2.
+    MAX_TRANSLATION_ATTEMPTS = int(os.getenv('MAX_TRANSLATION_ATTEMPTS', '3'))
+
+# Sampling temperature applied to cloud LLM providers (gemini, deepseek, mistral,
+# poe). Lower values favor consistent translations; higher values produce more
+# variation. Ollama is unaffected because it uses its own server-side defaults.
+TEMPERATURE = float(os.getenv('TEMPERATURE', '0.3'))
+TRANSLATION_TEMPERATURE = float(os.getenv('TRANSLATION_TEMPERATURE', str(TEMPERATURE)))
+REFINEMENT_TEMPERATURE = float(os.getenv('REFINEMENT_TEMPERATURE', '0.4'))
+AUDIT_TEMPERATURE = float(os.getenv('AUDIT_TEMPERATURE', '0.0'))
+REPAIR_TEMPERATURE = float(os.getenv('REPAIR_TEMPERATURE', '0.25'))
+
+
+def temperature_for_phase(phase: str, default: float | None = None) -> float:
+    """Return a stable request temperature for a pipeline phase."""
+    normalized = (phase or "").strip().lower()
+    if normalized in {"audit", "fidelity_audit", "profile_audit", "editorial_guard", "source_aware_guard"}:
+        return AUDIT_TEMPERATURE
+    if normalized in {"repair", "quality_repair", "profile_repair", "format_repair"}:
+        return REPAIR_TEMPERATURE
+    if normalized in {"refinement", "editorial_refinement", "voice_restoration"}:
+        return REFINEMENT_TEMPERATURE
+    if normalized in {"translation", "modernization", "transform"}:
+        return TRANSLATION_TEMPERATURE
+    if default is not None:
+        return float(default)
+    return TEMPERATURE
+
+# Gemini safety filter threshold applied to all four harm categories
+# (HARASSMENT, HATE_SPEECH, SEXUALLY_EXPLICIT, DANGEROUS_CONTENT). Default is
+# BLOCK_NONE because the tool is used to translate adult-themed novels where
+# Gemini's default MEDIUM threshold silently strips chunks and produces empty
+# responses. Users who want the default filter can set BLOCK_MEDIUM_AND_ABOVE.
+# Valid values: BLOCK_NONE, BLOCK_ONLY_HIGH, BLOCK_MEDIUM_AND_ABOVE,
+# BLOCK_LOW_AND_ABOVE, HARM_BLOCK_THRESHOLD_UNSPECIFIED.
+GEMINI_SAFETY_THRESHOLD = os.getenv('GEMINI_SAFETY_THRESHOLD', 'BLOCK_NONE')
+
+# Auto-pause on HTTP 429 rate limit
+# When False (default): translation auto-resumes from the last checkpoint after
+# waiting `retry_after` seconds (or RATE_LIMIT_AUTO_RESUME_DELAY if absent).
+# When True: the user must resume manually. Insufficient credits always pause.
+AUTO_PAUSE_ON_RATE_LIMIT = os.getenv('AUTO_PAUSE_ON_RATE_LIMIT', 'false').lower() == 'true'
+RATE_LIMIT_AUTO_RESUME_DELAY = int(os.getenv('RATE_LIMIT_AUTO_RESUME_DELAY', '60'))
+
+# Resume a job that was genuinely active when the server process disappeared.
+# Manual interruption and insufficient-credit states are persisted separately
+# and are never selected by this startup recovery path.
+AUTO_RESUME_ACTIVE_JOBS_ON_STARTUP = (
+    os.getenv('AUTO_RESUME_ACTIVE_JOBS_ON_STARTUP', 'true').lower() == 'true'
+)
+
+# Adaptive context optimization settings
+# The new strategy starts at a small context and grows as needed based on actual token usage
+AUTO_ADJUST_CONTEXT = os.getenv("AUTO_ADJUST_CONTEXT", "true").lower() == "true"
+ADAPTIVE_CONTEXT_INITIAL = int(os.getenv("ADAPTIVE_CONTEXT_INITIAL", "2048"))  # Starting context size
+ADAPTIVE_CONTEXT_INITIAL_THINKING = int(os.getenv("ADAPTIVE_CONTEXT_INITIAL_THINKING", "6144"))  # Starting context for thinking models (need more space for reasoning)
+ADAPTIVE_CONTEXT_STEP = int(os.getenv("ADAPTIVE_CONTEXT_STEP", "2048"))  # Step size for increases
+ADAPTIVE_CONTEXT_STABILITY_WINDOW = int(os.getenv("ADAPTIVE_CONTEXT_STABILITY_WINDOW", "5"))  # Chunks to track before reducing
+
+# Repetition loop detection settings
+# Thinking models may have natural repetitions in their reasoning, so we use higher thresholds
+REPETITION_MIN_PHRASE_LENGTH = int(os.getenv("REPETITION_MIN_PHRASE_LENGTH", "5"))  # Min phrase length to detect
+REPETITION_MIN_COUNT = int(os.getenv("REPETITION_MIN_COUNT", "10"))  # Min repetitions for standard models
+REPETITION_MIN_COUNT_THINKING = int(os.getenv("REPETITION_MIN_COUNT_THINKING", "15"))  # Min repetitions for thinking models (more lenient)
+REPETITION_MIN_COUNT_STREAMING = int(os.getenv("REPETITION_MIN_COUNT_STREAMING", "12"))  # Min repetitions during streaming (early detection)
+
+# Legacy settings (kept for compatibility)
+MIN_RECOMMENDED_NUM_CTX = 4096  # Minimum recommended context for chunk_size=25
+SAFETY_MARGIN = 1.1  # 10% safety margin for token estimation
+MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "5"))
+MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "100"))
+
+# Token-based chunking configuration
+# All file types use token-based chunking with tiktoken for consistent chunk sizes.
+# Cloud providers amortize fixed prompt overhead much better with larger chunks;
+# Ollama keeps the historical smaller default because local context is VRAM-bound.
+CLOUD_CHUNK_PROVIDERS = {"deepseek", "openai", "gemini", "mistral", "openrouter", "poe", "nim", "litellm"}
+
+
+def _default_max_tokens_per_chunk() -> str:
+    provider = str(globals().get("LLM_PROVIDER") or os.getenv("LLM_PROVIDER", "ollama")).strip().lower()
+    configured = os.getenv("MAX_TOKENS_PER_CHUNK")
+    if configured:
+        if provider in CLOUD_CHUNK_PROVIDERS and _is_legacy_chunk_default(configured):
+            return os.getenv("CLOUD_MAX_TOKENS_PER_CHUNK", "1400")
+        return configured
+    if provider in CLOUD_CHUNK_PROVIDERS:
+        return os.getenv("CLOUD_MAX_TOKENS_PER_CHUNK", "1400")
+    return "450"
+
+
+def _force_max_tokens_override() -> bool:
+    return str(os.getenv("MAX_TOKENS_PER_CHUNK_FORCE", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_legacy_chunk_default(value: str | int | None) -> bool:
+    if _force_max_tokens_override():
+        return False
+    try:
+        return int(str(value).split()[0]) == 450
+    except (TypeError, ValueError):
+        return False
+
+
+def max_tokens_per_chunk_for_provider(provider: str | None = None, explicit: int | str | None = None) -> int:
+    """Resolve chunk size for a concrete job provider.
+
+    The web UI can select DeepSeek without changing LLM_PROVIDER in .env, so
+    job code should call this helper instead of relying only on the import-time
+    MAX_TOKENS_PER_CHUNK constant.
+    """
+    if explicit not in (None, ""):
+        return int(explicit)
+    provider_key = str(provider or globals().get("LLM_PROVIDER") or os.getenv("LLM_PROVIDER", "ollama")).strip().lower()
+    configured = os.getenv("MAX_TOKENS_PER_CHUNK")
+    if configured:
+        if provider_key in CLOUD_CHUNK_PROVIDERS and _is_legacy_chunk_default(configured):
+            return int(os.getenv("CLOUD_MAX_TOKENS_PER_CHUNK", "1400"))
+        return int(configured)
+    if provider_key in CLOUD_CHUNK_PROVIDERS:
+        return int(os.getenv("CLOUD_MAX_TOKENS_PER_CHUNK", "1400"))
+    return 450
+
+
+MAX_TOKENS_PER_CHUNK = max_tokens_per_chunk_for_provider()
+SOFT_LIMIT_RATIO = float(os.getenv('SOFT_LIMIT_RATIO', '0.8'))
+
+# === Translation Buffer Configuration ===
+TRANSLATION_OUTPUT_MULTIPLIER = 2
+"""Multiplicateur pour la longueur de sortie estimée (certaines langues cibles
+peuvent être 2x plus longues que la source)"""
+
+TRANSLATION_TAG_OVERHEAD = 50
+"""Tokens réservés pour les balises XML de traduction (<Translated>...</Translated>)"""
+
+# === Placeholder Validation ===
+MAX_PLACEHOLDER_RETRIES = 3
+"""Nombre maximum de tentatives de validation des placeholders"""
+
+MAX_PLACEHOLDER_CORRECTION_ATTEMPTS = 2
+"""Nombre maximum de tentatives de correction LLM pour les placeholders malformés"""
+
+# === Chunking Limits ===
+MIN_CHUNK_SIZE_TOKENS = 50
+"""Taille minimale d'un chunk pour éviter la sur-fragmentation"""
+
+# LLM Provider configuration
+# LLM_PROVIDER, GEMINI_*, OPENAI_*, OPENROUTER_API_KEY/MODEL, MISTRAL_API_KEY/MODEL,
+# DEEPSEEK_API_KEY/MODEL, POE_API_KEY/MODEL, NIM_API_KEY/MODEL are loaded via
+# _apply_reloadable_env_settings() so reload_config() can refresh them at runtime.
+OPENROUTER_API_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
+MISTRAL_API_ENDPOINT = os.getenv('MISTRAL_API_ENDPOINT', 'https://api.mistral.ai/v1/chat/completions')
+DEEPSEEK_API_ENDPOINT = os.getenv('DEEPSEEK_API_ENDPOINT', 'https://api.deepseek.com/chat/completions')
+# DeepSeek V4 models (deepseek-v4-flash, deepseek-v4-pro) enable thinking by default,
+# wasting ~10-25x tokens on translation. Set to 'false' to keep thinking enabled.
+DEEPSEEK_DISABLE_THINKING = os.getenv('DEEPSEEK_DISABLE_THINKING', 'true').lower() == 'true'
+POE_API_ENDPOINT = os.getenv('POE_API_ENDPOINT', 'https://api.poe.com/v1/chat/completions')
+NIM_API_ENDPOINT = os.getenv('NIM_API_ENDPOINT', 'https://integrate.api.nvidia.com/v1/chat/completions')
+
+# SRT-specific configuration
+# Single knob for both translate and refine: every SRT block sent to the
+# LLM contains exactly SRT_LINES_PER_BLOCK subtitles (no char cap). Keeping
+# block sizes predictable makes [N] marker accounting reliable across the
+# whole file. Lower it for tiny models (e.g. 5 for 4B params), raise it
+# for large-context models that handle long structured outputs well.
+SRT_LINES_PER_BLOCK = int(os.getenv('SRT_LINES_PER_BLOCK', '10'))
+
+# Translation Attribution
+# This adds a discrete attribution to your translations (metadata for EPUB, footer for TXT, comment for SRT)
+# Please consider keeping this enabled to support the project and help others discover this free tool!
+# The attribution is non-intrusive and placed at the end of files. Thank you for your support!
+ATTRIBUTION_ENABLED = os.getenv('ATTRIBUTION_ENABLED', os.getenv('SIGNATURE_ENABLED', 'true')).lower() == 'true'
+GENERATOR_NAME = "TranslateBook with LLM (TBL)"
+GENERATOR_SOURCE = "https://github.com/hydropix/TranslateBookWithLLM"
+METADATA_VERSION = "1.0"
+
+# Default languages from environment (optional)
+# Source language: Auto-detected from file content (langdetect)
+# Target language: Auto-detected from browser language in UI
+DEFAULT_SOURCE_LANGUAGE = os.getenv('DEFAULT_SOURCE_LANGUAGE', '')  # Empty = auto-detect
+DEFAULT_TARGET_LANGUAGE = os.getenv('DEFAULT_TARGET_LANGUAGE', '')  # Empty = use browser language
+
+# ============================================================================
+# PROMPT OPTIONS CONFIGURATION
+# ============================================================================
+# These options control which optional sections are included in the system prompt.
+# Each option can be enabled/disabled via the web interface or CLI.
+
+# Technical Content Preservation (always enabled)
+# Automatically detects and preserves code, paths, URLs, formulas, etc.
+# This is always active as it has no negative impact on literary texts.
+PROMPT_PRESERVE_TECHNICAL_CONTENT = True
+
+# Server configuration
+HOST = os.getenv('HOST', '127.0.0.1')
+# Resolve OUTPUT_DIR to an absolute path so downstream code (file listing, writes,
+# checkpoints) is independent of any later cwd change. A relative value still
+# anchors to the cwd at config-load time, which matches the previous behavior
+# (os.makedirs was already cwd-relative). The PyInstaller launcher chdir's to its
+# data folder before this module is imported, so .exe behavior is preserved.
+OUTPUT_DIR = str(Path(os.getenv('OUTPUT_DIR', 'translated_files')).expanduser().resolve())
+
+# Output filename pattern
+# Placeholders: {originalName}, {targetLang}, {sourceLang}, {model}, {date}, {datetime}, {ext}
+# OUTPUT_FILENAME_PATTERN is loaded via _apply_reloadable_env_settings()
+
+# =============================================================================
+# WEBHOOK NOTIFICATIONS
+# =============================================================================
+# Send an HTTP request to an arbitrary webhook (gotify, ntfy, Discord, Slack,
+# Healthchecks, custom curl-like endpoint) when a translation reaches a
+# terminal state. Disabled by default; set NOTIFY_WEBHOOK_URL to enable.
+#
+# Loaded via _apply_reloadable_env_settings() so the web UI can edit them at
+# runtime via /api/settings (reload_config() refreshes them without restart).
+# notifier.py reads them with `import src.config as cfg; cfg.NOTIFY_*`.
+
+# Debug mode (reload after .env is loaded)
+DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+
+
+def reload_config():
+    """Re-read .env and refresh runtime-mutable settings.
+
+    Call this after the web UI saves to .env so subsequent reads of
+    src.config.X (e.g. from config_routes.py) reflect the new values
+    without restarting the server.
+
+    Only settings listed in _RELOADABLE_ENV_SETTINGS are refreshed.
+    Static settings (chunk sizes, namespaces, prompts) and modules that
+    did `from src.config import X` snapshot at import time and are not
+    affected — read via `import src.config as cfg; cfg.X` for live values.
+    """
+    load_dotenv(_env_file, override=True)
+    _apply_reloadable_env_settings()
+    if _debug_mode or os.getenv('DEBUG_MODE', 'false').lower() == 'true':
+        _config_logger.debug("📋 Configuration reloaded from .env")
+
+# Log loaded configuration in debug mode
+if DEBUG_MODE or _debug_mode:
+    _config_logger.setLevel(logging.DEBUG)
+    _config_logger.debug("="*60)
+    _config_logger.debug("📋 LOADED CONFIGURATION VALUES:")
+    _config_logger.debug("="*60)
+    _config_logger.debug(f"   API_ENDPOINT: {API_ENDPOINT}")
+    _config_logger.debug(f"   DEFAULT_MODEL: {DEFAULT_MODEL}")
+    _config_logger.debug(f"   LLM_PROVIDER: {LLM_PROVIDER}")
+    _config_logger.debug(f"   PORT: {PORT}")
+    _config_logger.debug(f"   HOST: {HOST}")
+    _config_logger.debug(f"   DEFAULT_SOURCE_LANGUAGE: {DEFAULT_SOURCE_LANGUAGE}")
+    _config_logger.debug(f"   DEFAULT_TARGET_LANGUAGE: {DEFAULT_TARGET_LANGUAGE}")
+    _config_logger.debug(f"   OLLAMA_NUM_CTX: {OLLAMA_NUM_CTX}")
+    _config_logger.debug(f"   REQUEST_TIMEOUT: {REQUEST_TIMEOUT}")
+    _config_logger.debug(f"   GEMINI_API_KEY: {'***' + GEMINI_API_KEY[-4:] if GEMINI_API_KEY else '(not set)'}")
+    _config_logger.debug(f"   OPENAI_API_KEY: {'***' + OPENAI_API_KEY[-4:] if OPENAI_API_KEY else '(not set)'}")
+    _config_logger.debug(f"   OPENROUTER_API_KEY: {'***' + OPENROUTER_API_KEY[-4:] if OPENROUTER_API_KEY else '(not set)'}")
+    _config_logger.debug(f"   OPENROUTER_MODEL: {OPENROUTER_MODEL}")
+    _config_logger.debug(f"   MISTRAL_API_KEY: {'***' + MISTRAL_API_KEY[-4:] if MISTRAL_API_KEY else '(not set)'}")
+    _config_logger.debug(f"   MISTRAL_MODEL: {MISTRAL_MODEL}")
+    _config_logger.debug(f"   DEEPSEEK_API_KEY: {'***' + DEEPSEEK_API_KEY[-4:] if DEEPSEEK_API_KEY else '(not set)'}")
+    _config_logger.debug(f"   DEEPSEEK_MODEL: {DEEPSEEK_MODEL}")
+    _config_logger.debug(f"   POE_API_KEY: {'***' + POE_API_KEY[-4:] if POE_API_KEY else '(not set)'}")
+    _config_logger.debug(f"   POE_MODEL: {POE_MODEL}")
+    _config_logger.debug("="*60)
+
+# Translation tags - Improved for LLM clarity and reliability
+TRANSLATE_TAG_IN = "<TRANSLATION>"
+TRANSLATE_TAG_OUT = "</TRANSLATION>"
+INPUT_TAG_IN = "<SOURCE_TEXT>"
+INPUT_TAG_OUT = "</SOURCE_TEXT>"
+
+# ============================================================================
+# TAG PLACEHOLDER CONFIGURATION
+# ============================================================================
+# These placeholders are used to temporarily replace HTML/XML tags during
+# translation. The LLM must preserve them exactly in its output.
+#
+# Unified format: [id0], [id1], [id2], ...
+# - Semantic naming helps LLM understand these are identifiers
+# - Compact format reduces token usage
+# - Adjacent tags are grouped into single placeholders
+# - Strict validation ensures placeholder integrity
+
+# Single unified format
+PLACEHOLDER_PREFIX = "[id"
+"""Prefix for tag placeholders (e.g., [id in [id0])"""
+
+PLACEHOLDER_SUFFIX = "]"
+"""Suffix for tag placeholders (e.g., ] in [id0])"""
+
+PLACEHOLDER_PATTERN = r'\[id(\d+)\]'
+"""Regex pattern for placeholders (e.g., [id0])"""
+
+# Maximum retries for placeholder validation before falling back to source text
+MAX_PLACEHOLDER_RETRIES = 0
+"""Number of retry attempts when placeholder validation fails"""
+
+MAX_PLACEHOLDER_CORRECTION_ATTEMPTS = 0
+"""Number of LLM correction attempts before falling back to proportional insertion (0 = skip correction phase entirely)"""
+
+# =============================================================================
+# TOKEN ALIGNMENT FALLBACK CONFIGURATION (Phase 2)
+# =============================================================================
+# When LLM fails to preserve placeholders correctly, use word-level alignment
+# to reinsert them at semantically correct positions.
+
+EPUB_TOKEN_ALIGNMENT_ENABLED = os.getenv('EPUB_TOKEN_ALIGNMENT_ENABLED', 'true').lower() == 'true'
+"""Enable token alignment fallback for EPUB translation (Phase 2)"""
+
+EPUB_TOKEN_ALIGNMENT_METHOD = os.getenv('EPUB_TOKEN_ALIGNMENT_METHOD', 'block_safe')
+"""
+Alignment method to use:
+- 'block_safe': Keep every block boundary fixed; align inline tags only
+- 'proportional': Legacy inline-only alignment (never valid across blocks)
+- 'advanced': Future - could add ML-based alignment
+"""
+
+EPUB_MAX_PLACEHOLDERS_PER_CHUNK = max(
+    4,
+    int(os.getenv('EPUB_MAX_PLACEHOLDERS_PER_CHUNK', '24')),
+)
+"""Soft structural cap that keeps placeholder-heavy XHTML chunks auditable."""
+
+EPUB_STRUCTURE_RECOVERY_BATCH_SIZE = max(
+    1,
+    int(os.getenv('EPUB_STRUCTURE_RECOVERY_BATCH_SIZE', '8')),
+)
+"""Readable XHTML blocks translated per bounded structural-recovery call."""
+
+EPUB_STRUCTURE_RECOVERY_MAX_SOURCE_TOKENS = max(
+    128,
+    int(os.getenv('EPUB_STRUCTURE_RECOVERY_MAX_SOURCE_TOKENS', '900')),
+)
+"""Approximate source-token ceiling for one structural-recovery batch."""
+
+EPUB_STRUCTURE_RECOVERY_MAX_CALLS = max(
+    1,
+    int(os.getenv('EPUB_STRUCTURE_RECOVERY_MAX_CALLS', '12')),
+)
+"""Hard per-chunk call budget for structural recovery."""
+
+
+def detect_placeholder_mode(text: str) -> tuple:
+    """
+    Returns the unified placeholder format [idN].
+
+    Args:
+        text: Text (parameter kept for backward compatibility but unused)
+
+    Returns:
+        Tuple of (prefix, suffix, pattern) for the [idN] format
+    """
+    return (PLACEHOLDER_PREFIX, PLACEHOLDER_SUFFIX, PLACEHOLDER_PATTERN)
+
+
+def create_placeholder(tag_num: int, prefix: str = None, suffix: str = None) -> str:
+    """
+    Create a placeholder string for a given tag number.
+
+    Args:
+        tag_num: Tag number
+        prefix: Optional custom prefix (defaults to PLACEHOLDER_PREFIX)
+        suffix: Optional custom suffix (defaults to PLACEHOLDER_SUFFIX)
+
+    Returns:
+        Placeholder string like [id0]
+    """
+    if prefix is None:
+        prefix = PLACEHOLDER_PREFIX
+    if suffix is None:
+        suffix = PLACEHOLDER_SUFFIX
+    return f"{prefix}{tag_num}{suffix}"
+
+
+def create_example_placeholder(prefix: str = None, suffix: str = None) -> str:
+    """
+    Create an example placeholder for documentation/prompts.
+
+    Args:
+        prefix: Optional custom prefix
+        suffix: Optional custom suffix
+
+    Returns:
+        Example placeholder like [id0]
+    """
+    return create_placeholder(0, prefix, suffix)
+
+
+def detect_format_from_placeholder(sample_placeholder: str) -> str:
+    """
+    Returns the unified format name.
+
+    Args:
+        sample_placeholder: A sample placeholder (parameter kept for backward compatibility)
+
+    Returns:
+        Format name (always "id" for [idN] format)
+    """
+    return "id"
+
+
+# Sentence terminators
+SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '."', ".'", "?'", "!'", ":", ".)"])
+
+# EPUB-specific configuration
+NAMESPACES = {
+    'opf': 'http://www.idpf.org/2007/opf',
+    'dc': 'http://purl.org/dc/elements/1.1/',
+    'xhtml': 'http://www.w3.org/1999/xhtml',
+    'epub': 'http://www.idpf.org/2007/ops'
+}
+
+IGNORED_TAGS_EPUB = [
+    '{http://www.w3.org/1999/xhtml}script',
+    '{http://www.w3.org/1999/xhtml}style',
+    '{http://www.w3.org/1999/xhtml}meta',
+    '{http://www.w3.org/1999/xhtml}link'
+]
+
+CONTENT_BLOCK_TAGS_EPUB = [
+    '{http://www.w3.org/1999/xhtml}p', '{http://www.w3.org/1999/xhtml}div',
+    '{http://www.w3.org/1999/xhtml}li', '{http://www.w3.org/1999/xhtml}h1',
+    '{http://www.w3.org/1999/xhtml}h2', '{http://www.w3.org/1999/xhtml}h3',
+    '{http://www.w3.org/1999/xhtml}h4', '{http://www.w3.org/1999/xhtml}h5',
+    '{http://www.w3.org/1999/xhtml}h6', '{http://www.w3.org/1999/xhtml}blockquote',
+    '{http://www.w3.org/1999/xhtml}td', '{http://www.w3.org/1999/xhtml}th',
+    '{http://www.w3.org/1999/xhtml}caption',
+    '{http://www.w3.org/1999/xhtml}dt', '{http://www.w3.org/1999/xhtml}dd'
+]
+
+# Model family context size defaults (shared across providers)
+# Used as fallback when context size cannot be detected from the server
+# NOTE: Order matters! More specific patterns (gpt-4) must come before generic ones (gpt)
+MODEL_FAMILY_CONTEXT_DEFAULTS = {
+    "gpt-4": 128000,  # Must come before "gpt"
+    "gpt": 8192,
+    "claude": 100000,
+    "deepseek": 1_000_000,  # DeepSeek V4 models expose a 1M context window
+    "mistral": 32000,  # Mistral small has 32K, large/medium have 128K
+    "gemma": 8192,
+    "qwen": 8192,
+    "llama": 4096,
+    "phi": 2048,
+}
+DEFAULT_CONTEXT_FALLBACK = 2048
+
+
+@dataclass
+class TranslationConfig:
+    """Unified configuration for both CLI and web interfaces"""
+    
+    # Core settings
+    source_language: str = DEFAULT_SOURCE_LANGUAGE
+    target_language: str = DEFAULT_TARGET_LANGUAGE
+    model: str = DEFAULT_MODEL
+    api_endpoint: str = API_ENDPOINT
+    
+    # LLM Provider settings
+    llm_provider: str = LLM_PROVIDER
+    gemini_api_key: str = GEMINI_API_KEY
+    openai_api_key: str = OPENAI_API_KEY
+    openrouter_api_key: str = OPENROUTER_API_KEY
+    mistral_api_key: str = MISTRAL_API_KEY
+    deepseek_api_key: str = DEEPSEEK_API_KEY
+    poe_api_key: str = POE_API_KEY
+    nim_api_key: str = NIM_API_KEY
+
+    # LLM parameters
+    timeout: int = REQUEST_TIMEOUT
+    max_attempts: int = MAX_TRANSLATION_ATTEMPTS
+    retry_delay: int = 2  # Fixed retry delay in seconds
+    context_window: int = OLLAMA_NUM_CTX
+
+    # Context optimization
+    auto_adjust_context: bool = AUTO_ADJUST_CONTEXT
+    min_chunk_size: int = MIN_CHUNK_SIZE
+    max_chunk_size: int = MAX_CHUNK_SIZE
+
+    # Token-based chunking
+    max_tokens_per_chunk: int = MAX_TOKENS_PER_CHUNK
+    soft_limit_ratio: float = SOFT_LIMIT_RATIO
+
+    # Interface-specific
+    interface_type: str = "cli"  # or "web"
+    enable_colors: bool = True
+    enable_interruption: bool = False
+
+    @classmethod
+    def from_cli_args(cls, args) -> 'TranslationConfig':
+        """Create config from CLI arguments"""
+        return cls(
+            source_language=args.source_lang,
+            target_language=args.target_lang,
+            model=args.model,
+            api_endpoint=args.api_endpoint,
+            interface_type="cli",
+            enable_colors=not args.no_color,
+            llm_provider=getattr(args, 'provider', LLM_PROVIDER),
+            gemini_api_key=getattr(args, 'gemini_api_key', GEMINI_API_KEY),
+            openai_api_key=getattr(args, 'openai_api_key', OPENAI_API_KEY),
+            openrouter_api_key=getattr(args, 'openrouter_api_key', OPENROUTER_API_KEY),
+            mistral_api_key=getattr(args, 'mistral_api_key', MISTRAL_API_KEY),
+            deepseek_api_key=getattr(args, 'deepseek_api_key', DEEPSEEK_API_KEY),
+            poe_api_key=getattr(args, 'poe_api_key', POE_API_KEY),
+            nim_api_key=getattr(args, 'nim_api_key', NIM_API_KEY),
+            max_tokens_per_chunk=getattr(args, 'max_tokens_per_chunk', MAX_TOKENS_PER_CHUNK),
+            soft_limit_ratio=getattr(args, 'soft_limit_ratio', SOFT_LIMIT_RATIO)
+        )
+
+    @classmethod
+    def from_web_request(cls, request_data: dict) -> 'TranslationConfig':
+        """Create config from web request data"""
+        # Clamp chunker budget to the same [50, 1000] window the UI enforces,
+        # falling back to the .env default if the field is absent or malformed.
+        try:
+            requested_max_tokens = int(request_data.get('max_tokens_per_chunk', MAX_TOKENS_PER_CHUNK))
+            clamped_max_tokens = max(50, min(1000, requested_max_tokens))
+        except (TypeError, ValueError):
+            clamped_max_tokens = MAX_TOKENS_PER_CHUNK
+
+        return cls(
+            source_language=request_data.get('source_language', DEFAULT_SOURCE_LANGUAGE),
+            target_language=request_data.get('target_language', DEFAULT_TARGET_LANGUAGE),
+            model=request_data.get('model', DEFAULT_MODEL),
+            api_endpoint=request_data.get('llm_api_endpoint', API_ENDPOINT),
+            timeout=request_data.get('timeout', REQUEST_TIMEOUT),
+            max_attempts=request_data.get('max_attempts', MAX_TRANSLATION_ATTEMPTS),
+            retry_delay=request_data.get('retry_delay', 2),
+            context_window=request_data.get('context_window', OLLAMA_NUM_CTX),
+            auto_adjust_context=request_data.get('auto_adjust_context', AUTO_ADJUST_CONTEXT),
+            min_chunk_size=request_data.get('min_chunk_size', MIN_CHUNK_SIZE),
+            max_chunk_size=request_data.get('max_chunk_size', MAX_CHUNK_SIZE),
+            interface_type="web",
+            enable_interruption=True,
+            llm_provider=request_data.get('llm_provider', LLM_PROVIDER),
+            gemini_api_key=request_data.get('gemini_api_key', GEMINI_API_KEY),
+            openai_api_key=request_data.get('openai_api_key', OPENAI_API_KEY),
+            openrouter_api_key=request_data.get('openrouter_api_key', OPENROUTER_API_KEY),
+            mistral_api_key=request_data.get('mistral_api_key', MISTRAL_API_KEY),
+            deepseek_api_key=request_data.get('deepseek_api_key', DEEPSEEK_API_KEY),
+            poe_api_key=request_data.get('poe_api_key', POE_API_KEY),
+            nim_api_key=request_data.get('nim_api_key', NIM_API_KEY),
+            max_tokens_per_chunk=clamped_max_tokens,
+            soft_limit_ratio=request_data.get('soft_limit_ratio', SOFT_LIMIT_RATIO)
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization"""
+        return {
+            'source_language': self.source_language,
+            'target_language': self.target_language,
+            'model': self.model,
+            'api_endpoint': self.api_endpoint,
+            'timeout': self.timeout,
+            'max_attempts': self.max_attempts,
+            'retry_delay': self.retry_delay,
+            'context_window': self.context_window,
+            'llm_provider': self.llm_provider,
+            'gemini_api_key': self.gemini_api_key,
+            'openai_api_key': self.openai_api_key,
+            'openrouter_api_key': self.openrouter_api_key,
+            'mistral_api_key': self.mistral_api_key,
+            'deepseek_api_key': self.deepseek_api_key,
+            'poe_api_key': self.poe_api_key,
+            'nim_api_key': self.nim_api_key,
+            'max_tokens_per_chunk': self.max_tokens_per_chunk,
+            'soft_limit_ratio': self.soft_limit_ratio
+        }
+
+
+def detect_placeholder_format_in_text(text: str) -> tuple:
+    """
+    Returns the unified placeholder format [idN].
+
+    Args:
+        text: Text (parameter kept for backward compatibility but unused)
+
+    Returns:
+        (prefix, suffix) tuple for [idN] format
+
+    Example:
+        >>> detect_placeholder_format_in_text("Hello [id0] world [id1]")
+        ("[id", "]")
+    """
+    return PLACEHOLDER_PREFIX, PLACEHOLDER_SUFFIX
+
+
+def detect_existing_placeholder_format(text: str) -> tuple:
+    """
+    Returns the unified placeholder format [idN].
+
+    Args:
+        text: Text (parameter kept for backward compatibility but unused)
+
+    Returns:
+        Tuple of (prefix, suffix, pattern) for the [idN] format
+
+    Example:
+        >>> detect_existing_placeholder_format("Hello [id0] world [id1]")
+        ("[id", "]", r'\\[id(\\d+)\\]')
+    """
+    return (PLACEHOLDER_PREFIX, PLACEHOLDER_SUFFIX, PLACEHOLDER_PATTERN)

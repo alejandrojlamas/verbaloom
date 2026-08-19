@@ -1,0 +1,376 @@
+from __future__ import annotations
+
+from collections import deque
+
+import httpx
+import pytest
+
+import src.core.llm.providers.deepseek as deepseek_module
+from src.core.llm.providers.deepseek import DeepSeekProvider
+from src.core.llm.exceptions import ContentRiskError, InsufficientCreditsError, RateLimitError
+
+
+class _ScriptedClient:
+    def __init__(self, events):
+        self.events = deque(events)
+        self.calls = 0
+
+    async def post(self, *args, **kwargs):
+        self.calls += 1
+        event = self.events.popleft()
+        if isinstance(event, Exception):
+            raise event
+        return event
+
+
+def _response(status: int, payload: dict | None = None) -> httpx.Response:
+    request = httpx.Request("POST", "https://api.deepseek.test/chat/completions")
+    return httpx.Response(
+        status,
+        request=request,
+        json=payload or {"error": {"message": f"HTTP {status}"}},
+    )
+
+
+def _success() -> httpx.Response:
+    return _response(
+        200,
+        {
+            "choices": [{"message": {"content": "Traducción completa."}}],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 3},
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_deepseek_exposes_provider_length_truncation(monkeypatch):
+    client = _ScriptedClient([
+        _response(
+            200,
+            {
+                "choices": [{
+                    "message": {"content": "<TRANSLATION>Salida incompleta"},
+                    "finish_reason": "length",
+                }],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 128},
+            },
+        )
+    ])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is not None
+    assert result.was_truncated is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_event", ["timeout", 429, 503])
+async def test_deepseek_retries_timeout_rate_limit_and_server_errors(
+    monkeypatch,
+    first_event,
+):
+    request = httpx.Request("POST", "https://api.deepseek.test/chat/completions")
+    event = (
+        httpx.ReadTimeout("provider timeout", request=request)
+        if first_event == "timeout"
+        else _response(first_event)
+    )
+    client = _ScriptedClient([event, _success()])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    async def no_sleep(_seconds):
+        return None
+
+    async def no_wait_rate_limit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    monkeypatch.setattr(deepseek_module.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(deepseek_module, "handle_rate_limit", no_wait_rate_limit)
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is not None
+    assert result.content == "Traducción completa."
+    assert client.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_deepseek_insufficient_credits_pauses_without_retry(monkeypatch):
+    client = _ScriptedClient([_response(402)])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    with pytest.raises(InsufficientCreditsError) as exc_info:
+        await provider.generate("Translate this complete unit.")
+
+    assert isinstance(exc_info.value, RateLimitError)
+    assert exc_info.value.retryable is False
+    assert exc_info.value.provider == "deepseek"
+    assert client.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_401_fails_fast_without_wasting_a_retry(monkeypatch):
+    """An invalid API key is a permanent failure -- retrying the identical
+    request cannot fix it. Before this fix, the 401 branch raised a bare
+    ValueError that fell into the generic `except Exception` handler and
+    was retried like a transient network error, burning the one extra
+    attempt MAX_TRANSLATION_ATTEMPTS=2 budgets for a request that could
+    never succeed."""
+    client = _ScriptedClient([_response(401), _success()])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    monkeypatch.setattr(deepseek_module.asyncio, "sleep", no_sleep)
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is None
+    # Only the first (failing) call should have been made -- no retry burned
+    # on a request that can never succeed.
+    assert client.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_empty_choices_is_retried_not_silently_dropped(monkeypatch):
+    """A response with an empty/missing `choices` array used to `return None`
+    directly, skipping the retry loop entirely even though attempts remained
+    -- unlike every other transient failure branch (timeout, 5xx, JSON decode
+    error), which all retry. Malformed/empty responses can be transient
+    (provider hiccup) and deserve the same retry treatment."""
+    empty_choices_response = _response(200, {"choices": [], "usage": {}})
+    client = _ScriptedClient([empty_choices_response, _success()])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    monkeypatch.setattr(deepseek_module.asyncio, "sleep", no_sleep)
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is not None
+    assert result.content == "Traducción completa."
+    assert client.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_deepseek_content_risk_is_not_retried_with_identical_payload(monkeypatch):
+    client = _ScriptedClient([
+        _response(400, {"error": {"message": "Content Exists Risk"}}),
+    ])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    with pytest.raises(ContentRiskError) as exc_info:
+        await provider.generate("Translate this complete unit.")
+
+    assert exc_info.value.provider == "deepseek"
+    assert exc_info.value.retryable_with_smaller_unit is True
+    assert client.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_circuit_breaker_fails_fast_without_network_call(monkeypatch):
+    """Once the shared RetryManager's circuit breaker has opened (a
+    sustained run of plain connectivity failures on this provider
+    instance), further calls must fail immediately without even attempting
+    the network request -- the whole point of a circuit breaker is to stop
+    hammering a provider that is known to be down."""
+    client = _ScriptedClient([_success()])  # would succeed if ever called
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    provider._retry_manager._circuit_breaker.failure_threshold = 1
+    provider._retry_manager.record_attempt_result(False)
+    assert provider._retry_manager.get_circuit_state() == "open"
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is None
+    assert client.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_deepseek_transient_failure_records_circuit_breaker_failure(monkeypatch):
+    request = httpx.Request("POST", "https://api.deepseek.test/chat/completions")
+    client = _ScriptedClient([httpx.ReadTimeout("provider timeout", request=request)])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    monkeypatch.setattr(deepseek_module.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(deepseek_module, "MAX_TRANSLATION_ATTEMPTS", 1)
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is None
+    assert provider._retry_manager.get_circuit_state() == "closed"
+    # One recorded failure out of a threshold of 5 -- not yet open, but
+    # the failure must have been counted.
+    assert provider._retry_manager._circuit_breaker._failure_count == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_success_records_circuit_breaker_success(monkeypatch):
+    client = _ScriptedClient([_success()])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    # Pre-seed a failure count that a success should decay (closed-state
+    # behaviour of CircuitBreaker.record_success()).
+    provider._retry_manager._circuit_breaker._failure_count = 2
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is not None
+    assert provider._retry_manager._circuit_breaker._failure_count == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_content_risk_does_not_trip_circuit_breaker(monkeypatch):
+    """A content-policy refusal is a per-request/per-account condition, not
+    a signal that DeepSeek's connectivity is unhealthy -- it must not count
+    against the circuit breaker, or an author writing about a violent scene
+    could accidentally trip fail-fast for the rest of the book."""
+    client = _ScriptedClient([
+        _response(400, {"error": {"message": "Content Exists Risk"}}),
+    ])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    with pytest.raises(ContentRiskError):
+        await provider.generate("Translate this complete unit.")
+
+    assert provider._retry_manager.get_circuit_state() == "closed"
+    assert provider._retry_manager._circuit_breaker._failure_count == 0
+
+
+@pytest.mark.asyncio
+async def test_deepseek_insufficient_credits_does_not_trip_circuit_breaker(monkeypatch):
+    """A billing block is not a connectivity problem either -- it must not
+    trip the circuit breaker, which exists to protect against network/
+    provider-health issues, not account state."""
+    client = _ScriptedClient([_response(402)])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    with pytest.raises(InsufficientCreditsError):
+        await provider.generate("Translate this complete unit.")
+
+    assert provider._retry_manager.get_circuit_state() == "closed"
+    assert provider._retry_manager._circuit_breaker._failure_count == 0
+
+
+@pytest.mark.asyncio
+async def test_deepseek_401_does_not_trip_circuit_breaker(monkeypatch):
+    """An invalid API key is a credential problem, not a provider-health
+    signal -- must not count against the circuit breaker."""
+    client = _ScriptedClient([_response(401)])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is None
+    assert provider._retry_manager.get_circuit_state() == "closed"
+    assert provider._retry_manager._circuit_breaker._failure_count == 0

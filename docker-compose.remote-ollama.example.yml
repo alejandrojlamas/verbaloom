@@ -1,0 +1,39 @@
+version: '3.8'
+
+# Example: Docker Compose with remote Ollama server
+# 
+# If your Ollama server is on a different machine in your local network,
+# use 'extra_hosts' to resolve the server hostname from the container.
+#
+# Steps:
+# 1. Replace 'ollama-server.local' with your server's hostname or IP
+# 2. Replace '192.168.1.100' with your Ollama server's IP address
+# 3. Adjust other environment variables as needed
+
+services:
+  translate-book:
+    image: ghcr.io/hydropix/translatebookswithllms:latest
+    ports:
+      - "127.0.0.1:5000:5000"
+    environment:
+      - API_ENDPOINT=http://ollama-server.local:11434/api/generate
+      - DEFAULT_MODEL=translategemma:27b-it-q8_0
+      - LLM_PROVIDER=ollama
+      - PORT=5000
+      - HOST=0.0.0.0
+      - TBL_ALLOW_NETWORK_BIND=true
+      - REQUEST_TIMEOUT=9000
+      - MAX_TRANSLATION_ATTEMPTS=2500
+      - MAIN_CHUNK_SIZE=1000
+      - AUTO_ADJUST_CONTEXT=true
+      - OLLAMA_NUM_CTX=131072
+      - DEFAULT_TARGET_LANGUAGE=Italian
+      - SIGNATURE_ENABLED=false
+      - DEBUG_MODE=true
+    extra_hosts:
+      # Replace 'ollama-server.local' with your server's hostname
+      # Replace 'YOUR_OLLAMA_SERVER_IP' with your server's IP address
+      - "ollama-server.local:YOUR_OLLAMA_SERVER_IP"
+    volumes:
+      - ./translated_files:/app/translated_files
+      - ./logs:/app/logs

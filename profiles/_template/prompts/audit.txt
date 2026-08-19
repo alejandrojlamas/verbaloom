@@ -1,0 +1,2 @@
+Audit the candidate against the source, active profile, and approved glossary.
+Return structured JSON with scores, issues, glossary_suggestions, and summary.
