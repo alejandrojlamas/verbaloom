@@ -53,6 +53,39 @@ E = mc^2
     assert by_type["watermark"].policy == "exclude"
 
 
+def test_classifier_recognizes_flattened_lexical_glossary_entries():
+    source = (
+        "Each entry ends with a book and line reference. "
+        "Acastus a-kas´-tus ): king of Dulichium.14.340. "
+        "Achaean a-kee´-an ): inhabitants of Achaea.1.272. "
+        "Acheron a´-ker-on ): a mythical river.10.516. "
+        "Achilles a-kil´-eez ): a Greek warrior.3.106."
+    )
+
+    block_type, policy, confidence, strategy, _notes = (
+        DocumentBlockClassifier(source_type="epub").classify_block([source])
+    )
+
+    assert block_type == "glossary"
+    assert policy == "translate"
+    assert confidence >= 0.85
+    assert strategy == "translate_definitions_preserve_lexical_structure"
+
+
+def test_classifier_recognizes_dense_pronunciation_key():
+    source = (
+        "PRONUNCIATION KEY a as in cat ah as in father ai as in light "
+        "ee as in street u as in us you as in you zh as in vision"
+    )
+
+    block_type, policy, _confidence, _strategy, _notes = (
+        DocumentBlockClassifier(source_type="epub").classify_block([source])
+    )
+
+    assert block_type == "glossary"
+    assert policy == "translate"
+
+
 def test_classifier_recognizes_flattened_epub_endnotes_with_bare_urls():
     source = (
         "Notes Epigraphs “It is said”: Joseph Weizenbaum, "

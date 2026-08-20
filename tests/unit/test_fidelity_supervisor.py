@@ -3334,6 +3334,76 @@ def test_target_language_gate_defers_translated_critical_apparatus_registry():
     }
 
 
+def test_target_language_gate_defers_identity_data_in_translated_glossary():
+    source = (
+        "Each entry ends with a book and line reference. "
+        "Acastus a-kas´-tus ): king of Dulichium.14.340. "
+        "Achaean a-kee´-an ): inhabitants of Achaea.1.272. "
+        "Heracles.2.120. Alector al-ek´-tor ): father of Leonteus.4.10."
+    )
+    candidate = (
+        "Cada entrada termina con una referencia al libro y la línea. "
+        "Acasto a-kas´-tus ): rey de Duliquio.14.340. "
+        "Aqueo a-kee´-an ): habitantes de Acaya.1.272. "
+        "Heracles.2.120. Alector al-ek´-tor ): padre de Leonteo.4.10."
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=1,
+        phase="final_epub_unit_audit",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "glossary"},
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections
+    }
+
+
+def test_target_language_gate_keeps_pronunciation_examples_in_glossary():
+    source = (
+        "PRONUNCIATION KEY a as in cat ah as in father ai as in light "
+        "u as in us you as in you zh as in vision; the mark identifies stress."
+    )
+    candidate = (
+        "CLAVE DE PRONUNCIACIÓN: a como en cat, ah como en father, "
+        "ai como en light, u como en us, you como en you y zh como en vision; "
+        "la marca identifica la sílaba acentuada."
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=1,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "glossary"},
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections
+    }
+
+
+def test_target_language_gate_still_rejects_source_pronoun_in_narrative():
+    decision = assess_fidelity(
+        "They told you that you should wait for the train.",
+        "Ellos dijeron que you debía esperar el tren porque ya era tarde.",
+        chunk_index=1,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+
+    assert "source_language_residual" in {
+        item.code for item in decision.rejections
+    }
+
+
 def test_target_language_gate_rejects_exact_critical_apparatus_echo():
     source = (
         "Chapter 3. On Marcus Loew, see Robert Sobel, Marcus Loew: An Artist in "

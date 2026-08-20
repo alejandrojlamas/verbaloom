@@ -395,8 +395,8 @@ def _structure_recovery_document_context(
             )
         except Exception:
             block_type, confidence = "", 0.0
-        if block_type == "critical_apparatus" and confidence >= 0.70:
-            return "critical_apparatus"
+        if block_type in {"critical_apparatus", "glossary"} and confidence >= 0.70:
+            return block_type
     return ""
 
 
@@ -429,6 +429,17 @@ def _translation_options_for_document_context(
             "headers, descriptions, and explanatory cells. Never infer a "
             "proper noun absent from the source or merge, omit, or reorder "
             "cells."
+        )
+    elif context == "glossary":
+        instruction = (
+            "LEXICAL GLOSSARY POLICY: keep every entry, its order, pronunciation "
+            "guide, locator, and cross-reference. Translate definitions and "
+            "explanatory prose completely. Use approved target-language forms "
+            "for headwords and names when available; otherwise choose the "
+            "contextually correct canonical form consistently. Pronunciation "
+            "spellings and cited source-language examples are metalinguistic "
+            "data, not untranslated narrative. Do not merge entries, invent "
+            "definitions, or turn the glossary into running prose."
         )
     else:
         return options

@@ -112,6 +112,45 @@ def test_document_context_detects_index_from_xhtml_class_names():
     )
 
 
+def test_document_context_detects_glossary_from_lexical_records():
+    source = (
+        "[id0]Acastus[id1]a-kas´-tus[id2]): king of Dulichium.14.340."
+        "[id3]Achaean[id4]a-kee´-an[id5]): inhabitants of Achaea.1.272."
+        "[id6]Acheron[id7]a´-ker-on[id8]): a mythical river.10.516."
+    )
+    tag_map = {
+        "[id0]": "<p>", "[id1]": "<b>", "[id2]": "</b></p>",
+        "[id3]": "<p>", "[id4]": "<b>", "[id5]": "</b></p>",
+        "[id6]": "<p>", "[id7]": "<b>", "[id8]": "</b></p>",
+    }
+
+    assert (
+        xhtml_translator._structure_recovery_document_context(
+            tag_map,
+            source,
+            "text/appendix.xhtml",
+        )
+        == "glossary"
+    )
+
+
+def test_glossary_translation_policy_is_bounded_and_not_duplicated():
+    options = {"custom_instructions": "Keep source order."}
+
+    first = xhtml_translator._translation_options_for_document_context(
+        options,
+        "glossary",
+    )
+    second = xhtml_translator._translation_options_for_document_context(
+        first,
+        "glossary",
+    )
+
+    assert first["_document_block_context"] == "glossary"
+    assert "LEXICAL GLOSSARY POLICY" in first["custom_instructions"]
+    assert second["custom_instructions"].count("LEXICAL GLOSSARY POLICY") == 1
+
+
 def test_index_translation_policy_is_bounded_and_not_duplicated():
     options = {"custom_instructions": "Keep the source order."}
 

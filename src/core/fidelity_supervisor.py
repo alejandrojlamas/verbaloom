@@ -883,7 +883,7 @@ def _source_language_residual_issue(
             (prompt_options or {}).get("_document_block_context") or ""
         ).strip().casefold()
         defer_to_auditor = (
-            explicit_context == "critical_apparatus"
+            explicit_context in {"critical_apparatus", "glossary"}
             and _translated_critical_apparatus_has_target_evidence(
                 source,
                 candidate,
@@ -895,7 +895,7 @@ def _source_language_residual_issue(
             "source_language_residual",
             "warning" if defer_to_auditor else "reject",
             (
-                "El aparato crítico conserva títulos o metadatos que requieren "
+                "El bloque de referencia conserva identidad o notación que requiere "
                 "revisión contextual"
                 if defer_to_auditor
                 else "El candidato conserva frases del idioma fuente que parecen traducibles"
@@ -2180,14 +2180,14 @@ def _translated_critical_apparatus_has_target_evidence(
     target_language: str,
     prompt_options: Optional[Mapping[str, Any]] = None,
 ) -> bool:
-    """Allow translated citation prose while preserving names and work titles.
+    """Allow translated reference prose while preserving identity data.
 
-    Bibliographies can remain statistically dominated by the source language
-    after their connective prose has been translated because most words are
-    immutable author names and titles. This exemption is intentionally narrow:
-    the source must classify as critical apparatus and the candidate must add
-    several target-language function words. Exact or near-exact source echoes
-    are still rejected by the earlier fidelity checks.
+    Bibliographies and lexical glossaries can remain statistically dominated
+    by the source language after their definitions or connective prose have
+    been translated because names, titles and pronunciation spellings are
+    identity data. The source must classify as one of those reference blocks
+    and the candidate must add several target-language function words. Exact
+    or near-exact source echoes are still rejected by earlier fidelity checks.
     """
     structural_source = _clean_structural_language_text(
         source,
@@ -2202,15 +2202,16 @@ def _translated_critical_apparatus_has_target_evidence(
         (prompt_options or {}).get("_document_block_context") or ""
     ).strip().casefold()
     block_type, confidence = "", 0.0
-    if context == "critical_apparatus":
-        block_type, confidence = "critical_apparatus", 1.0
+    reference_block_types = {"critical_apparatus", "glossary"}
+    if context in reference_block_types:
+        block_type, confidence = context, 1.0
     else:
         block_type, _policy, confidence, _strategy, _notes = (
             DocumentBlockClassifier(source_type="text").classify_block(
                 structural_source.splitlines()
             )
         )
-    if block_type != "critical_apparatus" or confidence < 0.70:
+    if block_type not in reference_block_types or confidence < 0.70:
         return False
 
     marker = _target_language_marker_pattern(target_language)

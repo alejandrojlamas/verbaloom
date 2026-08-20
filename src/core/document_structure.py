@@ -19,6 +19,7 @@ BlockType = Literal[
     "narrative",
     "title",
     "toc",
+    "glossary",
     "note",
     "table",
     "formula",
@@ -80,6 +81,22 @@ _TOC_ENTRY_RE = re.compile(
     r"(?:\s*\.{3,}\s*|\s{2,})(?:\d{1,5}|[ivxlcdm]{1,10})\s*$",
     re.IGNORECASE,
 )
+_GLOSSARY_HEADING_RE = re.compile(
+    r"^\s*(?:glossar(?:y|ies)|glosario|lexicon|l[eé]xico|"
+    r"pronunciation\s+key|clave\s+de\s+pronunciaci[oó]n)\s*$",
+    re.IGNORECASE,
+)
+_PRONUNCIATION_MAPPING_RE = re.compile(
+    r"\b[a-zà-öø-ÿ]{1,8}(?:[´'’\-][a-zà-öø-ÿ]{1,12}){0,5}\s+"
+    r"(?:as\s+in|como\s+en)\s+[a-zà-öø-ÿ]{1,30}\b",
+    re.IGNORECASE,
+)
+_GLOSSARY_PHONETIC_ENTRY_RE = re.compile(
+    r"(?<!\w)[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ’'\-]{1,48}\s+"
+    r"[a-zà-öø-ÿ]{1,12}(?:[´'’\-]+[a-zà-öø-ÿ]{1,16}){1,8}"
+    r"\s*\)?\s*:",
+)
+_GLOSSARY_LOCATOR_RE = re.compile(r"\b(?:[1-9]|1\d|2[0-4])\.\d{1,4}\.")
 _NOTE_RE = re.compile(r"^\s*(?:\[\d{1,4}\]|\d{1,4}\.|nota\s+\d{1,4}|note\s+\d{1,4})\s+", re.IGNORECASE)
 _CRITICAL_APPARATUS_RE = re.compile(
     r"\b(?:ibid\.|op\. cit\.|doi:|isbn|issn|bibliograf[ií]a|references|works cited|"
@@ -302,6 +319,14 @@ class DocumentBlockClassifier:
         # identity-bearing titles from untranslated narrative prose.
         if _is_critical_apparatus_block(text, lines):
             return "critical_apparatus", "preserve", 0.74, "preserve_bibliographic_apparatus", []
+        if _is_glossary_block(text, lines):
+            return (
+                "glossary",
+                "translate",
+                0.90,
+                "translate_definitions_preserve_lexical_structure",
+                [],
+            )
         if _is_table_block(lines):
             return "table", "reconstruct", 0.88, "normalize_or_preserve_table_grid", []
         if _is_formula_block(text, lines):
@@ -420,6 +445,43 @@ def _is_note_block(lines: list[str]) -> bool:
     if _NOTE_RE.match(lines[0]):
         return True
     return len(lines) <= 3 and bool(re.match(r"^\s*[*†‡]\s+", lines[0]))
+
+
+def _is_glossary_block(text: str, lines: list[str]) -> bool:
+    """Recognize lexical reference blocks without relying on a book profile.
+
+    EPUBs frequently flatten an entire glossary page into one chunk. A title,
+    a dense pronunciation key, or repeated headword/pronunciation/locator
+    records is stronger evidence than any individual retained source word.
+    """
+    if not lines:
+        return False
+    if any(_GLOSSARY_HEADING_RE.match(line) for line in lines[:2]):
+        return True
+
+    pronunciation_mappings = len(_PRONUNCIATION_MAPPING_RE.findall(text))
+    if pronunciation_mappings >= 3:
+        return True
+
+    phonetic_entries = len(_GLOSSARY_PHONETIC_ENTRY_RE.findall(text))
+    locators = len(_GLOSSARY_LOCATOR_RE.findall(text))
+    if phonetic_entries >= 3 and locators >= 2:
+        return True
+
+    lexical_lines = 0
+    for line in lines:
+        if ":" not in line:
+            continue
+        headword, definition = line.split(":", 1)
+        words = _TITLE_WORD_RE.findall(headword)
+        if (
+            definition.strip()
+            and 1 <= len(words) <= 5
+            and len(headword) <= 60
+            and not re.search(r"[,.!?;]", headword)
+        ):
+            lexical_lines += 1
+    return lexical_lines >= 3 and lexical_lines / max(1, len(lines)) >= 0.55
 
 
 def _is_critical_apparatus_block(text: str, lines: list[str]) -> bool:

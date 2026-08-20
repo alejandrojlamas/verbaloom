@@ -182,6 +182,16 @@ _DISTINCT_SOURCE_PRONOUNS = {
     "german": {"ich", "du", "wir", "ihr", "euch", "mein", "dein", "unser"},
     "spanish": {"nosotros", "ustedes", "ellos", "ellas", "nuestro", "nuestra"},
 }
+_PRONUNCIATION_KEY_HEADING_RE = re.compile(
+    r"\b(?:pronunciation\s+key|clave\s+de\s+pronunciaci[oó]n|"
+    r"guide\s+to\s+pronunciation|gu[ií]a\s+de\s+pronunciaci[oó]n)\b",
+    re.IGNORECASE,
+)
+_PRONUNCIATION_MAPPING_RE = re.compile(
+    r"\b[a-zà-öø-ÿ]{1,8}(?:[´'’\-][a-zà-öø-ÿ]{1,12}){0,5}\s+"
+    r"(?:as\s+in|como\s+en)\s+[a-zà-öø-ÿ]{1,30}\b",
+    re.IGNORECASE,
+)
 
 
 def normalize_language_name(value: str) -> str:
@@ -467,6 +477,8 @@ def untranslated_source_pronouns(
     target_connectives = _LANGUAGE_CONNECTIVE_RE.get(target_key)
     if not pronouns or target_connectives is None or source_key == target_key:
         return []
+    if _looks_like_dense_pronunciation_key(source_text):
+        return []
 
     source_folded = str(source_text or "").casefold()
     findings: list[str] = []
@@ -484,3 +496,16 @@ def untranslated_source_pronouns(
         if token not in findings:
             findings.append(token)
     return findings
+
+
+def _looks_like_dense_pronunciation_key(text: str) -> bool:
+    value = re.sub(r"\[id\d+\]", " ", str(text or ""))
+    mapping_count = len(_PRONUNCIATION_MAPPING_RE.findall(value))
+    return bool(
+        mapping_count >= 3
+        and (
+            _PRONUNCIATION_KEY_HEADING_RE.search(value)
+            or mapping_count >= 6
+            or re.search(r"\bmarks?\s+a\s+stressed\s+syllable\b", value, re.I)
+        )
+    )
