@@ -882,8 +882,18 @@ def _source_language_residual_issue(
         explicit_context = str(
             (prompt_options or {}).get("_document_block_context") or ""
         ).strip().casefold()
-        defer_to_auditor = (
-            explicit_context in {"critical_apparatus", "glossary"}
+        inferred_block_type = ""
+        if explicit_context not in {"critical_apparatus", "glossary"}:
+            inferred_block_type, _policy, _confidence, _strategy, _notes = (
+                DocumentBlockClassifier(source_type="text").classify_block(
+                    source.splitlines()
+                )
+            )
+        defer_to_auditor = bool(
+            (
+                explicit_context in {"critical_apparatus", "glossary"}
+                or inferred_block_type == "glossary"
+            )
             and _translated_critical_apparatus_has_target_evidence(
                 source,
                 candidate,
@@ -2219,6 +2229,13 @@ def _translated_critical_apparatus_has_target_evidence(
         return False
     source_markers = _count_markers(marker, cleaned_source)
     candidate_markers = _count_markers(marker, cleaned_candidate)
+    if block_type == "glossary":
+        # A valid lexical entry may translate to only two words (for example,
+        # ``grandfather of`` -> ``abuelo de``) while most of the record remains
+        # a proper name and pronunciation key. One new target-language marker
+        # is sufficient here because exact/near-exact echoes are rejected by
+        # the earlier untranslated-source checks.
+        return candidate_markers >= max(1, source_markers + 1)
     return candidate_markers >= max(3, source_markers + 2)
 
 

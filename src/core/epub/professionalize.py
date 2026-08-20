@@ -33,7 +33,38 @@ _FURNITURE_CLASS = "verbaloom-furniture"
 _SCENE_BREAK_CLASS = "verbaloom-scene-break"
 _SECTION_MARKER_CLASS = "verbaloom-section-marker"
 _MERGED_CONTINUATION_CLASS = "verbaloom-merged-continuation"
+_BLOCKQUOTE_FLOW_REPAIR_CLASS = "verbaloom-blockquote-flow-repair"
 _LEGACY_COVER_CLASS = "tbl-cover-page"
+
+_BLOCK_LEVEL_ELEMENTS = {
+    "address",
+    "article",
+    "aside",
+    "blockquote",
+    "details",
+    "div",
+    "dl",
+    "fieldset",
+    "figure",
+    "footer",
+    "form",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "header",
+    "hr",
+    "main",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "section",
+    "table",
+    "ul",
+}
 
 _PROFESSIONAL_CSS = f"""
 /* {VERBALOOM_CSS_MARKER} */
@@ -214,6 +245,8 @@ class ProfessionalizationReport:
     css_created: int = 0
     viewport_documents: int = 0
     obsolete_attributes_removed: int = 0
+    flow_content_repairs: int = 0
+    image_alt_repairs: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -234,6 +267,157 @@ def _add_class(element: etree._Element, class_name: str) -> bool:
     classes.append(class_name)
     element.set("class", " ".join(classes))
     return True
+
+
+def _is_block_level_element(element: etree._Element) -> bool:
+    return bool(
+        isinstance(element.tag, str)
+        and _local_name(element) in _BLOCK_LEVEL_ELEMENTS
+    )
+
+
+def count_invalid_blockquote_inline_runs(root: etree._Element) -> int:
+    """Count direct inline-content runs that make EPUB blockquotes invalid.
+
+    EPUB 2/3 validators require flow content inside ``blockquote``. Some source
+    books place anchors or plain text directly below it. Counting contiguous
+    runs lets the publication gate prove that a later wrapper is a bounded,
+    source-derived repair instead of an arbitrary DOM change.
+    """
+    runs = 0
+    for blockquote in root.xpath(
+        "self::*[local-name()='blockquote'] | .//*[local-name()='blockquote']"
+    ):
+        in_inline_run = bool(str(blockquote.text or "").strip())
+        runs += int(in_inline_run)
+        for child in blockquote:
+            if _is_block_level_element(child) or not isinstance(child.tag, str):
+                in_inline_run = False
+            elif not in_inline_run:
+                runs += 1
+                in_inline_run = True
+            if str(child.tail or "").strip() and not in_inline_run:
+                runs += 1
+                in_inline_run = True
+    return runs
+
+
+def repair_invalid_blockquote_inline_runs(root: etree._Element) -> int:
+    """Wrap invalid direct blockquote inline runs in neutral XHTML ``div``s.
+
+    The transform is deterministic and idempotent. It preserves every inline
+    element, attribute, text node and link target while adding only the flow
+    container required by EPUBCheck.
+    """
+    repairs = 0
+
+    def append_text(container: etree._Element, value: str) -> None:
+        if not value:
+            return
+        if len(container):
+            last = container[-1]
+            last.tail = f"{last.tail or ''}{value}"
+        else:
+            container.text = f"{container.text or ''}{value}"
+
+    for blockquote in root.xpath("//*[local-name()='blockquote']"):
+        if not count_invalid_blockquote_inline_runs(blockquote):
+            continue
+
+        tokens: list[tuple[str, object]] = [("text", blockquote.text or "")]
+        children = list(blockquote)
+        for child in children:
+            tokens.append(("element", child))
+            tokens.append(("text", child.tail or ""))
+
+        blockquote.text = None
+        for child in children:
+            child.tail = None
+            blockquote.remove(child)
+
+        wrapper: Optional[etree._Element] = None
+        pending_whitespace = ""
+        namespace = etree.QName(blockquote).namespace or XHTML_NS
+
+        for kind, payload in tokens:
+            if kind == "text":
+                value = str(payload or "")
+                if wrapper is not None:
+                    append_text(wrapper, value)
+                elif value.strip():
+                    wrapper = etree.SubElement(
+                        blockquote,
+                        _qname(namespace, "div"),
+                    )
+                    wrapper.set("class", _BLOCKQUOTE_FLOW_REPAIR_CLASS)
+                    repairs += 1
+                    append_text(wrapper, pending_whitespace + value)
+                    pending_whitespace = ""
+                else:
+                    pending_whitespace += value
+                continue
+
+            child = payload
+            if not isinstance(child, etree._Element):
+                continue
+            if _is_block_level_element(child) or not isinstance(child.tag, str):
+                if pending_whitespace:
+                    if len(blockquote):
+                        previous = blockquote[-1]
+                        previous.tail = f"{previous.tail or ''}{pending_whitespace}"
+                    else:
+                        blockquote.text = f"{blockquote.text or ''}{pending_whitespace}"
+                    pending_whitespace = ""
+                blockquote.append(child)
+                wrapper = None
+                continue
+
+            if wrapper is None:
+                wrapper = etree.SubElement(
+                    blockquote,
+                    _qname(namespace, "div"),
+                )
+                wrapper.set("class", _BLOCKQUOTE_FLOW_REPAIR_CLASS)
+                repairs += 1
+                append_text(wrapper, pending_whitespace)
+                pending_whitespace = ""
+            wrapper.append(child)
+
+        if pending_whitespace:
+            if len(blockquote):
+                previous = blockquote[-1]
+                previous.tail = f"{previous.tail or ''}{pending_whitespace}"
+            else:
+                blockquote.text = f"{blockquote.text or ''}{pending_whitespace}"
+
+    return repairs
+
+
+def ensure_image_alt_attributes(root: etree._Element) -> int:
+    """Supply required, source-aware ``alt`` attributes without inventing prose.
+
+    A translated title or nearby figure caption is reused when available.
+    Otherwise an empty alt marks the image as decorative, which is valid EPUB
+    and more honest than synthesizing a description the source never supplied.
+    """
+    repairs = 0
+    for image in root.xpath("//*[local-name()='img']"):
+        if image.get("alt") is not None:
+            continue
+        alt_text = re.sub(r"\s+", " ", str(image.get("title") or "")).strip()
+        if not alt_text:
+            figures = image.xpath("ancestor::*[local-name()='figure'][1]")
+            if figures:
+                captions = figures[0].xpath(".//*[local-name()='figcaption'][1]")
+                if captions:
+                    alt_text = re.sub(
+                        r"\s+",
+                        " ",
+                        " ".join(captions[0].itertext()),
+                    ).strip()
+        image.set("alt", alt_text)
+        repairs += 1
+    return repairs
 
 
 def _normalized_identity(value: str) -> str:
@@ -651,6 +835,8 @@ def apply_professional_epub_layer(
 
     for doc in parsed_xhtml_docs.values():
         report.obsolete_attributes_removed += _remove_obsolete_epub_attributes(doc)
+        report.flow_content_repairs += repair_invalid_blockquote_inline_runs(doc)
+        report.image_alt_repairs += ensure_image_alt_attributes(doc)
         report.viewport_documents += int(_ensure_mobile_viewport(doc))
         body = next(iter(doc.xpath("//*[local-name()='body']")), None)
         if body is None:

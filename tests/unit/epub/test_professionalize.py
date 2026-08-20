@@ -98,6 +98,88 @@ def test_mobile_viewport_is_idempotent(tmp_path: Path):
     assert len(doc.xpath("//*[local-name()='meta' and @name='viewport']")) == 1
 
 
+def test_repairs_invalid_blockquote_inline_runs_without_changing_links(tmp_path: Path):
+    (tmp_path / "images").mkdir()
+    Image.new("RGB", (600, 900), "navy").save(tmp_path / "images" / "first.jpg")
+    (tmp_path / "book.css").write_text("img { max-width: 100%; }", encoding="utf-8")
+    opf = _package()
+    doc = etree.fromstring(b"""
+    <html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>
+      <blockquote>
+        <a href="#one">First title</a>
+        <a href="#two">Second title</a>
+      </blockquote>
+      <p id="one">One.</p><p id="two">Two.</p>
+    </body></html>
+    """)
+
+    first = apply_professional_epub_layer(
+        opf_tree=opf,
+        opf_dir=tmp_path,
+        content_files=["chapter.xhtml"],
+        parsed_xhtml_docs={str(tmp_path / "chapter.xhtml"): doc},
+        target_language="Spanish",
+    )
+    second = apply_professional_epub_layer(
+        opf_tree=opf,
+        opf_dir=tmp_path,
+        content_files=["chapter.xhtml"],
+        parsed_xhtml_docs={str(tmp_path / "chapter.xhtml"): doc},
+        target_language="Spanish",
+    )
+
+    wrappers = doc.xpath(
+        "//*[local-name()='blockquote']/*[local-name()='div' and "
+        "contains(concat(' ', normalize-space(@class), ' '), "
+        "' verbaloom-blockquote-flow-repair ')]"
+    )
+    assert first.flow_content_repairs == 1
+    assert second.flow_content_repairs == 0
+    assert len(wrappers) == 1
+    assert wrappers[0].xpath("./*[local-name()='a']/@href") == ["#one", "#two"]
+    assert [" ".join(item.itertext()).strip() for item in wrappers[0]] == [
+        "First title",
+        "Second title",
+    ]
+
+
+def test_adds_required_image_alt_attributes_idempotently(tmp_path: Path):
+    (tmp_path / "images").mkdir()
+    Image.new("RGB", (600, 900), "navy").save(tmp_path / "images" / "first.jpg")
+    (tmp_path / "book.css").write_text("img { max-width: 100%; }", encoding="utf-8")
+    opf = _package()
+    doc = etree.fromstring(b"""
+    <html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>
+      <figure><img src="images/first.jpg"/><figcaption>Translated map caption</figcaption></figure>
+      <img src="images/decorative.jpg"/>
+      <img src="images/existing.jpg" alt="Existing description"/>
+    </body></html>
+    """)
+
+    first = apply_professional_epub_layer(
+        opf_tree=opf,
+        opf_dir=tmp_path,
+        content_files=["chapter.xhtml"],
+        parsed_xhtml_docs={str(tmp_path / "chapter.xhtml"): doc},
+        target_language="Spanish",
+    )
+    second = apply_professional_epub_layer(
+        opf_tree=opf,
+        opf_dir=tmp_path,
+        content_files=["chapter.xhtml"],
+        parsed_xhtml_docs={str(tmp_path / "chapter.xhtml"): doc},
+        target_language="Spanish",
+    )
+
+    assert first.image_alt_repairs == 2
+    assert second.image_alt_repairs == 0
+    assert doc.xpath("//*[local-name()='img']/@alt") == [
+        "Translated map caption",
+        "",
+        "Existing description",
+    ]
+
+
 def test_preserves_rich_publisher_css_byte_for_byte(tmp_path: Path):
     (tmp_path / "images").mkdir()
     Image.new("RGB", (600, 900), "navy").save(tmp_path / "images" / "first.jpg")

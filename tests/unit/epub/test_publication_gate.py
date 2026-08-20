@@ -27,10 +27,11 @@ def _write_epub(
     declare_cover=False,
     guide_cover=False,
     paragraph_attributes: list[str] | None = None,
+    body_markup: str | None = None,
 ):
     href = "missing.xhtml#note" if broken_link else f"{chapter_name}#note"
     attributes = paragraph_attributes or [""] * len(paragraphs)
-    body = "".join(
+    body = body_markup if body_markup is not None else "".join(
         f"<p{attribute}>{text}</p>"
         for text, attribute in zip(paragraphs, attributes)
     )
@@ -104,9 +105,85 @@ def test_publication_gate_accepts_complete_structurally_preserved_translation(tm
     )
 
     assert report.publishable is True, report.errors
+    assert report.source_language_units == 0
+    assert report.mixed_language_units == 0
     assert report.source_units == report.audited_units
     assert report.preserved_images == 1
     assert report.broken_links == 0
+
+
+def test_publication_gate_accepts_bounded_blockquote_flow_repair(tmp_path):
+    source = tmp_path / "source-blockquote.epub"
+    output = tmp_path / "output-blockquote.epub"
+    _write_epub(
+        source,
+        language="en",
+        html_language="en",
+        paragraphs=[],
+        body_markup=(
+            '<blockquote><a href="chapter.xhtml#note">The World and Its '
+            "People</a></blockquote>"
+        ),
+    )
+    _write_epub(
+        output,
+        language="es",
+        html_language="es",
+        paragraphs=[],
+        body_markup=(
+            '<blockquote><div class="verbaloom-blockquote-flow-repair">'
+            '<a href="chapter.xhtml#note">El mundo y sus habitantes</a>'
+            "</div></blockquote>"
+        ),
+    )
+
+    report = audit_epub_publication(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert report.publishable is True, report.errors
+    assert not any("element structure changed" in item for item in report.errors)
+    assert report.dom_boundary_structural_mismatches == 0
+
+
+def test_publication_gate_rejects_unproven_added_div(tmp_path):
+    source = tmp_path / "source-div.epub"
+    output = tmp_path / "output-div.epub"
+    source_text = (
+        "They crossed the valley at dawn and continued toward the distant city."
+    )
+    output_text = (
+        "Cruzaron el valle al amanecer y siguieron hacia la ciudad distante."
+    )
+    _write_epub(
+        source,
+        language="en",
+        html_language="en",
+        paragraphs=[],
+        body_markup=f"<p>{source_text}</p>",
+    )
+    _write_epub(
+        output,
+        language="es",
+        html_language="es",
+        paragraphs=[],
+        body_markup=f"<div><p>{output_text}</p></div>",
+    )
+
+    report = audit_epub_publication(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert report.publishable is False
+    assert any("element structure changed" in item for item in report.errors)
 
 
 def test_publication_gate_finds_homebrew_epubcheck_without_service_path(
@@ -468,6 +545,45 @@ def test_publication_gate_preserves_numbered_bibliographic_notes(tmp_path):
             "Pitman, 1981.",
             "2 . Amy Cuddy, “Your Body Language May Shape Who You Are,” TED, "
             "junio de 2012.",
+        ],
+    )
+
+    report = audit_epub_publication(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert report.publishable is True, report.errors
+    assert report.source_language_units == 0
+    assert report.mixed_language_units == 0
+
+
+def test_publication_gate_accepts_translated_glossary_with_identity_data(tmp_path):
+    source = tmp_path / "source-glossary.epub"
+    output = tmp_path / "output-glossary.epub"
+    _write_epub(
+        source,
+        language="en",
+        html_language="en",
+        paragraphs=[
+            "GLOSSARY PRONUNCIATION KEY: a as in cat; ah as in father.",
+            "Acastus ( a-kas-tus ): king of Dulichium. 14.340.",
+            "Achaean ( a-kee-an ): inhabitants of Achaea. 1.272.",
+            "Aretias ( a-ree-tee-as ): grandfather of Amphinomus. 18.414.",
+        ],
+    )
+    _write_epub(
+        output,
+        language="es",
+        html_language="es",
+        paragraphs=[
+            "GLOSARIO Y CLAVE DE PRONUNCIACIÓN: a como en cat; ah como en father.",
+            "Acasto ( a-kas-tus ): rey de Duliquio. 14.340.",
+            "Aqueo ( a-kee-an ): habitantes de Acaya. 1.272.",
+            "Aretias ( a-ree-tee-as ): abuelo de Anfínomo. 18.414.",
         ],
     )
 

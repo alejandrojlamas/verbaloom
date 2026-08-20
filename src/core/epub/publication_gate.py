@@ -22,6 +22,7 @@ import zipfile
 
 from lxml import etree
 
+from src.core.document_structure import DocumentBlockClassifier
 from src.core.fidelity_supervisor import assess_fidelity, target_language_gate_issues
 from src.core.language_evidence import (
     has_target_language_contextual_evidence,
@@ -33,6 +34,7 @@ from src.utils.language_detector import LanguageDetector
 
 from .lang_support import get_language_code
 from .dom_boundaries import audit_epub_dom_boundaries
+from .professionalize import count_invalid_blockquote_inline_runs
 from .unit_contract import EPUB_PIPELINE_VERSION, EPUB_PROMPT_VERSION, stable_unit_id, text_sha256
 
 
@@ -104,6 +106,7 @@ class EpubSnapshot:
     ids: dict[str, set[str]]
     html_languages: dict[str, tuple[str, str]]
     mobile_viewports: dict[str, str]
+    invalid_blockquote_inline_runs: dict[str, int]
     file_texts: dict[str, str]
     duplicate_id_count: int
     resource_hashes: dict[str, str]
@@ -388,6 +391,7 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
         ids: dict[str, set[str]] = {}
         html_languages: dict[str, tuple[str, str]] = {}
         mobile_viewports: dict[str, str] = {}
+        invalid_blockquote_inline_runs: dict[str, int] = {}
         file_texts: dict[str, str] = {}
         duplicate_id_count = 0
         parse_errors: list[str] = []
@@ -418,6 +422,9 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
                 "string(//*[local-name()='head']/*[local-name()='meta' and "
                 "translate(@name, 'VIEWPORT', 'viewport')='viewport']/@content)"
             ) or "")
+            invalid_blockquote_inline_runs[file_href] = (
+                count_invalid_blockquote_inline_runs(root)
+            )
             body_nodes = root.xpath("//*[local-name()='body']")
             visible_root = body_nodes[0] if body_nodes else root
             file_texts[file_href] = _normalized_text(" ".join(visible_root.itertext()))
@@ -482,6 +489,7 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
         ids=ids,
         html_languages=html_languages,
         mobile_viewports=mobile_viewports,
+        invalid_blockquote_inline_runs=invalid_blockquote_inline_runs,
         file_texts=file_texts,
         duplicate_id_count=duplicate_id_count,
         resource_hashes=resource_hashes,
@@ -638,11 +646,23 @@ def audit_epub_publication(
                 and output.mobile_viewports.get(file_href)
                 == "width=device-width, initial-scale=1.0"
             )
+            source_flow_runs = source.invalid_blockquote_inline_runs.get(file_href, 0)
+            output_flow_runs = output.invalid_blockquote_inline_runs.get(file_href, 0)
+            flow_wrappers_added = delta.get("div", 0)
+            allowed_flow_repair = bool(
+                flow_wrappers_added == 0
+                or (
+                    source_flow_runs > 0
+                    and flow_wrappers_added <= source_flow_runs
+                    and output_flow_runs == 0
+                )
+            )
             allowed_professional_metadata = bool(
                 not removed
-                and set(delta) <= {"link", "meta"}
+                and set(delta) <= {"link", "meta", "div"}
                 and delta.get("link", 0) <= int(generated_css)
                 and delta.get("meta", 0) <= int(viewport_added)
+                and allowed_flow_repair
             )
             if not allowed_professional_metadata:
                 report.errors.append(f"element structure changed in {file_href}")
@@ -683,6 +703,18 @@ def audit_epub_publication(
         output_file_units = output_units_by_file.get(file_href, [])
         source_text = source.file_texts.get(file_href, "")
         output_text = output.file_texts.get(file_href, "")
+        file_document_context = ""
+        if source_text:
+            block_type, _policy, confidence, _strategy, _notes = (
+                DocumentBlockClassifier(source_type="epub").classify_block(
+                    source_text.splitlines()
+                )
+            )
+            if block_type == "glossary" and confidence >= 0.85:
+                file_document_context = "glossary"
+        gate_prompt_options = {"target_language_gate": True}
+        if file_document_context:
+            gate_prompt_options["_document_block_context"] = file_document_context
         issues: list[str] = []
         if not output_text.strip():
             issues.append("empty_output")
@@ -711,7 +743,7 @@ def audit_epub_publication(
             source_language=source_language,
             target_language=target_language,
             phase="epub_publication",
-            prompt_options={"target_language_gate": True},
+            prompt_options=gate_prompt_options,
         )
         gate_codes = sorted({
             issue.code
@@ -768,7 +800,7 @@ def audit_epub_publication(
                 output_unit.text,
                 document_hint=output_unit.file_href,
                 target_language=target_language,
-            )
+            ) or file_document_context == "glossary"
             block_detected, block_confidence = LanguageDetector.detect_language_from_text(
                 normalized_block,
                 confidence_threshold=0.90,
@@ -816,7 +848,7 @@ def audit_epub_publication(
                     source_language=source_language,
                     target_language=target_language,
                     phase="epub_publication_block",
-                    prompt_options={"target_language_gate": True},
+                    prompt_options=gate_prompt_options,
                 )
                 has_actionable_gate_issue = any(
                     issue.code == "source_language_residual"

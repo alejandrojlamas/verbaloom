@@ -3363,6 +3363,35 @@ def test_target_language_gate_defers_identity_data_in_translated_glossary():
     }
 
 
+def test_target_language_gate_infers_translated_glossary_in_final_aggregate():
+    source = (
+        "GLOSSARY AND INDEX. Each entry ends with a book and line reference. "
+        "Acastus a-kas-tus: king of Dulichium. 14.340. "
+        "Achaean a-kee-an: inhabitants of Achaea. 1.272. "
+        "Alector al-ek-tor: father of Leonteus. 4.10."
+    )
+    candidate = (
+        "GLOSARIO E ÍNDICE. Cada entrada termina con una referencia al libro y "
+        "la línea. Acasto a-kas-tus: rey de Duliquio. 14.340. "
+        "Aqueo a-kee-an: habitantes de Acaya. 1.272. "
+        "Alector al-ek-tor: padre de Leonteo. 4.10."
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=1,
+        phase="epub_publication",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"target_language_gate": True},
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections
+    }
+
+
 def test_target_language_gate_keeps_pronunciation_examples_in_glossary():
     source = (
         "PRONUNCIATION KEY a as in cat ah as in father ai as in light "
@@ -3386,6 +3415,42 @@ def test_target_language_gate_keeps_pronunciation_examples_in_glossary():
 
     assert "source_language_residual" not in {
         item.code for item in decision.rejections
+    }
+
+
+def test_target_language_gate_accepts_short_translated_glossary_definition():
+    decision = assess_fidelity(
+        "Aretias ( a-ree-tee-as ): grandfather of Amphinomus. 18.414.",
+        "Aretias ( a-ree-tee-as ): abuelo de Anfínomo. 18.414.",
+        chunk_index=1,
+        phase="epub_publication_block",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "glossary"},
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections
+    }
+
+
+def test_target_language_gate_rejects_untranslated_short_glossary_definition():
+    source = "Aretias ( a-ree-tee-as ): grandfather of Amphinomus. 18.414."
+    decision = assess_fidelity(
+        source,
+        source,
+        chunk_index=1,
+        phase="epub_publication_block",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "glossary"},
+    )
+
+    assert decision.rejections
+    assert {item.code for item in decision.rejections} & {
+        "untranslated_source",
+        "target_language_missing",
+        "source_language_residual",
     }
 
 

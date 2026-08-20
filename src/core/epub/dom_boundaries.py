@@ -390,9 +390,25 @@ def audit_epub_dom_boundaries(source_epub: str | Path, output_epub: str | Path) 
             if Path(name).suffix.lower() not in _TEXT_SUFFIXES or name not in source_names:
                 continue
             try:
+                source_root = _parse_xhtml(source.read(name))
+                output_root = _parse_xhtml(output.read(name))
+                # Publication finishing may repair invalid source blockquotes
+                # by adding a neutral flow wrapper. Mirror that deterministic
+                # repair in memory before comparing text slots so the wrapper
+                # itself is not mistaken for content reflow.
+                from .professionalize import (
+                    count_invalid_blockquote_inline_runs,
+                    repair_invalid_blockquote_inline_runs,
+                )
+
+                if (
+                    count_invalid_blockquote_inline_runs(source_root)
+                    and not count_invalid_blockquote_inline_runs(output_root)
+                ):
+                    repair_invalid_blockquote_inline_runs(source_root)
                 local = compare_xhtml_boundaries(
-                    _parse_xhtml(source.read(name)),
-                    _parse_xhtml(output.read(name)),
+                    source_root,
+                    output_root,
                     file_href=name,
                     repair=False,
                 )
