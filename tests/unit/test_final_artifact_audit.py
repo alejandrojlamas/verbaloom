@@ -13,6 +13,7 @@ from src.core.final_artifact_audit import (
     audit_and_clean_final_artifact,
     final_artifact_report_path,
 )
+from src.core.epub.dom_boundaries import audit_epub_dom_boundaries
 
 
 XHTML = "http://www.w3.org/1999/xhtml"
@@ -310,6 +311,77 @@ def test_final_artifact_audit_reflows_source_proven_page_split_paragraphs(tmp_pa
     assert "todavía estaban esperando allí" in chapter
     assert "recordar aquel viaje" in chapter
     assert "verbaloom-merged-continuation" in chapter
+
+
+def test_final_artifact_audit_hides_source_proven_ocr_page_furniture(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    source_before = (
+        "The speaker continued explaining every part of the long journey and "
+        "asked the old king to remember what he had seen and faithfully"
+    )
+    output_before = (
+        "El orador siguió explicando cada parte del largo viaje y pidió al "
+        "anciano rey que recordara lo que había visto y lo describiera fielmente."
+    )
+    source_after = (
+        "The king answered with a complete account of the voyage, the storm, "
+        "and all the companions who returned safely to the harbor."
+    )
+    output_after = (
+        "El rey respondió con un relato completo del viaje, la tormenta y todos "
+        "los compañeros que regresaron a salvo al puerto."
+    )
+    source_next = (
+        "The following morning they continued along the coast and spoke about "
+        "the events that had changed their families forever."
+    )
+    output_next = (
+        "A la mañana siguiente continuaron por la costa y hablaron de los "
+        "sucesos que habían cambiado a sus familias para siempre."
+    )
+    _write_epub(
+        source,
+        [("chap-001.xhtml", "Chapter", (
+            f"<p>{source_before}</p>"
+            "<p><strong>THE ODYSSEY • BOOK Z</strong> describe the rest of the scene and tell me all you know?</p>"
+            f"<p>{source_after}</p>"
+            "<p><strong>2T5</strong></p>"
+            f"<p>{source_next}</p>"
+        ))],
+        ["Chapter"],
+    )
+    _write_epub(
+        output,
+        [("chap-001.xhtml", "Capítulo", (
+            f"<p>{output_before}</p>"
+            "<p><strong></strong>LA ODISEA • LIBRO Z</p>"
+            f"<p>{output_after}</p>"
+            "<p><strong>2T5</strong></p>"
+            f"<p>{output_next}</p>"
+        ))],
+        ["Capítulo"],
+    )
+
+    report = audit_and_clean_final_artifact(
+        output,
+        output_format="epub",
+        source_epub_path=source,
+        write_report=False,
+    )
+
+    root = etree.fromstring(_epub_text(output, "OEBPS/chap-001.xhtml").encode())
+    paragraphs = root.xpath("//*[local-name()='p']")
+    assert report.source_artifacts_removed == 2
+    assert _epub_text(output, "OEBPS/chap-001.xhtml").count(
+        "verbaloom-sanitized-artifact"
+    ) == 2
+    assert "".join(paragraphs[1].itertext()).strip() == ""
+    assert "".join(paragraphs[3].itertext()).strip() == ""
+    assert paragraphs[1].get("style") == "display: none"
+    assert paragraphs[3].get("style") == "display: none"
+    boundary_report = audit_epub_dom_boundaries(source, output)
+    assert boundary_report.structural_mismatches == []
 
 
 def test_final_artifact_audit_applies_only_approved_exact_profile_terms(

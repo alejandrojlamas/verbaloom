@@ -192,6 +192,34 @@ _PRONUNCIATION_MAPPING_RE = re.compile(
     r"(?:as\s+in|como\s+en)\s+[a-zà-öø-ÿ]{1,30}\b",
     re.IGNORECASE,
 )
+_GENERIC_BIBLIOGRAPHIC_RECORD_RE = re.compile(
+    r"\([^()\n]{1,260}:\s*[^()\n]{1,260}\b(?:1[4-9]|20)\d{2}[a-z]?\s*\)",
+    re.IGNORECASE,
+)
+_CITATION_LEAD_DISALLOWED = {
+    "about",
+    "according",
+    "concerning",
+    "on",
+    "regarding",
+    "see",
+    "sobre",
+    "véase",
+    "vease",
+}
+_ORGANIZATION_SUFFIX_RE = re.compile(
+    r"\b(?:books?|press|publishers?|ltd|limited|inc|incorporated|llc|plc|"
+    r"pty|pvt|gmbh|s\.?\s*a\.?|s\.?\s*a\.?\s*s\.?)\b",
+    re.IGNORECASE,
+)
+_POSTAL_ADDRESS_RE = re.compile(
+    r"\b(?:street|road|avenue|boulevard|lane|drive|strand|centre|center|"
+    r"park|square|suite|box|p\.?\s*o\.?|oficinas?\s+registradas?|"
+    r"registered\s+offices?)\b|"
+    r"\b[A-Z]{1,3}\d[A-Z0-9]?(?:\s+\d[A-Z]{2})?\b|"
+    r"\b\d{4,6}(?:-\d{3,4})?\b",
+    re.IGNORECASE,
+)
 
 
 def normalize_language_name(value: str) -> str:
@@ -389,11 +417,19 @@ def looks_like_structured_language_metadata(
     """
     value = re.sub(r"\s+", " ", text or "").strip()
     hint = str(document_hint or "")
-    if not value or len(value) > 1800:
+    if not value or len(value) > 6000:
         return False
 
     words = _SURFACE_WORD_RE.findall(value)
     if not words:
+        return False
+
+    # Whole-file publication manifests can aggregate a copyright/address page
+    # into one block. Recognize that dense registry before applying the tighter
+    # per-paragraph bound used for all other metadata exemptions.
+    if _looks_like_corporate_address_registry(value, words):
+        return True
+    if len(value) > 1800:
         return False
 
     citation_shape = bool(
@@ -412,6 +448,13 @@ def looks_like_structured_language_metadata(
         and citation_shape
         and value.count(",") >= 1
     ):
+        return True
+
+    # Some EPUBs place a bibliography in a generic ``frontmatter.xhtml``.
+    # Recognize a self-contained author/title/publication record by shape so
+    # published work titles may remain in their original language without
+    # exempting narrative bibliography prose such as "On X, see Y...".
+    if _looks_like_generic_bibliographic_record(value, words):
         return True
 
     target_key = normalize_language_name(target_language)
@@ -461,6 +504,44 @@ def looks_like_structured_language_metadata(
         )
 
     return False
+
+
+def _looks_like_generic_bibliographic_record(text: str, words: list[str]) -> bool:
+    if not 4 <= len(words) <= 100:
+        return False
+    if not _GENERIC_BIBLIOGRAPHIC_RECORD_RE.search(text):
+        return False
+    lead, separator, _rest = text.partition(",")
+    if not separator:
+        return False
+    lead_words = _SURFACE_WORD_RE.findall(lead)
+    if not 1 <= len(lead_words) <= 10:
+        return False
+    if lead_words[0].casefold() in _CITATION_LEAD_DISALLOWED:
+        return False
+
+    author_anchors = 0
+    for word in lead_words:
+        stripped = word.strip(".'’-–—")
+        folded = stripped.casefold()
+        if folded in {"and", "et", "und", "y", "&"}:
+            continue
+        if re.fullmatch(r"[A-ZÁÉÍÓÚÜÑ]", stripped):
+            author_anchors += 1
+            continue
+        if stripped[:1].isupper() and any(char.isalpha() for char in stripped):
+            author_anchors += 1
+            continue
+        return False
+    return author_anchors >= 1 and text.count(",") >= 2
+
+
+def _looks_like_corporate_address_registry(text: str, words: list[str]) -> bool:
+    if not 20 <= len(words) <= 700 or text.count(",") < 8:
+        return False
+    organizations = len(_ORGANIZATION_SUFFIX_RE.findall(text))
+    address_markers = len(_POSTAL_ADDRESS_RE.findall(text))
+    return organizations >= 3 and address_markers >= 3
 
 
 def untranslated_source_pronouns(

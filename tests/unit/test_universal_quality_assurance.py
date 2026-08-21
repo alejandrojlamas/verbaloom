@@ -315,6 +315,46 @@ def test_publication_audited_aggregate_only_downgrades_numeric_differences():
     assert result.passed is False
 
 
+def test_publication_audited_corporate_registry_reports_ocr_repairs_without_blocking():
+    source = (
+        "Acme Books L td, Ho Strand, London WC2R 0RL, England; "
+        "Acme Books Inc., 375 Hudson Street, New York 10014, USA; "
+        "Acme Books Australia Ltd, 250 Camberwell Road, Victoria 3124, Australia; "
+        "Acme Books Canada Ltd, to Alcorn Avenue, Toronto M4V 3B2, Canada."
+    )
+    target = (
+        "Acme Books Ltd, 80 Strand, London WC2R 0RL, England; "
+        "Acme Books Inc., 375 Hudson Street, New York 10014, USA; "
+        "Acme Books Australia Ltd, 250 Camberwell Road, Victoria 3124, Australia; "
+        "Acme Books Canada Ltd, 10 Alcorn Avenue, Toronto M4V 3B2, Canada; "
+        "www.acme-books.example"
+    )
+    unit = _unit(source, target)
+    unit.parent_id = "OEBPS/text/contents.xhtml"
+    unit.source_reference["publication_audited"] = True
+
+    result, _ = validate_unit_entities(unit, QualityAssuranceConfig())
+
+    issues = {issue.code: issue for issue in result.issues}
+    assert issues["number_mismatch"].severity == "medium"
+    assert issues["url_mismatch"].severity == "medium"
+    assert result.passed is True
+
+
+def test_short_publication_audited_narrative_still_blocks_changed_number():
+    unit = _unit(
+        "The witness counted 1492 records in the archive.",
+        "El testigo contó 1519 registros en el archivo.",
+    )
+    unit.source_reference["publication_audited"] = True
+
+    result, _ = validate_unit_entities(unit, QualityAssuranceConfig())
+
+    issue = next(item for item in result.issues if item.code == "number_mismatch")
+    assert issue.severity == "critical"
+    assert result.passed is False
+
+
 def test_publication_audited_chapter_skips_phrase_residual_but_keeps_language_detection(monkeypatch):
     unit = _unit(
         "The source chapter contains enough text to require translation.",

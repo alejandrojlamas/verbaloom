@@ -634,6 +634,35 @@ def _job_is_ready_for_final_audits(
     )
 
 
+def _final_source_sample_diagnostics(
+    stats: Dict[str, Any] | None,
+    report: Any,
+) -> Dict[str, Any]:
+    """Record bounded sample findings without deciding publication status.
+
+    The source-sample pass is deliberately diagnostic. Complete publication
+    gates and format QA remain authoritative because they inspect the whole
+    artifact and understand explicit exclusions and reconstructed structure.
+    """
+    current = dict(stats or {})
+    issues = list(getattr(report, "issues", None) or [])
+    current.update({
+        "final_source_sample_clean": bool(getattr(report, "clean", False)),
+        "final_source_sample_warning_count": int(
+            getattr(report, "warning_count", 0) or 0
+        ),
+        "final_source_sample_error_count": int(
+            getattr(report, "error_count", 0) or 0
+        ),
+        "final_source_sample_issue_codes": [
+            str(getattr(issue, "code", "") or "")
+            for issue in issues
+            if str(getattr(issue, "code", "") or "")
+        ],
+    })
+    return current
+
+
 def _resolve_job_output_path(
     config: Dict[str, Any],
     output_dir: str,
@@ -2314,32 +2343,27 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     metadata={'output_format': final_output_format},
                 )
                 if not source_sample_report.clean:
+                    audit_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+                    state_manager.update_stats(
+                        translation_id,
+                        _final_source_sample_diagnostics(audit_stats, source_sample_report),
+                    )
                     _log_message_callback(
                         "final_source_sample_audit_warning",
                         f"⚠️ Chequeo final contra fuente encontró {len(source_sample_report.issues)} alerta(s) en muestras."
                     )
                     if source_sample_report.error_count:
-                        operation_success = False
-                        audit_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
-                        failed_count = max(
-                            1,
-                            int(audit_stats.get('failed_chunks') or 0),
-                            int(source_sample_report.error_count),
-                        )
-                        state_manager.update_stats(translation_id, {
-                            **audit_stats,
-                            'failed_chunks': failed_count,
-                            'checkpoint_failed_chunks': failed_count,
-                            'quality_degraded': True,
-                        })
-                        state_manager.set_translation_field(translation_id, 'status', 'partial')
-                        checkpoint_manager.mark_partial(translation_id)
                         _log_message_callback(
-                            "final_source_language_gate_failed",
-                            "⛔ El archivo final conserva bloques sustanciales del idioma fuente; "
-                            "queda parcial y no se publicará como completado.",
+                            "final_source_sample_advisory",
+                            "ℹ️ Las alertas de muestra son diagnósticas; el gate completo "
+                            "y la QA de formato decidirán si el archivo puede publicarse.",
                         )
                 else:
+                    audit_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+                    state_manager.update_stats(
+                        translation_id,
+                        _final_source_sample_diagnostics(audit_stats, source_sample_report),
+                    )
                     _log_message_callback(
                         "final_source_sample_audit",
                         "✅ Chequeo final contra fuente no encontró alertas en muestras."
@@ -2349,8 +2373,6 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     "final_source_sample_audit_error",
                     f"⚠️ Chequeo final contra fuente no pudo ejecutarse: {source_sample_error}"
                 )
-                operation_success = False
-                state_manager.set_translation_field(translation_id, 'status', 'partial')
 
         publication_report = None
         quality_run = None

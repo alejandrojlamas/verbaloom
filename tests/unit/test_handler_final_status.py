@@ -11,6 +11,7 @@ from src.api.handlers import (
     _build_worker_exception_recovery_plan,
     _canonicalize_published_epub_stats,
     _failed_chunk_recovery_exhausted_stats,
+    _final_source_sample_diagnostics,
     _finalization_recovery_exhausted_stats,
     _job_has_unresolved_work,
     _job_is_ready_for_final_audits,
@@ -24,6 +25,18 @@ from src.api.handlers import (
 class _PublicationReport:
     def __init__(self, publishable):
         self.publishable = publishable
+
+
+class _SampleIssue:
+    def __init__(self, code):
+        self.code = code
+
+
+class _SampleReport:
+    clean = False
+    warning_count = 1
+    error_count = 1
+    issues = [_SampleIssue("source_language_residual_coverage")]
 
 
 def test_published_epub_stats_use_native_processed_chunk_truth():
@@ -92,6 +105,25 @@ def test_clean_job_runs_whole_book_audits():
         current_status="processing",
         failed_chunks=0,
     )
+
+
+def test_source_sample_diagnostics_do_not_turn_completed_chunks_into_failures():
+    stats = {
+        "total_chunks": 214,
+        "completed_chunks": 214,
+        "failed_chunks": 0,
+        "checkpoint_failed_chunks": 0,
+    }
+
+    result = _final_source_sample_diagnostics(stats, _SampleReport())
+
+    assert result["completed_chunks"] == 214
+    assert result["failed_chunks"] == 0
+    assert result["checkpoint_failed_chunks"] == 0
+    assert result["final_source_sample_error_count"] == 1
+    assert result["final_source_sample_issue_codes"] == [
+        "source_language_residual_coverage"
+    ]
 
 
 def test_resume_reuses_stable_job_output_path(tmp_path):

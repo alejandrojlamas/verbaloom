@@ -17,6 +17,7 @@ from lxml import etree
 
 from src.core.fidelity_supervisor import target_language_gate_issues
 from src.core.llm_output_guard import guard_llm_output
+from src.core.language_evidence import looks_like_structured_language_metadata
 from src.core.output_formats import extract_readable_text
 from src.utils.language_detector import LANGUAGE_CODE_MAP, LanguageDetector
 from src.utils.text_encoding import mojibake_score
@@ -1328,6 +1329,28 @@ def _entity_mismatch_severity(
 
     if not unit.source_reference.get("publication_audited"):
         return default
+    structured_metadata = bool(
+        looks_like_structured_language_metadata(
+            unit.source_text,
+            document_hint=unit.parent_id,
+            target_language=unit.target_language,
+        )
+        or looks_like_structured_language_metadata(
+            unit.best_text,
+            document_hint=unit.parent_id,
+            target_language=unit.target_language,
+        )
+    )
+    structured_labels = {
+        "number",
+        "date",
+        "percentage",
+        "currency",
+        "measurement",
+        "url",
+    }
+    if structured_metadata and label in structured_labels:
+        return "medium"
     if len(unit.source_text) < 4_000:
         return default
     if label not in {"number", "date", "percentage", "currency", "measurement"}:
@@ -1338,7 +1361,9 @@ def _entity_mismatch_severity(
     # in that huge aggregate makes localized digits (40000/40 000), Roman
     # ordinals, and translated units look like critical entity loss. Keep those
     # numeric diffs visible, but retain blocking severity for names, identifiers,
-    # URLs, ISBNs, and scientific terms.
+    # URLs, ISBNs, and scientific terms. A source/output pair independently
+    # classified as structured legal or bibliographic metadata is handled
+    # above because OCR normalization may legitimately repair its addresses.
     return "medium"
 
 

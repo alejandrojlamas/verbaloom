@@ -310,6 +310,79 @@ def test_final_source_sample_audit_rejects_untranslated_english_bibliography(
     assert report.source_language_blocks == 4
 
 
+def test_final_source_sample_audit_exempts_citations_in_generic_frontmatter(
+    tmp_path,
+):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    references = [
+        "M. I. Finley, The World of Odysseus (Harmondsworth: Pelican Books, segunda edición, 1979).",
+        "Jasper Griffin, Homer: The Odyssey (Cambridge: Cambridge University Press, 1987).",
+        "S. V. Tracy, The Story of the Odyssey (Princeton: Princeton University Press, 1992).",
+    ]
+    _write_epub(
+        source,
+        language="en",
+        chapter_name="frontmatter.xhtml",
+        paragraphs=references,
+    )
+    _write_epub(
+        output,
+        language="es",
+        chapter_name="frontmatter.xhtml",
+        paragraphs=references,
+    )
+
+    report = audit_final_output_against_source_samples(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        write_report=False,
+    )
+
+    assert report.source_language_blocks == 0
+    assert not any(
+        issue.code == "source_language_residual_coverage"
+        for issue in report.issues
+    )
+
+
+def test_final_source_sample_audit_exempts_corporate_address_registry_in_generic_file(
+    tmp_path,
+):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    registry = (
+        "Acme Books Ltd, 80 Strand, London WC2R 0RL, England; "
+        "Acme Books Inc., 375 Hudson Street, New York 10014, USA; "
+        "Acme Books Australia Ltd, 250 Camberwell Road, Victoria 3124, Australia; "
+        "Acme Books Canada Ltd, 10 Alcorn Avenue, Toronto M4V 3B2, Canada."
+    )
+    _write_epub(
+        source,
+        language="en",
+        chapter_name="contents.xhtml",
+        paragraphs=[registry],
+    )
+    _write_epub(
+        output,
+        language="es",
+        chapter_name="contents.xhtml",
+        paragraphs=[registry],
+    )
+
+    report = audit_final_output_against_source_samples(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        write_report=False,
+    )
+
+    assert report.source_language_blocks == 0
+
+
 def test_final_source_sample_audit_exempts_numbered_epub_references(tmp_path):
     source = tmp_path / "source.epub"
     output = tmp_path / "output.epub"

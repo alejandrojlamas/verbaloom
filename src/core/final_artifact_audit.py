@@ -283,6 +283,7 @@ def audit_and_clean_final_artifact(
         )
         if source_epub_path and Path(source_epub_path).exists():
             from src.core.epub.dom_boundaries import repair_epub_dom_boundaries
+            from src.core.epub.page_furniture import sanitize_epub_page_furniture
             from src.core.epub.paragraph_reflow import repair_epub_split_paragraphs
 
             report.symbol_names_restored += _repair_epub_symbol_bearing_names(
@@ -295,6 +296,9 @@ def audit_and_clean_final_artifact(
                 reflow_report.dehyphenated_continuations
             )
             report.unresolved_findings.extend(reflow_report.errors)
+            furniture_report = sanitize_epub_page_furniture(source_epub_path, path)
+            report.source_artifacts_removed += furniture_report.sanitized_blocks
+            report.unresolved_findings.extend(furniture_report.errors)
             boundary_report = repair_epub_dom_boundaries(source_epub_path, path)
             report.dom_boundary_repairs += boundary_report.repaired_boundaries
             report.dom_boundary_findings += len(boundary_report.findings)
