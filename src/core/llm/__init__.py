@@ -21,6 +21,7 @@ Example usage:
 from .exceptions import (
     ContentRiskError,
     ContextOverflowError,
+    DeepSeekPeakPricingError,
     InsufficientCreditsError,
     RateLimitError,
     RepetitionLoopError,
@@ -57,6 +58,7 @@ __all__ = [
     'RepetitionLoopError',
     'RateLimitError',
     'InsufficientCreditsError',
+    'DeepSeekPeakPricingError',
 
     # Base
     'LLMProvider',

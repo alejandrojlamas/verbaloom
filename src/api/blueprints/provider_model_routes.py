@@ -13,6 +13,7 @@ import requests
 from flask import Blueprint, jsonify, request
 
 import src.config as default_config
+from src.core.deepseek_pricing import get_deepseek_pricing_status
 from src.core.llm.base import normalize_api_keys
 from src.utils.provider_security import (
     EndpointCredentialError,
@@ -571,6 +572,13 @@ def register_provider_model_routes(
 ) -> ProviderModelCatalog:
     """Register model discovery and return its reusable catalog service."""
     catalog = ProviderModelCatalog(config, logger=logger)
+
+    @bp.route("/api/providers/deepseek/availability", methods=["GET"])
+    def get_deepseek_availability():
+        """Expose the server-authoritative pricing window in CDMX time."""
+        response = jsonify(get_deepseek_pricing_status().to_dict())
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        return response
 
     @bp.route("/api/models", methods=["GET", "POST"])
     def get_available_models():

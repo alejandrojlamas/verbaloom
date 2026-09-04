@@ -17,6 +17,7 @@ import { renderTranslationTitle } from './progress-title.js?v=20260705-transform
 import { FileUpload, generateOutputFilename, normalizeOutputFormat, resolveOutputExtension } from '../files/file-upload.js';
 import { TranslationTracker } from './translation-tracker.js?v=20260717-live-recovery';
 import { t } from '../i18n/i18n.js';
+import { DeepSeekPricingManager } from '../providers/deepseek-pricing-manager.js?v=20260903';
 
 async function waitForTranslationTracker(timeoutMs = 8000) {
     if (TranslationTracker.isInitialized && TranslationTracker.isInitialized()) {
@@ -370,6 +371,9 @@ export const BatchController = {
         }
 
         const provider = DomHelpers.getValue('llmProvider');
+        if (!await DeepSeekPricingManager.ensureProviderAvailable(provider)) {
+            return;
+        }
         if (provider === 'ollama') {
             const ollamaApiEndpoint = DomHelpers.getValue('apiEndpoint').trim();
             if (!ollamaApiEndpoint) {
@@ -558,6 +562,20 @@ export const BatchController = {
             window.dispatchEvent(event);
 
         } catch (error) {
+            if (error.data?.code === 'deepseek_peak_pricing') {
+                DeepSeekPricingManager.handleBlockedResponse(error.data);
+                fileToTranslate.status = 'Queued';
+                StateManager.setState('files.toProcess', filesToProcess);
+                StateManager.setState('translation.currentJob', null);
+                StateManager.setState('translation.isBatchActive', false);
+                FileUpload.notifyFileListChanged();
+                const translateBtn = DomHelpers.getElement('translateBtn');
+                if (translateBtn) {
+                    translateBtn.disabled = false;
+                    translateBtn.innerHTML = t('translation:start_batch_with_icon');
+                }
+                return;
+            }
             MessageLogger.addLog(t('translation:init_error_log', { name: fileToTranslate.name, error: error.message }));
             MessageLogger.showMessage(t('translation:init_error_msg', { name: fileToTranslate.name, error: error.message }), 'error');
             updateFileStatusInList(fileToTranslate.name, 'Initiation Error');

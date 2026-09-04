@@ -45,6 +45,13 @@
   "ok": "OK",
   "loading": "Loading...",
   "no_data": "No data",
+  "deepseek_pricing_title": "DeepSeek disabled during high-price hours",
+  "deepseek_pricing_description": "No tokens are sent during this window. Active translations pause safely and resume automatically.",
+  "deepseek_pricing_available": "Available again in Mexico City time:",
+  "deepseek_pricing_source": "Official schedule",
+  "deepseek_pricing_countdown": "Available in {{time}}",
+  "deepseek_pricing_action_blocked": "DeepSeek is disabled during high-price hours. Available again in Mexico City: {{time}}.",
+  "deepseek_pricing_job_waiting": "{{name}} is safely scheduled to wait without sending tokens. It will resume automatically in Mexico City at {{time}}.",
 
   "usage_title": "Token usage and costs",
   "usage_backfill": "Estimate history",

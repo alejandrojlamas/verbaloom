@@ -27,6 +27,7 @@ import { GlossaryManager } from './glossary/glossary-manager.js?v=20260704-ajl-m
 // Provider Modules
 // ========================================
 import { ProviderManager } from './providers/provider-manager.js';
+import { DeepSeekPricingManager } from './providers/deepseek-pricing-manager.js?v=20260903';
 import { ModelDetector } from './providers/model-detector.js';
 import { CostEstimator } from './providers/cost-estimator.js';
 
@@ -425,6 +426,7 @@ async function initializeModules() {
     StatusManager.initialize();
     initializePreviewHeight();
     ProviderManager.initialize();
+    DeepSeekPricingManager.init();
     ModelDetector.initialize();
     // FileUpload must initialize before CostEstimator so its `change` listeners
     // on source/target language fire first and recreate the file <li>s (with
@@ -498,7 +500,7 @@ window.interruptCurrentTranslation = async () => {
         try {
             const activeData = await ApiClient.getActiveTranslations();
             const activeJob = (activeData.translations || []).find((job) => {
-                return ['running', 'queued', 'rate_limited'].includes(job.status);
+                return ['running', 'queued', 'pricing_wait', 'rate_limited'].includes(job.status);
             });
             if (activeJob?.translation_id) {
                 currentJob = {

@@ -22,6 +22,7 @@ const STORAGE_VERSION = 1;
 const STORAGE_KEY_PREFIX = 'verbaloom_translation_state';
 const TRANSLATION_STATE_STORAGE_KEY = `${STORAGE_KEY_PREFIX}_v${STORAGE_VERSION}`;
 const TERMINAL_STATUSES = new Set(['completed', 'error', 'interrupted', 'rate_limited', 'partial']);
+const ACTIVE_STATUSES = new Set(['running', 'queued', 'pricing_wait']);
 const TRANSFORM_MODE_LABELS = {
     modernize: 'Modernize',
     simplify: 'Explain',
@@ -286,7 +287,7 @@ export const TranslationTracker = {
 
                         MessageLogger.addLog(t('translation:session_sync_log', { status: serverState.status }));
                         this.resetUIToIdle();
-                    } else if (serverState.status === 'running' || serverState.status === 'queued') {
+                    } else if (ACTIVE_STATUSES.has(serverState.status)) {
                         // Calculate progress from stats if available
                         if (serverState.stats) {
                             this.updateStats(
@@ -390,7 +391,7 @@ export const TranslationTracker = {
         try {
             const response = await ApiClient.getActiveTranslations();
             const activeJobs = (response.translations || []).filter(
-                t => t.status === 'running' || t.status === 'queued'
+                job => ACTIVE_STATUSES.has(job.status)
             );
 
             if (activeJobs.length === 0) return;
@@ -566,6 +567,31 @@ export const TranslationTracker = {
                 data
             );
             this.updateActiveTranslationsState();
+        } else if (data.status === 'pricing_wait') {
+            DomHelpers.show('progressSection');
+            DomHelpers.show('statsGrid');
+            DomHelpers.show('interruptBtn');
+            this.updateTranslationTitle(currentFile);
+            this.updateFileStatusInList(
+                currentFile.name,
+                t('common:deepseek_pricing_title')
+            );
+            const resumeAt = data.resume_at_local || data.stats?.pricing_resume_at_local || '';
+            ProgressManager.updateLiveStatus({
+                live_status: t('common:deepseek_pricing_job_waiting', {
+                    name: currentFile.name,
+                    time: resumeAt,
+                }),
+                live_status_kind: 'scheduled_pause',
+            });
+            MessageLogger.showMessage(
+                t('common:deepseek_pricing_job_waiting', {
+                    name: currentFile.name,
+                    time: resumeAt,
+                }),
+                'info'
+            );
+            this.updateActiveTranslationsState();
         } else if (data.status === 'error') {
             MessageLogger.resetProgressTracking();
             this.finishCurrentFileTranslation(
@@ -637,7 +663,7 @@ export const TranslationTracker = {
         try {
             const response = await ApiClient.getActiveTranslations();
             const jobs = response.translations || [];
-            const activeJobs = jobs.filter(job => job.status === 'running' || job.status === 'queued');
+            const activeJobs = jobs.filter(job => ACTIVE_STATUSES.has(job.status));
             const wasActive = StateManager.getState('translation.hasActive');
             const hasActive = activeJobs.length > 0;
             StateManager.setState('translation.hasActive', hasActive);
@@ -647,7 +673,7 @@ export const TranslationTracker = {
             }
 
             const job = jobs.find(item => item.translation_id === currentJob.translationId);
-            if (!job || !['running', 'queued'].includes(job.status)) {
+            if (!job || !ACTIVE_STATUSES.has(job.status)) {
                 this.stopLiveProgressPolling();
                 return;
             }
@@ -725,6 +751,12 @@ export const TranslationTracker = {
 
         if (job.status === 'queued') {
             return `Queued · ${chunkText}`;
+        }
+        if (job.status === 'pricing_wait') {
+            return t('common:deepseek_pricing_job_waiting', {
+                name: job.output_filename || 'DeepSeek',
+                time: job.resume_at_local || '',
+            });
         }
 
         const lastChange = this._liveProgressLastChangeAt.get(job.translation_id) || Date.now();
@@ -1191,7 +1223,7 @@ export const TranslationTracker = {
         try {
             const response = await ApiClient.getActiveTranslations();
             const activeJobs = (response.translations || []).filter(
-                t => t.status === 'running' || t.status === 'queued'
+                job => ACTIVE_STATUSES.has(job.status)
             );
 
             const wasActive = StateManager.getState('translation.hasActive');
@@ -1233,7 +1265,7 @@ export const TranslationTracker = {
         try {
             const serverState = await ApiClient.getTranslationStatus(currentJob.translationId);
             if (TERMINAL_STATUSES.has(serverState.status)
-                || !['running', 'queued'].includes(serverState.status)) {
+                || !ACTIVE_STATUSES.has(serverState.status)) {
                 MessageLogger.addLog(t('translation:session_sync_log', { status: serverState.status || 'missing' }));
                 this.resetUIToIdle();
             }

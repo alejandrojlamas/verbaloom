@@ -91,7 +91,9 @@ def _load_jobs(jobs_db: Path, usage_ids: set[str], limit: int) -> dict[str, dict
     if not jobs_db.exists():
         return {}
 
-    active_statuses = {"running", "processing", "queued", "paused", "error"}
+    active_statuses = {
+        "running", "processing", "queued", "pricing_wait", "paused", "error"
+    }
     jobs: dict[str, dict[str, Any]] = {}
     with sqlite3.connect(jobs_db) as conn:
         conn.row_factory = sqlite3.Row
@@ -99,7 +101,7 @@ def _load_jobs(jobs_db: Path, usage_ids: set[str], limit: int) -> dict[str, dict
             """
             SELECT translation_id, status, file_type, config, progress, created_at, updated_at, paused_at, completed_at
             FROM translation_jobs
-            WHERE status IN ('running', 'processing', 'queued', 'paused', 'error')
+            WHERE status IN ('running', 'processing', 'queued', 'pricing_wait', 'paused', 'error')
             ORDER BY updated_at DESC
             LIMIT ?
             """,

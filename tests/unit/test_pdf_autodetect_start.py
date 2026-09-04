@@ -41,6 +41,111 @@ class FakeStateManager:
         self.created[translation_id] = config
 
 
+def test_translation_start_is_blocked_before_state_or_network_during_peak(
+    tmp_path,
+    monkeypatch,
+):
+    state = FakeStateManager()
+    started = []
+    pricing = type("Pricing", (), {
+        "disabled": True,
+        "to_dict": lambda self: {
+            "disabled": True,
+            "display_timezone": "America/Mexico_City",
+            "next_available_at_local": "2026-09-02T22:00:00-06:00",
+        },
+    })()
+    monkeypatch.setattr(
+        "src.api.blueprints.translation_routes.get_deepseek_pricing_status",
+        lambda: pricing,
+    )
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_translation_blueprint(
+            state,
+            lambda *args: started.append(args),
+            output_dir=tmp_path,
+        )
+    )
+
+    response = app.test_client().post(
+        "/api/translate",
+        json={
+            "text": "Hello world",
+            "file_type": "txt",
+            "source_language": "English",
+            "target_language": "Spanish",
+            "model": "deepseek-v4-pro",
+            "llm_provider": "deepseek",
+            "llm_api_endpoint": "https://api.deepseek.com/chat/completions",
+            "output_filename": "book.txt",
+        },
+    )
+
+    assert response.status_code == 423
+    assert response.get_json()["code"] == "deepseek_peak_pricing"
+    assert response.get_json()["availability"]["display_timezone"] == "America/Mexico_City"
+    assert state.created == {}
+    assert started == []
+
+
+def test_interrupting_pricing_wait_is_immediate_and_keeps_checkpoint(tmp_path):
+    class Checkpoints:
+        def __init__(self):
+            self.interrupted = []
+
+        def update_job_config(self, *_args):
+            return True
+
+        def mark_paused(self, *_args):
+            return True
+
+        def mark_interrupted(self, translation_id):
+            self.interrupted.append(translation_id)
+
+    class WaitingState:
+        def __init__(self):
+            self.checkpoint_manager = Checkpoints()
+            self.data = {
+                "job-1": {
+                    "status": "pricing_wait",
+                    "config": {},
+                    "interrupted": False,
+                    "resume_at_utc": "future",
+                    "resume_at_local": "future-local",
+                }
+            }
+
+        def exists(self, translation_id):
+            return translation_id in self.data
+
+        def get_translation(self, translation_id):
+            return dict(self.data[translation_id])
+
+        def get_translation_field(self, translation_id, field):
+            return self.data[translation_id].get(field)
+
+        def set_translation_field(self, translation_id, field, value):
+            self.data[translation_id][field] = value
+
+        def set_interrupted(self, translation_id, interrupted=True):
+            self.data[translation_id]["interrupted"] = interrupted
+
+    state = WaitingState()
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_translation_blueprint(state, lambda *_args: None, output_dir=tmp_path)
+    )
+
+    response = app.test_client().post("/api/translation/job-1/interrupt")
+
+    assert response.status_code == 200
+    assert state.data["job-1"]["status"] == "interrupted"
+    assert state.data["job-1"]["interrupted"] is True
+    assert state.data["job-1"]["resume_at_utc"] is None
+    assert state.checkpoint_manager.interrupted == ["job-1"]
+
+
 def test_file_translate_rejects_unmanaged_input_and_output_traversal(tmp_path):
     outside = tmp_path / "outside.pdf"
     outside.write_bytes(b"%PDF sample bytes")

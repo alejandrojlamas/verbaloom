@@ -270,6 +270,33 @@ class TestTranslationStateManager:
         assert round(summary["progress_percent"], 2) == 52.07
         assert round(summary["percent"], 2) == 52.07
 
+    def test_pricing_wait_summary_preserves_schedule_and_frozen_elapsed(self, state_manager):
+        config = {
+            "input_filename": "book.epub",
+            "output_filename": "book_es.epub",
+            "file_type": "epub",
+        }
+        state_manager.create_translation("trans_wait", config)
+        state_manager.update_translation("trans_wait", {
+            "status": "pricing_wait",
+            "pause_reason": "deepseek_peak_pricing",
+            "resume_at_utc": "2026-09-04T10:00:00+00:00",
+            "resume_at_local": "2026-09-04T04:00:00-06:00",
+        })
+        state_manager.update_stats("trans_wait", {
+            "elapsed_time": 321.0,
+            "total_chunks": 100,
+            "completed_chunks": 40,
+        })
+
+        summary = state_manager.get_translation_summaries()[0]
+
+        assert summary["status"] == "pricing_wait"
+        assert summary["pause_reason"] == "deepseek_peak_pricing"
+        assert summary["resume_at_local"] == "2026-09-04T04:00:00-06:00"
+        assert summary["elapsed_time"] == 321.0
+        assert summary["completed_chunks"] == 40
+
     def test_get_translation_summaries_derives_progress_from_restored_root_counters(self, state_manager):
         """Checkpoint-restored jobs may carry chunk counters at the root level."""
         config = {

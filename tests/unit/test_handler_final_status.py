@@ -7,6 +7,7 @@ from src.api.handlers import (
     _begin_active_run_stats,
     _build_failed_chunk_recovery_plan,
     _build_finalization_recovery_plan,
+    _build_pricing_auto_resume_plan,
     _build_rate_limit_auto_resume_plan,
     _build_worker_exception_recovery_plan,
     _canonicalize_published_epub_stats,
@@ -458,6 +459,26 @@ def test_rate_limit_progress_resets_stuck_counter():
 
     assert progressed["allowed"] is True
     assert progressed["stuck_count"] == 1
+
+
+def test_pricing_resume_preserves_checkpoint_without_spending_429_budget():
+    plan = _build_pricing_auto_resume_plan(
+        {
+            "max_rate_limit_auto_resumes": 2,
+            "_auto_resume_stuck_count": 2,
+            "_pricing_pause_until_utc": "2026-09-04T10:00:00+00:00",
+            "_pricing_pause_timezone": "America/Mexico_City",
+        },
+        resume_index=41,
+    )
+
+    assert plan["allowed"] is True
+    assert plan["resume_index"] == 41
+    assert plan["stuck_count"] == 0
+    assert plan["config"]["resume_from_index"] == 41
+    assert plan["config"]["is_resume"] is True
+    assert plan["config"]["_auto_resume_stuck_count"] == 2
+    assert "_pricing_pause_until_utc" not in plan["config"]
 
 
 def test_live_activity_labels_repair_and_model_work():

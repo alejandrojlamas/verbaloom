@@ -19,7 +19,16 @@ import json
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS, TEMPERATURE
 from ..base import LLMProvider, LLMResponse
-from ..exceptions import ContentRiskError, ContextOverflowError, InsufficientCreditsError
+from src.core.deepseek_pricing import (
+    get_deepseek_pricing_status,
+    is_official_deepseek_endpoint,
+)
+from ..exceptions import (
+    ContentRiskError,
+    ContextOverflowError,
+    DeepSeekPeakPricingError,
+    InsufficientCreditsError,
+)
 from ..rate_limit_handler import handle_rate_limit
 
 
@@ -207,6 +216,19 @@ class DeepSeekProvider(LLMProvider):
         Raises:
             ContextOverflowError: If input exceeds model's context window
         """
+        if is_official_deepseek_endpoint(self.api_endpoint):
+            pricing = get_deepseek_pricing_status()
+            if pricing.disabled:
+                # Add a small boundary buffer so the resumed request cannot land
+                # inside the peak window because of clock or scheduler rounding.
+                raise DeepSeekPeakPricingError(
+                    retry_after=pricing.seconds_until_available + 2,
+                    next_available_at_utc=pricing.next_available_at_utc or "",
+                    next_available_at_local=pricing.next_available_at_local or "",
+                    display_timezone=pricing.display_timezone,
+                    source_url=pricing.source_url,
+                )
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})

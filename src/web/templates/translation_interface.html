@@ -133,6 +133,20 @@
             </div>
         </div>
 
+        <section id="deepseekPricingNotice" class="deepseek-pricing-notice hidden" role="status" aria-live="polite">
+            <span class="material-symbols-outlined deepseek-pricing-notice__icon" aria-hidden="true">schedule</span>
+            <div class="deepseek-pricing-notice__body">
+                <strong data-i18n="common:deepseek_pricing_title">DeepSeek disabled during high-price hours</strong>
+                <p>
+                    <span data-i18n="common:deepseek_pricing_description">No tokens will be sent during this window. Active translations pause safely and resume automatically.</span>
+                    <span data-i18n="common:deepseek_pricing_available">Available again in Mexico City:</span>
+                    <time id="deepseekPricingNext"></time>
+                    <span id="deepseekPricingCountdown"></span>
+                </p>
+            </div>
+            <a id="deepseekPricingSource" class="deepseek-pricing-notice__source" href="https://api-docs.deepseek.com/quick_start/pricing/" target="_blank" rel="noopener" data-i18n="common:deepseek_pricing_source">Official schedule</a>
+        </section>
+
         <!-- Top-level Tab Navigation -->
         <div class="tab-nav" id="topTabNav" style="display: flex; gap: 8px; margin-bottom: 20px;">
             <button type="button" class="tab-btn tab-btn-active" data-tab="translate" onclick="switchTopTab('translate')">

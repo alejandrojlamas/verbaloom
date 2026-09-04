@@ -388,9 +388,17 @@ Copy `.env.example` to `.env` and set:
 LLM_PROVIDER=deepseek
 DEEPSEEK_MODEL=deepseek-v4-pro
 DEEPSEEK_API_KEY=YOUR_DEEPSEEK_API_KEY
+DEEPSEEK_OFF_PEAK_ONLY=true
 ```
 
 Do not commit real API keys. The app supports multiple comma-separated keys for providers that use key rotation.
+
+DeepSeek's official high-price periods are blocked by default. A translation
+that crosses into one is checkpointed without sending more tokens, remains
+visible as a scheduled wait, and resumes automatically when regular pricing
+returns. The UI shows the next availability in Mexico City time; see
+[Provider configuration](docs/PROVIDERS.md#regular-price-schedule) for the
+current schedule and opt-out setting.
 
 Security defaults are intentionally local-first: the server binds to
 `127.0.0.1`, REST and WebSocket traffic is same-origin, uploads are bounded,

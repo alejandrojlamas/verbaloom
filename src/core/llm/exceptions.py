@@ -74,3 +74,27 @@ class InsufficientCreditsError(RateLimitError):
     def __init__(self, message: str, provider: str = None):
         super().__init__(message, retry_after=None, provider=provider)
         self.retryable = False
+
+
+class DeepSeekPeakPricingError(RateLimitError):
+    """Raised before a paid DeepSeek request during an official peak window."""
+
+    def __init__(
+        self,
+        *,
+        retry_after: int,
+        next_available_at_utc: str,
+        next_available_at_local: str,
+        display_timezone: str,
+        source_url: str,
+    ):
+        super().__init__(
+            "DeepSeek generation is disabled during its high-price window.",
+            retry_after=max(1, int(retry_after)),
+            provider="deepseek",
+        )
+        self.pause_reason = "deepseek_peak_pricing"
+        self.next_available_at_utc = next_available_at_utc
+        self.next_available_at_local = next_available_at_local
+        self.display_timezone = display_timezone
+        self.source_url = source_url

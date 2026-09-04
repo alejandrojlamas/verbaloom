@@ -115,6 +115,10 @@ export const ApiClient = {
         return await apiRequest('/api/config');
     },
 
+    async getDeepSeekAvailability() {
+        return await apiRequest('/api/providers/deepseek/availability');
+    },
+
     // ========================================
     // Book Editorial Profiles
     // ========================================

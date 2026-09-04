@@ -213,6 +213,27 @@ python translate.py -i book.txt -o book_fr.txt \
 
 Pricing: [api-docs.deepseek.com/quick_start/pricing](https://api-docs.deepseek.com/quick_start/pricing)
 
+### Regular-price schedule
+
+VerbaLoom enables `DEEPSEEK_OFF_PEAK_ONLY=true` by default. It checks the
+official DeepSeek schedule before every paid request and sends no tokens during
+the high-price windows (`01:00-04:00` and `06:00-10:00` UTC, Monday-Friday).
+If a long translation reaches one of those windows, its checkpoint remains
+active, the elapsed processing timer freezes, and it resumes automatically at
+the next regular-price boundary.
+
+The interface presents all times in `America/Mexico_City`. With the current
+official schedule, the disabled periods shown in CDMX are:
+
+- Sunday: `19:00-22:00`
+- Monday-Thursday: `00:00-04:00` and `19:00-22:00`
+- Friday: `00:00-04:00`
+- Saturday: no high-price window
+
+Runtime decisions are still calculated from UTC and converted with the system
+time-zone database. Set `DEEPSEEK_OFF_PEAK_ONLY=false` only to opt into peak
+pricing deliberately.
+
 ---
 
 ## Poe (Cloud)

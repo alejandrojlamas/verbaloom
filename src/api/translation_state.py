@@ -321,6 +321,9 @@ class TranslationStateManager:
                     "text_transform_mode": text_transform_mode,
                     "text_transform_label": text_transform_label,
                     "profile_id": prompt_options.get('profile_id') or data.get('profile_id'),
+                    "pause_reason": data.get('pause_reason'),
+                    "resume_at_utc": data.get('resume_at_utc'),
+                    "resume_at_local": data.get('resume_at_local'),
                     # Include stats for UI restoration
                     "total_chunks": summary_stats.get('total_chunks', 0),
                     "completed_chunks": summary_stats.get('completed_chunks', 0),

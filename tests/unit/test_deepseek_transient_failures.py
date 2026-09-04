@@ -7,7 +7,12 @@ import pytest
 
 import src.core.llm.providers.deepseek as deepseek_module
 from src.core.llm.providers.deepseek import DeepSeekProvider
-from src.core.llm.exceptions import ContentRiskError, InsufficientCreditsError, RateLimitError
+from src.core.llm.exceptions import (
+    ContentRiskError,
+    DeepSeekPeakPricingError,
+    InsufficientCreditsError,
+    RateLimitError,
+)
 
 
 class _ScriptedClient:
@@ -40,6 +45,68 @@ def _success() -> httpx.Response:
             "usage": {"prompt_tokens": 8, "completion_tokens": 3},
         },
     )
+
+
+@pytest.mark.asyncio
+async def test_deepseek_peak_guard_prevents_network_request(monkeypatch):
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.com/chat/completions",
+    )
+    client_requested = False
+
+    async def forbidden_client():
+        nonlocal client_requested
+        client_requested = True
+        raise AssertionError("network client must not be created during peak pricing")
+
+    monkeypatch.setattr(provider, "_get_client", forbidden_client)
+    monkeypatch.setattr(
+        deepseek_module,
+        "get_deepseek_pricing_status",
+        lambda: type("Pricing", (), {
+            "disabled": True,
+            "seconds_until_available": 321,
+            "next_available_at_utc": "2026-09-03T04:00:00+00:00",
+            "next_available_at_local": "2026-09-02T22:00:00-06:00",
+            "display_timezone": "America/Mexico_City",
+            "source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+        })(),
+    )
+
+    with pytest.raises(DeepSeekPeakPricingError) as exc_info:
+        await provider.generate("Translate this complete unit.")
+
+    assert client_requested is False
+    assert exc_info.value.retry_after == 323
+    assert exc_info.value.provider == "deepseek"
+    assert exc_info.value.next_available_at_local.endswith("-06:00")
+
+
+@pytest.mark.asyncio
+async def test_deepseek_peak_guard_does_not_restrict_custom_gateway(monkeypatch):
+    client = _ScriptedClient([_success()])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-v4-pro",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+    monkeypatch.setattr(
+        deepseek_module,
+        "get_deepseek_pricing_status",
+        lambda: (_ for _ in ()).throw(AssertionError("custom gateway must bypass guard")),
+    )
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert result is not None
+    assert client.calls == 1
 
 
 @pytest.mark.asyncio

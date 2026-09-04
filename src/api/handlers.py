@@ -49,7 +49,11 @@ from src.core.job_runtime_config import (
 )
 from src.core.literary_continuity import literary_continuity_report_path
 from src.core.llm import OpenRouterProvider
-from src.core.llm.exceptions import InsufficientCreditsError, RateLimitError
+from src.core.llm.exceptions import (
+    DeepSeekPeakPricingError,
+    InsufficientCreditsError,
+    RateLimitError,
+)
 from src.core.llm.factory import create_llm_provider
 from src.core.llm.request_deadline import await_llm_call
 from src.core.output_formats import (
@@ -506,6 +510,28 @@ def _build_rate_limit_auto_resume_plan(
         "stuck_count": stuck_count,
         "max_resumes": max_resumes,
         "resume_index": resume_index,
+    }
+
+
+def _build_pricing_auto_resume_plan(
+    config: Dict[str, Any],
+    *,
+    resume_index: int,
+) -> Dict[str, Any]:
+    """Build an unbounded-by-429-budget resume at a known pricing boundary."""
+    new_config = dict(config)
+    new_config.update({
+        "is_resume": True,
+        "resume_from_index": int(resume_index),
+    })
+    new_config.pop("_pricing_pause_until_utc", None)
+    new_config.pop("_pricing_pause_timezone", None)
+    return {
+        "allowed": True,
+        "config": new_config,
+        "stuck_count": 0,
+        "max_resumes": 0,
+        "resume_index": int(resume_index),
     }
 
 
@@ -2957,9 +2983,16 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             }, namespace='/')
 
     except RateLimitError as e:
+        pricing_pause = isinstance(e, DeepSeekPeakPricingError)
         credits_exhausted = isinstance(e, InsufficientCreditsError) or not getattr(e, 'retryable', True)
-        auto_pause = True if credits_exhausted else config.get(
-            'auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT
+        auto_pause = (
+            False
+            if pricing_pause
+            else (
+                True
+                if credits_exhausted
+                else config.get('auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT)
+            )
         )
         retry_msg = f" Retry suggested after ~{e.retry_after}s." if e.retry_after else ""
         provider_name = e.provider or config.get('llm_provider', 'API')
@@ -2970,15 +3003,73 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         # Auto-resume mode keeps the job running: wait, then re-enter from the checkpoint.
         if not auto_pause:
             wait_seconds = e.retry_after or RATE_LIMIT_AUTO_RESUME_DELAY
-            wait_msg = (f"⏳ Rate limited by {provider_name}.{retry_msg} "
-                        f"Auto-resume in {wait_seconds}s (auto-pause disabled).")
-            _log_message_callback("rate_limit_auto_resume", wait_msg)
+            if pricing_pause:
+                resume_local = getattr(e, 'next_available_at_local', '')
+                wait_msg = (
+                    "DeepSeek entró en horario de tarifa alta. No se enviarán "
+                    f"tokens; reanudación automática en CDMX: {resume_local}."
+                )
+                wait_event = "deepseek_peak_pricing_wait"
+                waiting_status = "pricing_wait"
+                pause_reason = "deepseek_peak_pricing"
+            else:
+                wait_msg = (f"⏳ Rate limited by {provider_name}.{retry_msg} "
+                            f"Auto-resume in {wait_seconds}s (auto-pause disabled).")
+                wait_event = "rate_limit_auto_resume"
+                waiting_status = "rate_limited"
+                pause_reason = "rate_limited"
+            _log_message_callback(wait_event, wait_msg)
 
-            # Surface 'rate_limited' transiently so the UI shows what's happening.
-            state_manager.set_translation_field(translation_id, 'status', 'rate_limited')
+            # A pricing wait is active, recoverable work rather than a terminal
+            # provider error. Keep it visible across page refreshes.
+            state_manager.set_translation_field(translation_id, 'status', waiting_status)
+            state_manager.set_translation_field(translation_id, 'interrupted', False)
+            state_manager.set_translation_field(translation_id, 'pause_reason', pause_reason)
+            if pricing_pause:
+                resume_at_utc = getattr(e, 'next_available_at_utc', '')
+                resume_at_local = getattr(e, 'next_available_at_local', '')
+                state_manager.set_translation_field(
+                    translation_id, 'resume_at_utc', resume_at_utc
+                )
+                state_manager.set_translation_field(
+                    translation_id, 'resume_at_local', resume_at_local
+                )
+                config = dict(config)
+                config['_pricing_pause_until_utc'] = resume_at_utc
+                config['_pricing_pause_timezone'] = getattr(
+                    e, 'display_timezone', 'America/Mexico_City'
+                )
+                state_manager.set_translation_field(translation_id, 'config', config)
+                checkpoint_manager.update_job_config(translation_id, config)
+                paused_stats = _apply_active_timing(
+                    state_manager.get_translation_field(translation_id, 'stats') or {}
+                )
+                paused_stats.update({
+                    'active_elapsed_before_run': paused_stats.get(
+                        'active_elapsed_seconds', 0.0
+                    ),
+                    'live_status': wait_msg,
+                    'live_status_kind': 'scheduled_pause',
+                    'live_activity_event': wait_event,
+                    'pricing_resume_at_utc': resume_at_utc,
+                    'pricing_resume_at_local': resume_at_local,
+                    'eta_seconds': None,
+                    'last_activity_at': time.time(),
+                })
+                state_manager.set_translation_field(
+                    translation_id, 'stats', paused_stats
+                )
             emit_update(socketio, translation_id, {
-                'status': 'rate_limited',
-                'log': wait_msg
+                'status': waiting_status,
+                'log': wait_msg,
+                'reason': pause_reason,
+                'resume_at_utc': getattr(e, 'next_available_at_utc', None),
+                'resume_at_local': getattr(e, 'next_available_at_local', None),
+                'display_timezone': getattr(e, 'display_timezone', None),
+                'stats': (
+                    state_manager.get_translation_field(translation_id, 'stats') or {}
+                    if pricing_pause else None
+                ),
             }, state_manager)
 
             await asyncio.sleep(wait_seconds)
@@ -3008,10 +3099,18 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     # advancing the checkpoint. The bounded budget prevents a
                     # throttled account from keeping a book "active" for hours.
                     resume_index = int(cp_data['resume_from_index'])
-                    rate_limit_plan = _build_rate_limit_auto_resume_plan(
-                        config,
-                        resume_index=resume_index,
-                    )
+                    if pricing_pause:
+                        # This wait has a deterministic end. It must not consume
+                        # the bounded retry budget intended for repeated 429s.
+                        rate_limit_plan = _build_pricing_auto_resume_plan(
+                            config,
+                            resume_index=resume_index,
+                        )
+                    else:
+                        rate_limit_plan = _build_rate_limit_auto_resume_plan(
+                            config,
+                            resume_index=resume_index,
+                        )
                     stuck_count = rate_limit_plan["stuck_count"]
                     max_rate_limit_resumes = rate_limit_plan["max_resumes"]
                     if not rate_limit_plan["allowed"]:
@@ -3029,6 +3128,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                         state_manager.set_translation_field(translation_id, 'config', new_config)
                         state_manager.set_translation_field(translation_id, 'status', 'running')
                         state_manager.set_translation_field(translation_id, 'interrupted', False)
+                        state_manager.set_translation_field(translation_id, 'pause_reason', None)
+                        state_manager.set_translation_field(translation_id, 'resume_at_utc', None)
+                        state_manager.set_translation_field(translation_id, 'resume_at_local', None)
                         emit_update(socketio, translation_id, {
                             'status': 'running',
                             'log': f"▶️ Auto-resuming from chunk {resume_index}..."

@@ -12,6 +12,7 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { ProgressManager } from './progress-manager.js?v=20260705-transform-infer';
 import { t, getCurrentLocale, applyToDOM } from '../i18n/i18n.js';
 import { createProviderModelPicker } from '../providers/provider-model-picker.js';
+import { DeepSeekPricingManager } from '../providers/deepseek-pricing-manager.js?v=20260903';
 
 // Live picker instances, keyed by translation_id, so the override panel keeps
 // its state while open and can be cleaned up on the next list render.
@@ -418,6 +419,10 @@ export const ResumeManager = {
             }, 1000);
 
         } catch (error) {
+            if (error.data?.code === 'deepseek_peak_pricing') {
+                DeepSeekPricingManager.handleBlockedResponse(error.data);
+                return;
+            }
             // Enhanced error message for active translation conflicts
             if (error.status === 409 && error.data?.active_translations) {
                 const activeList = error.data.active_translations

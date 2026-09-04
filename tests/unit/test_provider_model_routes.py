@@ -3,6 +3,7 @@ from flask import Flask
 from types import SimpleNamespace
 
 from src.api.blueprints import config_routes
+from src.api.blueprints import provider_model_routes
 from src.api.blueprints.config_routes import create_config_blueprint
 from src.api.blueprints.provider_model_routes import ProviderModelCatalog
 
@@ -42,6 +43,27 @@ def test_deepseek_model_listing_reports_missing_key_without_network(monkeypatch)
             "environment variable or pass api_key parameter."
         ),
     }
+
+
+def test_deepseek_availability_is_server_authoritative_and_not_cached(monkeypatch):
+    expected = {
+        "provider": "deepseek",
+        "disabled": True,
+        "available": False,
+        "display_timezone": "America/Mexico_City",
+        "next_available_at_local": "2026-09-02T22:00:00-06:00",
+    }
+    monkeypatch.setattr(
+        provider_model_routes,
+        "get_deepseek_pricing_status",
+        lambda: SimpleNamespace(to_dict=lambda: expected),
+    )
+
+    response = _client().get("/api/providers/deepseek/availability")
+
+    assert response.status_code == 200
+    assert response.get_json() == expected
+    assert response.headers["Cache-Control"] == "no-store, max-age=0"
 
 
 def test_cloud_catalog_uses_configured_default_and_provider_contract(monkeypatch):

@@ -85,17 +85,28 @@ def test_cloud_provider_without_key_is_rejected(app_ctx, monkeypatch):
     assert status == 400
 
 
-def test_endpoint_provider_without_endpoint_is_rejected(app_ctx, monkeypatch):
+def test_provider_switch_resets_stale_endpoint_to_provider_default(app_ctx, monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY', 'sk-openai')
     config = _base_config()
-    config['llm_api_endpoint'] = ''  # cleared
     result = _apply_resume_overrides(config, {
         'llm_provider': 'openai',
         'model': 'gpt-4o',
     })
-    assert result is not None
-    _response, status = result
-    assert status == 400
+    assert result is None
+    assert config['llm_api_endpoint'] == 'https://api.openai.com/v1/chat/completions'
+
+
+def test_deepseek_provider_switch_uses_official_endpoint(app_ctx, monkeypatch):
+    monkeypatch.setenv('DEEPSEEK_API_KEY', 'sk-deepseek')
+    config = _base_config()
+
+    result = _apply_resume_overrides(config, {
+        'llm_provider': 'deepseek',
+        'model': 'deepseek-v4-pro',
+    })
+
+    assert result is None
+    assert config['llm_api_endpoint'] == 'https://api.deepseek.com/chat/completions'
 
 
 def test_invalid_context_window_is_rejected(app_ctx):

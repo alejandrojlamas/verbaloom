@@ -10,6 +10,10 @@ from flask import Blueprint, request, jsonify
 
 from src.api.safe_payloads import client_safe_config, client_safe_logs
 from src.core.job_runtime_config import configure_editorial_guard_options
+from src.core.deepseek_pricing import (
+    get_deepseek_pricing_status,
+    is_official_deepseek_endpoint,
+)
 from src.persistence.checkpoint_reconcile import checkpoint_progress_snapshot
 from src.config import (
     REQUEST_TIMEOUT,
@@ -132,6 +136,26 @@ def _provider_key_required(provider, endpoint):
     if (provider or '').lower() != 'openai':
         return provider in _KEY_PROVIDERS
     return endpoint_origin(endpoint) == "https://api.openai.com"
+
+
+def _deepseek_pricing_block(provider, endpoint):
+    """Return a structured start/resume block for the official paid API."""
+    if (provider or '').lower() != 'deepseek':
+        return None
+    if not is_official_deepseek_endpoint(endpoint):
+        return None
+    pricing = get_deepseek_pricing_status()
+    if not pricing.disabled:
+        return None
+    return {
+        "code": "deepseek_peak_pricing",
+        "error": "DeepSeek está deshabilitado durante el horario de tarifa alta.",
+        "message": (
+            "No se enviaron tokens. Podrás usar DeepSeek de nuevo al terminar "
+            "la ventana de tarifa alta."
+        ),
+        "availability": pricing.to_dict(),
+    }
 
 
 def _sanitize_restored_endpoint_credentials(config):
@@ -262,6 +286,10 @@ def _apply_resume_overrides(config, overrides):
         config['model'] = overrides['model']
     if overrides.get('llm_provider'):
         config['llm_provider'] = str(overrides['llm_provider']).lower()
+        if not overrides.get('llm_api_endpoint'):
+            config['llm_api_endpoint'] = _provider_default_endpoint(
+                config['llm_provider']
+            )
     if overrides.get('llm_api_endpoint'):
         config['llm_api_endpoint'] = overrides['llm_api_endpoint']
     if overrides.get('context_window') is not None:
@@ -417,6 +445,10 @@ def create_translation_blueprint(
         llm_api_endpoint = str(data.get('llm_api_endpoint') or '').strip()
         if not llm_api_endpoint:
             llm_api_endpoint = _provider_default_endpoint(provider)
+
+        pricing_block = _deepseek_pricing_block(provider, llm_api_endpoint)
+        if pricing_block:
+            return jsonify(pricing_block), 423
 
         # Validate required fields
         has_file_input = 'file_path' in data
@@ -656,6 +688,9 @@ def create_translation_blueprint(
         return jsonify({
             "translation_id": translation_id,
             "status": job_data.get('status'),
+            "pause_reason": job_data.get('pause_reason'),
+            "resume_at_utc": job_data.get('resume_at_utc'),
+            "resume_at_local": job_data.get('resume_at_local'),
             "progress": _json_safe(job_data.get('progress')),
             "stats": stats_payload,
             "logs": _json_safe(_client_safe_logs(job_data.get('logs', []))),
@@ -709,6 +744,24 @@ def create_translation_blueprint(
 
         job_data = state_manager.get_translation(translation_id)
         status = job_data.get('status')
+        if status == 'pricing_wait':
+            _persist_manual_pause_request(state_manager, translation_id)
+            state_manager.set_interrupted(translation_id, True)
+            state_manager.set_translation_field(translation_id, 'status', 'interrupted')
+            state_manager.set_translation_field(translation_id, 'resume_at_utc', None)
+            state_manager.set_translation_field(translation_id, 'resume_at_local', None)
+            state_manager.checkpoint_manager.mark_interrupted(translation_id)
+            if socketio:
+                socketio.emit(EVENT_TRANSLATION_UPDATE, {
+                    'translation_id': translation_id,
+                    'status': 'interrupted',
+                    'reason': 'manual',
+                    'log': 'Espera programada cancelada; el checkpoint se conservó.',
+                }, namespace='/')
+            return jsonify({
+                "message": "Scheduled pricing wait cancelled. The checkpoint remains resumable."
+            }), 200
+
         if status in ('running', 'queued'):
             _persist_manual_pause_request(state_manager, translation_id)
             state_manager.set_interrupted(translation_id, True)
@@ -763,7 +816,7 @@ def create_translation_blueprint(
                 status == 'rate_limited'
                 and not bool(tdata.get('interrupted'))
             )
-            if status in ['running', 'queued'] or is_transient_rate_limit:
+            if status in ['running', 'queued', 'pricing_wait'] or is_transient_rate_limit:
                 active_translations.append({
                     'id': tid,
                     'status': status,
@@ -787,6 +840,26 @@ def create_translation_blueprint(
                 "error": "Translation already completed",
                 "message": "This checkpoint already passed finalization; there is nothing left to resume."
             }), 409
+
+        overrides = request.get_json(silent=True) or {}
+        checkpoint_config = (checkpoint_data.get('job') or {}).get('config') or {}
+        resume_provider = str(
+            overrides.get('llm_provider')
+            or checkpoint_config.get('llm_provider')
+            or 'ollama'
+        ).lower()
+        resume_endpoint = str(
+            overrides.get('llm_api_endpoint')
+            or (
+                _provider_default_endpoint(resume_provider)
+                if overrides.get('llm_provider')
+                else checkpoint_config.get('llm_api_endpoint')
+            )
+            or _provider_default_endpoint(resume_provider)
+        ).strip()
+        pricing_block = _deepseek_pricing_block(resume_provider, resume_endpoint)
+        if pricing_block:
+            return jsonify(pricing_block), 423
 
         # Restore job into state manager
         restored = state_manager.restore_job_from_checkpoint(translation_id)
@@ -851,7 +924,6 @@ def create_translation_blueprint(
 
         # Optional model/provider overrides for the remaining chunks (issue #183).
         # No body = unchanged behavior.
-        overrides = request.get_json(silent=True) or {}
         override_error = _apply_resume_overrides(config, overrides)
         if override_error is not None:
             return override_error
