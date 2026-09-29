@@ -34,25 +34,18 @@ from src.persistence.database import Database
 class TestServerSessionId:
     """Tests for server session ID generation and usage."""
 
-    def test_generate_server_session_id_returns_timestamp_string(self):
-        """Session ID should be a string representation of Unix timestamp."""
+    def test_generate_server_session_id_returns_opaque_uuid(self):
+        """Each process gets an opaque ID independent of wall-clock precision."""
         session_id = generate_server_session_id()
         assert isinstance(session_id, str)
-        # Should be convertible to int (timestamp)
-        timestamp = int(session_id)
-        # Should be a recent timestamp (within last minute)
-        now = int(time.time())
-        assert now - 60 <= timestamp <= now + 1
+        assert len(session_id) == 32
+        int(session_id, 16)
 
     def test_generate_server_session_id_unique_per_call(self):
-        """Each call should potentially generate a different ID (time-based)."""
+        """Rapid restarts in the same second must never share ownership."""
         id1 = generate_server_session_id()
-        time.sleep(0.01)  # Small delay
         id2 = generate_server_session_id()
-        # IDs are time-based, so they might be same if called within same second
-        # But they should both be valid timestamps
-        assert int(id1) > 0
-        assert int(id2) > 0
+        assert id1 != id2
 
     def test_importing_state_module_does_not_create_jobs_database(self, tmp_path):
         project_root = Path(__file__).parents[2]
@@ -92,9 +85,7 @@ class TestServerSessionId:
             state_manager = TranslationStateManager(checkpoint_manager=checkpoint_mgr)
             assert state_manager.server_session_id is not None
             assert len(state_manager.server_session_id) > 0
-            # Should be a valid timestamp
-            timestamp = int(state_manager.server_session_id)
-            assert timestamp > 0
+            int(state_manager.server_session_id, 16)
             checkpoint_mgr.close()
 
 
@@ -750,6 +741,33 @@ class TestStateManagerCheckpointIntegration:
 
             checkpoint_mgr.close()
 
+    def test_pending_resume_keeps_interrupt_fence_until_worker_claims(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.db")
+            checkpoint_mgr = CheckpointManager(
+                db_path=db_path,
+                server_session_id="session_1",
+            )
+            checkpoint_mgr.start_job(
+                "trans_queued",
+                "txt",
+                {"input_filename": "book.txt", "file_type": "txt"},
+            )
+            checkpoint_mgr.mark_interrupted("trans_queued")
+            state_manager = TranslationStateManager(
+                checkpoint_manager=checkpoint_mgr,
+                server_session_id="session_2",
+            )
+
+            assert state_manager.restore_job_from_checkpoint(
+                "trans_queued",
+                pending_resume=True,
+            )
+            state = state_manager.get_translation("trans_queued")
+            assert state["status"] == "queued"
+            assert state["interrupted"] is True
+            checkpoint_mgr.close()
+
     def test_delete_checkpoint_removes_from_memory_and_db(self):
         """Deleting checkpoint should remove from both memory and database."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -828,8 +846,9 @@ class TestHealthEndpointSessionId:
             response = client.get('/api/health')
             data = response.get_json()
 
-            assert data['session_id'] == int(session_id)
-            assert data['startup_time'] == int(session_id)
+            assert data['process_session_id'] == session_id
+            assert data['session_id'] == data['startup_time']
+            assert abs(data['startup_time'] - int(time.time())) <= 2
 
     def test_config_blueprint_generates_session_id_if_not_provided(self):
         """Config blueprint should generate session ID if not provided."""
@@ -845,12 +864,14 @@ class TestHealthEndpointSessionId:
             response = client.get('/api/health')
             data = response.get_json()
 
-            # Should have generated a valid timestamp
+            # Session identity and display timestamp are separate contracts.
             assert 'session_id' in data
-            assert data['session_id'] > 0
+            assert isinstance(data['session_id'], int)
+            assert len(data['process_session_id']) == 32
+            int(data['process_session_id'], 16)
             # Should be a recent timestamp
             now = int(time.time())
-            assert now - 60 <= data['session_id'] <= now + 1
+            assert now - 60 <= data['startup_time'] <= now + 1
 
     def test_mobile_access_status_exposes_tailnet_fallback(self, monkeypatch, tmp_path):
         """Mobile access endpoint should expose DNS-free phone URLs."""

@@ -868,7 +868,10 @@ def create_translation_blueprint(
             return jsonify(pricing_block), 423
 
         # Restore job into state manager
-        restored = state_manager.restore_job_from_checkpoint(translation_id)
+        restored = state_manager.restore_job_from_checkpoint(
+            translation_id,
+            pending_resume=True,
+        )
         if not restored:
             return jsonify({"error": "Failed to restore job from checkpoint"}), 500
 
@@ -927,6 +930,9 @@ def create_translation_blueprint(
         config['is_resume'] = True
         config.pop('_manual_pause_requested', None)
         config.pop('_manual_pause_requested_at', None)
+        # The interrupt fence remains raised until this worker owns execution.
+        # An older worker may still be unwinding after a quick Pause/Resume.
+        config['_explicit_resume_requested'] = True
 
         # Optional model/provider overrides for the remaining chunks (issue #183).
         # No body = unchanged behavior.

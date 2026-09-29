@@ -599,7 +599,12 @@ def _provider_wait_seconds(
         suggested = max(0.0, float(suggested_seconds or 0.0))
     except (TypeError, ValueError):
         suggested = 0.0
-    return max(float(backoff), suggested)
+    # Provider hints are advisory and occasionally malformed or measured in a
+    # different unit. Never schedule one invisible multi-hour sleep.
+    return min(
+        float(_PROVIDER_WAIT_BACKOFF_SECONDS[-1]),
+        max(float(backoff), suggested),
+    )
 
 
 async def _interruptible_provider_wait(
@@ -667,7 +672,10 @@ def _schedule_failed_chunk_recovery(
         if state_manager.get_translation_field(translation_id, 'interrupted'):
             state_manager.set_translation_field(translation_id, 'recovery_scheduled', False)
             return
-        if str(state_manager.get_translation_field(translation_id, 'status') or '') != 'running':
+        expected_status = (
+            'provider_wait' if plan.get('transient') else 'running'
+        )
+        if str(state_manager.get_translation_field(translation_id, 'status') or '') != expected_status:
             state_manager.set_translation_field(translation_id, 'recovery_scheduled', False)
             return
         state_manager.set_translation_field(translation_id, 'recovery_scheduled', False)
@@ -1274,6 +1282,62 @@ def run_translation_async_wrapper(translation_id, config, state_manager, output_
         loop.close()
 
 
+def _claim_translation_worker(
+    translation_id: str,
+    config: Dict[str, Any],
+    state_manager: Any,
+) -> Dict[str, Any] | None:
+    """Fence stale workers and claim a queued explicit resume.
+
+    The supervisor serializes threads, while this state fence prevents a quick
+    Pause/Resume from clearing the old worker's interrupt signal before that
+    worker has exited.
+    """
+    if not state_manager.exists(translation_id):
+        return None
+
+    claimed_config = dict(config or {})
+    explicit_resume = bool(
+        claimed_config.pop("_explicit_resume_requested", False)
+    )
+    current_config = (
+        state_manager.get_translation_field(translation_id, "config") or {}
+    )
+    manual_pause_requested = bool(current_config.get("_manual_pause_requested"))
+    interrupted = bool(
+        state_manager.get_translation_field(translation_id, "interrupted")
+    )
+    if manual_pause_requested or (interrupted and not explicit_resume):
+        state_manager.set_translation_field(translation_id, "status", "interrupted")
+        return None
+
+    if explicit_resume:
+        checkpoint_manager = state_manager.get_checkpoint_manager()
+        try:
+            fresh_checkpoint = checkpoint_manager.load_checkpoint(translation_id)
+            if fresh_checkpoint:
+                claimed_config["resume_from_index"] = max(
+                    0,
+                    int(fresh_checkpoint.get("resume_from_index") or 0),
+                )
+        except Exception:
+            # The captured resume index remains a safe fallback. The normal
+            # checkpoint load will expose a real persistence failure.
+            pass
+        if not checkpoint_manager.update_job_config(
+            translation_id,
+            claimed_config,
+        ):
+            raise RuntimeError("Could not persist resumed worker configuration")
+        if not checkpoint_manager.mark_running(translation_id):
+            raise RuntimeError("Could not claim durable resumed job state")
+        # Clear the in-memory fence only after the replacement worker owns the
+        # durable row. The previous worker has already exited at this point.
+        state_manager.set_translation_field(translation_id, "interrupted", False)
+        state_manager.set_translation_field(translation_id, "pause_reason", None)
+    return claimed_config
+
+
 async def perform_actual_translation(translation_id, config, state_manager, output_dir, socketio):
     """
     Perform the actual translation job
@@ -1285,19 +1349,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         output_dir (str): Output directory path
         socketio: SocketIO instance
     """
-    if not state_manager.exists(translation_id):
-        return
-
-    current_config = (
-        state_manager.get_translation_field(translation_id, "config") or {}
+    config = _claim_translation_worker(
+        translation_id,
+        config,
+        state_manager,
     )
-    if (
-        state_manager.get_translation_field(translation_id, "interrupted")
-        or current_config.get("_manual_pause_requested")
-    ):
-        # A delayed recovery timer can reach the supervisor at the same instant
-        # as a user pause.  Never let that stale worker revive the job.
-        state_manager.set_translation_field(translation_id, "status", "interrupted")
+    if config is None:
         return
 
     config, legacy_recovery_config_removed = (
@@ -3144,6 +3201,20 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             state_manager.set_translation_field(translation_id, 'status', waiting_status)
             state_manager.set_translation_field(translation_id, 'interrupted', False)
             state_manager.set_translation_field(translation_id, 'pause_reason', pause_reason)
+            waiting_stats = _apply_active_timing(
+                state_manager.get_translation_field(translation_id, 'stats') or {}
+            )
+            waiting_stats.update({
+                'active_elapsed_before_run': waiting_stats.get(
+                    'active_elapsed_seconds', 0.0
+                ),
+                'live_status': wait_msg,
+                'live_status_kind': 'scheduled_pause',
+                'live_activity_event': wait_event,
+                'provider_retry_at': time.time() + float(wait_seconds),
+                'eta_seconds': None,
+                'last_activity_at': time.time(),
+            })
             if pricing_pause:
                 resume_at_utc = getattr(e, 'next_available_at_utc', '')
                 resume_at_local = getattr(e, 'next_available_at_local', '')
@@ -3160,24 +3231,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 )
                 state_manager.set_translation_field(translation_id, 'config', config)
                 checkpoint_manager.update_job_config(translation_id, config)
-                paused_stats = _apply_active_timing(
-                    state_manager.get_translation_field(translation_id, 'stats') or {}
-                )
-                paused_stats.update({
-                    'active_elapsed_before_run': paused_stats.get(
-                        'active_elapsed_seconds', 0.0
-                    ),
-                    'live_status': wait_msg,
-                    'live_status_kind': 'scheduled_pause',
-                    'live_activity_event': wait_event,
+                waiting_stats.update({
                     'pricing_resume_at_utc': resume_at_utc,
                     'pricing_resume_at_local': resume_at_local,
-                    'eta_seconds': None,
-                    'last_activity_at': time.time(),
                 })
-                state_manager.set_translation_field(
-                    translation_id, 'stats', paused_stats
-                )
+            state_manager.set_translation_field(
+                translation_id, 'stats', waiting_stats
+            )
             emit_update(socketio, translation_id, {
                 'status': waiting_status,
                 'log': wait_msg,
@@ -3185,10 +3245,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 'resume_at_utc': getattr(e, 'next_available_at_utc', None),
                 'resume_at_local': getattr(e, 'next_available_at_local', None),
                 'display_timezone': getattr(e, 'display_timezone', None),
-                'stats': (
-                    state_manager.get_translation_field(translation_id, 'stats') or {}
-                    if pricing_pause else None
-                ),
+                'stats': waiting_stats,
             }, state_manager)
 
             wait_completed = await _interruptible_provider_wait(
@@ -3367,24 +3424,45 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             if recovery_plan is not None:
                 cycle = recovery_plan["cycle"]
                 delay_seconds = recovery_plan["delay_seconds"]
+                transient_recovery = bool(recovery_plan.get("transient"))
+                recovery_status = (
+                    "provider_wait" if transient_recovery else "running"
+                )
                 recovery_stats = state_manager.get_translation_field(
                     translation_id, 'stats'
                 ) or {}
                 recovery_stats.update({
                     'live_status': (
-                        "Recuperando el proceso desde el último checkpoint "
-                        f"(ciclo {cycle})"
+                        (
+                            "Proveedor temporalmente no disponible; "
+                            f"reintento automático en {delay_seconds}s"
+                        )
+                        if transient_recovery
+                        else (
+                            "Recuperando el proceso desde el último checkpoint "
+                            f"(ciclo {cycle})"
+                        )
                     ),
-                    'live_status_kind': 'active',
+                    'live_status_kind': (
+                        'scheduled_pause' if transient_recovery else 'active'
+                    ),
                     'live_activity_event': 'worker_exception_auto_recovery',
                     'last_activity_at': time.time(),
                     'worker_error_recovery_cycle': cycle,
+                    'provider_retry_at': (
+                        time.time() + delay_seconds
+                        if transient_recovery else None
+                    ),
                 })
                 state_manager.update_stats(translation_id, recovery_stats)
                 state_manager.set_translation_field(
                     translation_id, 'config', recovery_plan['config']
                 )
-                state_manager.set_translation_field(translation_id, 'status', 'running')
+                state_manager.set_translation_field(
+                    translation_id,
+                    'status',
+                    recovery_status,
+                )
                 state_manager.set_translation_field(translation_id, 'error', None)
                 checkpoint_manager.mark_running(translation_id)
                 checkpoint_manager.update_job_config(
@@ -3406,7 +3484,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     f"({retry_budget}).",
                 )
                 emit_update(socketio, translation_id, {
-                    'status': 'running',
+                    'status': recovery_status,
                     'recovering': True,
                     'recovery_scope': 'worker',
                     'recovery_cycle': cycle,

@@ -6,6 +6,7 @@ import sys
 import logging
 import re
 import time
+import uuid
 from flask import Blueprint, request, jsonify, render_template, make_response
 from pathlib import Path
 
@@ -70,10 +71,10 @@ def create_config_blueprint(server_session_id=None):
     """
     bp = Blueprint('config', __name__)
 
-    # Store server startup time/session ID to detect restarts
-    # Use provided session_id from state_manager if available, otherwise generate new
-    # Ensure it's an integer for consistency with health check response
-    startup_time = int(server_session_id) if server_session_id else int(time.time())
+    # Wall-clock startup time is useful for display; process identity is a
+    # separate opaque value because rapid managed restarts can share a second.
+    startup_time = int(time.time())
+    process_session_id = str(server_session_id or uuid.uuid4().hex)
 
     register_mobile_access_routes(
         bp,
@@ -210,7 +211,10 @@ def create_config_blueprint(server_session_id=None):
             "supported_output_formats": SUPPORTED_OUTPUT_FORMATS,
             "version": __version__,
             "startup_time": startup_time,  # Used to detect server restarts
-            "session_id": startup_time  # Alias for compatibility with LifecycleManager
+            # Preserve the historical numeric contract for external clients.
+            "session_id": startup_time,
+            # First-party clients use the collision-resistant process identity.
+            "process_session_id": process_session_id,
         })
 
     @bp.route('/api/config', methods=['GET'])

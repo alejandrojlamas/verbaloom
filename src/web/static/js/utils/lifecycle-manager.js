@@ -112,7 +112,9 @@ export const LifecycleManager = {
      */
     async checkServerRestart(healthData) {
         try {
-            const serverSessionId = healthData.session_id || healthData.startup_time;
+            const serverSessionId = healthData.process_session_id
+                || healthData.session_id
+                || healthData.startup_time;
 
             if (!serverSessionId) {
                 return false;

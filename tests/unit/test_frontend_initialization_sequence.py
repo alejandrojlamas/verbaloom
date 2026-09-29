@@ -38,6 +38,7 @@ class TestFrontendInitializationSequence:
             "provider_manager": base_path / "providers" / "provider-manager.js",
             "form_manager": base_path / "ui" / "form-manager.js",
             "lifecycle_manager": base_path / "utils" / "lifecycle-manager.js",
+            "update_checker": base_path / "utils" / "update-checker.js",
             "glossary_manager": base_path / "glossary" / "glossary-manager.js",
         }
 
@@ -215,6 +216,18 @@ class TestFrontendInitializationSequence:
         wiring_position = index_content.index("wireModuleEvents();")
         connection_position = index_content.index("WebSocketManager.connect();")
         assert wiring_position < connection_position
+
+    def test_restart_detection_prefers_collision_resistant_process_id(self, js_files):
+        lifecycle_content = js_files["lifecycle_manager"].read_text(encoding="utf-8")
+        update_content = js_files["update_checker"].read_text(encoding="utf-8")
+
+        lifecycle_process = lifecycle_content.index("healthData.process_session_id")
+        lifecycle_legacy = lifecycle_content.index("healthData.session_id")
+        assert lifecycle_process < lifecycle_legacy
+
+        assert update_content.count(
+            "j.process_session_id || j.session_id || j.startup_time"
+        ) == 2
 
     def test_profile_impact_preview_uses_the_active_flow_file_and_purpose(self, js_files):
         content = js_files["glossary_manager"].read_text(encoding="utf-8")

@@ -103,6 +103,34 @@ def test_managed_stale_job_requests_one_process_recovery_without_error(
     assert stats["live_activity_event"] == "watchdog_process_recovery"
 
 
+def test_managed_watchdog_requests_only_one_restart_for_multiple_stale_jobs(
+    wired_state_manager,
+):
+    state_manager = wired_state_manager
+    for translation_id in ("trans_stale_a", "trans_stale_b"):
+        _create_running_job(
+            state_manager,
+            translation_id,
+            last_activity_at=time.time() - 10_000,
+        )
+    requests = []
+    watchdog = JobWatchdog(
+        state_manager,
+        stale_after_seconds=3600,
+        restart_callback=lambda job_id, message: requests.append((job_id, message)),
+    )
+
+    flagged = watchdog.check_once()
+
+    assert len(flagged) == 1
+    assert len(requests) == 1
+    untouched = ({"trans_stale_a", "trans_stale_b"} - set(flagged)).pop()
+    assert state_manager.get_translation_field(
+        untouched,
+        "watchdog_recovery_requested",
+    ) is None
+
+
 def test_recent_activity_job_is_not_flagged(wired_state_manager):
     state_manager = wired_state_manager
     translation_id = "trans_healthy"

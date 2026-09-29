@@ -196,7 +196,9 @@ export const UpdateChecker = {
         try {
             const r = await fetch('/api/health');
             const j = await r.json();
-            this._initialHealthSessionId = String(j.session_id || j.startup_time || '');
+            this._initialHealthSessionId = String(
+                j.process_session_id || j.session_id || j.startup_time || ''
+            );
         } catch {
             this._initialHealthSessionId = null;
         }
@@ -248,7 +250,9 @@ export const UpdateChecker = {
                 const r = await fetch('/api/health', { cache: 'no-store' });
                 if (r.ok) {
                     const j = await r.json();
-                    const newSession = String(j.session_id || j.startup_time || '');
+                    const newSession = String(
+                        j.process_session_id || j.session_id || j.startup_time || ''
+                    );
                     if (newSession && newSession !== this._initialHealthSessionId) {
                         this._setOverlayStep(t('common:update_status_restarted', { version: j.version }));
                         clearInterval(this._restartWaiter);

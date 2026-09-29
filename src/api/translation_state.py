@@ -85,9 +85,14 @@ def _summary_progress_values(data_progress: Any, stats: Dict[str, Any]) -> tuple
 
 
 def generate_server_session_id() -> str:
-    """Generate a unique session ID for this server instance using timestamp."""
-    import time
-    return str(int(time.time()))
+    """Generate a collision-resistant ID for one server process.
+
+    Second-resolution timestamps can repeat when a service manager replaces a
+    stuck process immediately. A repeated ID makes the replacement look like
+    the old process to checkpoint recovery, leaving durable running rows
+    without a worker.
+    """
+    return uuid.uuid4().hex
 
 
 class TranslationStateManager:
@@ -348,6 +353,7 @@ class TranslationStateManager:
                     "live_status_kind": summary_stats.get('live_status_kind'),
                     "live_activity_event": summary_stats.get('live_activity_event'),
                     "last_activity_at": summary_stats.get('last_activity_at'),
+                    "provider_retry_at": summary_stats.get('provider_retry_at'),
                     "failure_recovery_cycle": summary_stats.get('failure_recovery_cycle', 0),
                     "failure_recovery_stuck_count": summary_stats.get('failure_recovery_stuck_count', 0),
                     "elapsed_seconds": summary_stats.get('elapsed_seconds'),
@@ -376,12 +382,19 @@ class TranslationStateManager:
         """Get all jobs that can be resumed from database"""
         return self.checkpoint_manager.get_resumable_jobs()
 
-    def restore_job_from_checkpoint(self, translation_id: str) -> bool:
+    def restore_job_from_checkpoint(
+        self,
+        translation_id: str,
+        *,
+        pending_resume: bool = False,
+    ) -> bool:
         """
         Restore a job from checkpoint into in-memory state.
 
         Args:
             translation_id: Job identifier
+            pending_resume: Keep the interrupt fence raised until the newly
+                scheduled worker actually starts.
 
         Returns:
             True if restored successfully
@@ -397,13 +410,13 @@ class TranslationStateManager:
             # Restore job into in-memory state
             # Use deepcopy for config to prevent mutation of stored config
             self._translations[translation_id] = {
-                'status': 'paused',  # Will be set to 'running' when resumed
+                'status': 'queued' if pending_resume else 'paused',
                 'progress': restored_progress,
                 'stats': restored_stats,
                 'logs': [f"[{datetime.now().strftime('%H:%M:%S')}] Job restored from checkpoint."],
                 'result': None,
                 'config': copy.deepcopy(job['config']),
-                'interrupted': False,
+                'interrupted': bool(pending_resume),
                 'output_filepath': job['config'].get('output_filepath'),
                 'resume_from_index': checkpoint_data['resume_from_index']
             }

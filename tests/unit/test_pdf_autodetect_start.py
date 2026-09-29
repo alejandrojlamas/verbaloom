@@ -195,15 +195,17 @@ def test_manual_resume_replaces_any_pending_automatic_handoff(tmp_path):
         def __init__(self):
             self.checkpoint_manager = Checkpoints()
             self.data = {}
+            self.pending_resume = None
 
         def get_all_translations(self):
             return self.data
 
-        def restore_job_from_checkpoint(self, translation_id):
+        def restore_job_from_checkpoint(self, translation_id, *, pending_resume=False):
+            self.pending_resume = pending_resume
             self.data[translation_id] = {
-                "status": "paused",
+                "status": "queued" if pending_resume else "paused",
                 "config": dict(config),
-                "interrupted": False,
+                "interrupted": pending_resume,
             }
             return True
 
@@ -216,10 +218,11 @@ def test_manual_resume_replaces_any_pending_automatic_handoff(tmp_path):
         starts.append((translation_id, resumed_config, kwargs))
         return "handoff_replaced"
 
+    state = State()
     app = Flask(__name__)
     app.register_blueprint(
         create_translation_blueprint(
-            State(),
+            state,
             start_job,
             output_dir=tmp_path,
         )
@@ -235,6 +238,10 @@ def test_manual_resume_replaces_any_pending_automatic_handoff(tmp_path):
         "replace_handoff": True,
     }
     assert "_manual_pause_requested" not in starts[0][1]
+    assert starts[0][1]["_explicit_resume_requested"] is True
+    assert state.pending_resume is True
+    assert state.data["job-1"]["interrupted"] is True
+    assert state.data["job-1"]["status"] == "queued"
 
 
 def test_file_translate_rejects_unmanaged_input_and_output_traversal(tmp_path):

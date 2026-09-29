@@ -57,6 +57,7 @@ class JobWatchdog:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._recovery_requested: set[str] = set()
+        self._managed_restart_requested = False
 
     def start(self) -> None:
         """Start the background polling thread (idempotent)."""
@@ -93,6 +94,10 @@ class JobWatchdog:
         flagged: List[str] = []
         now = time.time()
         for translation_id, data in self._state_manager.get_all_translations().items():
+            # One process recycle reconciles every durable row. Duplicate kill
+            # requests only make ownership on startup ambiguous.
+            if self._restart_callback is not None and self._managed_restart_requested:
+                break
             if data.get("status") != _ACTIVE_STATUS:
                 continue
             stats = data.get("stats") or {}
@@ -169,6 +174,7 @@ class JobWatchdog:
         if not self._state_manager.exists(translation_id):
             return
 
+        self._managed_restart_requested = True
         self._recovery_requested.add(translation_id)
         stats = dict(
             self._state_manager.get_translation_field(translation_id, "stats")
@@ -219,6 +225,7 @@ class JobWatchdog:
             self._restart_callback(translation_id, message)
         except Exception as exc:
             # A failed managed restart must not leave a permanently active row.
+            self._managed_restart_requested = False
             self._recovery_requested.discard(translation_id)
             fallback = f"{message} No se pudo reiniciar el servicio: {exc}"
             self._state_manager.set_translation_field(

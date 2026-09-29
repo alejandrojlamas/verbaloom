@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 
+from src.api.handlers import _claim_translation_worker
 from src.api.job_supervisor import JobSupervisor
 
 
@@ -171,3 +172,92 @@ def test_explicit_pause_cancels_pending_handoff():
             break
         threading.Event().wait(0.01)
     assert calls == ["first", "manual"]
+
+
+def test_resume_fence_stays_raised_until_replacement_worker_claims_checkpoint():
+    class Checkpoints:
+        def __init__(self):
+            self.status = "interrupted"
+
+        def load_checkpoint(self, _translation_id):
+            return {"resume_from_index": 12}
+
+        def update_job_config(self, _translation_id, _config):
+            return True
+
+        def mark_running(self, _translation_id):
+            self.status = "running"
+            return True
+
+    class State:
+        def __init__(self):
+            self.data = {
+                "config": {},
+                "interrupted": False,
+                "status": "running",
+                "pause_reason": None,
+            }
+            self.checkpoints = Checkpoints()
+
+        def exists(self, _translation_id):
+            return True
+
+        def get_translation_field(self, _translation_id, field):
+            return self.data.get(field)
+
+        def set_translation_field(self, _translation_id, field, value):
+            self.data[field] = value
+
+        def get_checkpoint_manager(self):
+            return self.checkpoints
+
+    supervisor = JobSupervisor()
+    state = State()
+    old_started = threading.Event()
+    old_saw_interrupt = threading.Event()
+    replacement_done = threading.Event()
+    observations = []
+
+    def old_worker():
+        old_started.set()
+        assert old_saw_interrupt.wait(timeout=1)
+        observations.append(("old_exit", state.data["interrupted"]))
+
+    def replacement_worker():
+        config = _claim_translation_worker(
+            "book",
+            {
+                "resume_from_index": 5,
+                "_explicit_resume_requested": True,
+            },
+            state,
+        )
+        observations.append(
+            (
+                "replacement_claim",
+                config["resume_from_index"],
+                state.data["interrupted"],
+                state.checkpoints.status,
+            )
+        )
+        replacement_done.set()
+
+    assert supervisor.start("book", old_worker) == "started"
+    assert old_started.wait(timeout=1)
+
+    # Simulate the route raising the fence before queuing a manual handoff.
+    state.data.update({"status": "queued", "interrupted": True})
+    assert supervisor.start(
+        "book",
+        replacement_worker,
+        allow_handoff=True,
+        replace_handoff=True,
+    ) == "handoff_queued"
+    assert state.data["interrupted"] is True
+
+    old_saw_interrupt.set()
+    assert replacement_done.wait(timeout=1)
+    assert observations == [
+        ("old_exit", True),
+        ("replacement_claim", 12, False, "running"),
+    ]

@@ -12,13 +12,14 @@ from src.api.handlers import (
     _build_rate_limit_auto_resume_plan,
     _build_worker_exception_recovery_plan,
     _canonicalize_published_epub_stats,
+    _claim_translation_worker,
     _failed_chunk_recovery_exhausted_stats,
     _final_source_sample_diagnostics,
     _finalization_recovery_exhausted_stats,
+    _interruptible_provider_wait,
+    _is_transient_worker_failure,
     _job_has_unresolved_work,
     _job_is_ready_for_final_audits,
-    _is_transient_worker_failure,
-    _interruptible_provider_wait,
     _live_activity_label,
     _provider_wait_seconds,
     _resolve_job_output_path,
@@ -480,6 +481,77 @@ def test_provider_wait_honors_suggested_delay_and_caps_automatic_backoff():
     assert _provider_wait_seconds({}, 5) == 60
     assert _provider_wait_seconds({"_auto_resume_stuck_count": 1}, 240) == 240
     assert _provider_wait_seconds({"_auto_resume_stuck_count": 99}, None) == 1800
+    assert _provider_wait_seconds({}, 86_400) == 1800
+
+
+def test_explicit_resume_claims_interrupt_fence_and_refreshes_checkpoint():
+    class Checkpoints:
+        def __init__(self):
+            self.saved_config = None
+            self.running = False
+
+        def load_checkpoint(self, _translation_id):
+            return {"resume_from_index": 8}
+
+        def update_job_config(self, _translation_id, config):
+            self.saved_config = dict(config)
+            return True
+
+        def mark_running(self, _translation_id):
+            self.running = True
+            return True
+
+    class State:
+        def __init__(self, *, manual_pause=False):
+            self.data = {
+                "config": {"_manual_pause_requested": manual_pause},
+                "interrupted": True,
+                "status": "queued",
+                "pause_reason": "manual",
+            }
+            self.checkpoints = Checkpoints()
+
+        def exists(self, _translation_id):
+            return True
+
+        def get_translation_field(self, _translation_id, field):
+            return self.data.get(field)
+
+        def set_translation_field(self, _translation_id, field, value):
+            self.data[field] = value
+
+        def get_checkpoint_manager(self):
+            return self.checkpoints
+
+    state = State()
+    config = _claim_translation_worker(
+        "book",
+        {
+            "is_resume": True,
+            "resume_from_index": 4,
+            "_explicit_resume_requested": True,
+        },
+        state,
+    )
+
+    assert config["resume_from_index"] == 8
+    assert "_explicit_resume_requested" not in config
+    assert state.data["interrupted"] is False
+    assert state.data["pause_reason"] is None
+    assert state.checkpoints.saved_config == config
+    assert state.checkpoints.running is True
+
+    paused_state = State(manual_pause=True)
+    blocked = _claim_translation_worker(
+        "book",
+        {"_explicit_resume_requested": True},
+        paused_state,
+    )
+    assert blocked is None
+    assert paused_state.data["interrupted"] is True
+    assert paused_state.data["status"] == "interrupted"
+    assert paused_state.checkpoints.saved_config is None
+    assert paused_state.checkpoints.running is False
 
 
 def test_provider_wait_stops_immediately_after_manual_interrupt():
