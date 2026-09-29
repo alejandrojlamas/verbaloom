@@ -10,6 +10,8 @@ Tests cover:
 """
 
 import pytest
+import sqlite3
+import subprocess
 import threading
 import time
 import tempfile
@@ -51,6 +53,23 @@ class TestServerSessionId:
         # But they should both be valid timestamps
         assert int(id1) > 0
         assert int(id2) > 0
+
+    def test_importing_state_module_does_not_create_jobs_database(self, tmp_path):
+        project_root = Path(__file__).parents[2]
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(project_root)
+
+        result = subprocess.run(
+            [sys.executable, "-c", "import src.api.translation_state"],
+            cwd=tmp_path,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert not (tmp_path / "data" / "jobs.db").exists()
 
     def test_state_manager_uses_provided_session_id(self):
         """State manager should use provided session ID."""
@@ -575,6 +594,70 @@ class TestDatabaseServerSessionHandling:
         assert job is not None
         assert job['status'] == 'running'
 
+    def test_delete_job_cascades_to_checkpoint_chunks(self, database):
+        database.create_job("trans_001", "txt", {})
+        assert database.save_chunk(
+            "trans_001",
+            0,
+            "Hello",
+            "Hola",
+        )
+
+        assert database.delete_job("trans_001") is True
+
+        assert database.get_job("trans_001") is None
+        assert database.get_chunks("trans_001") == []
+
+    def test_startup_removes_legacy_orphan_chunks(self, tmp_path):
+        db_path = tmp_path / "legacy.db"
+        connection = sqlite3.connect(db_path)
+        connection.executescript(
+            """
+            CREATE TABLE translation_jobs (
+                translation_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                config JSON NOT NULL,
+                progress JSON NOT NULL,
+                translation_context JSON,
+                server_session_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                paused_at TIMESTAMP,
+                completed_at TIMESTAMP
+            );
+            CREATE TABLE checkpoint_chunks (
+                translation_id TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                original_text TEXT NOT NULL,
+                translated_text TEXT,
+                chunk_data JSON,
+                status TEXT NOT NULL,
+                completed_at TIMESTAMP,
+                PRIMARY KEY (translation_id, chunk_index),
+                FOREIGN KEY (translation_id) REFERENCES translation_jobs(translation_id)
+                    ON DELETE CASCADE
+            );
+            INSERT INTO checkpoint_chunks (
+                translation_id, chunk_index, original_text, translated_text, status
+            ) VALUES ('missing_job', 0, 'Hello', 'Hola', 'completed');
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        repaired = Database(db_path=str(db_path))
+        try:
+            row = repaired._get_connection().execute(
+                "SELECT COUNT(*) FROM checkpoint_chunks"
+            ).fetchone()
+            assert row[0] == 0
+            assert repaired._get_connection().execute(
+                "PRAGMA foreign_keys"
+            ).fetchone()[0] == 1
+        finally:
+            repaired.close()
+
     def test_reset_running_jobs_filters_by_session(self, database):
         """Reset should only affect jobs from different sessions."""
         # Create jobs with different session IDs
@@ -769,14 +852,16 @@ class TestHealthEndpointSessionId:
             now = int(time.time())
             assert now - 60 <= data['session_id'] <= now + 1
 
-    def test_mobile_access_status_exposes_tailnet_fallback(self, monkeypatch):
+    def test_mobile_access_status_exposes_tailnet_fallback(self, monkeypatch, tmp_path):
         """Mobile access endpoint should expose DNS-free phone URLs."""
         from src.api.blueprints import config_routes
         from src.api.blueprints.config_routes import create_config_blueprint
         from flask import Flask
 
         monkeypatch.setattr(config_routes, "_local_tailnet_ip", lambda: "100.64.0.10")
+        monkeypatch.setattr(config_routes, "get_config_path", lambda: str(tmp_path))
         monkeypatch.setenv("VERBALOOM_MAGICDNS_URL", "https://device.example.ts.net/")
+        monkeypatch.setenv("PORT", "5000")
         app = Flask(__name__)
         app.register_blueprint(create_config_blueprint(server_session_id="1234567890"))
 
@@ -796,13 +881,15 @@ class TestHealthEndpointSessionId:
             assert data["request"]["is_android"] is True
             assert "Test Device" in data["request"]["user_agent"]
 
-    def test_mobile_access_page_is_bundle_independent(self, monkeypatch):
+    def test_mobile_access_page_is_bundle_independent(self, monkeypatch, tmp_path):
         """The mobile diagnostic page should render without the main app bundle."""
         from src.api.blueprints import config_routes
         from src.api.blueprints.config_routes import create_config_blueprint
         from flask import Flask
 
         monkeypatch.setattr(config_routes, "_local_tailnet_ip", lambda: "100.64.0.10")
+        monkeypatch.setattr(config_routes, "get_config_path", lambda: str(tmp_path))
+        monkeypatch.setenv("PORT", "5000")
         app = Flask(__name__)
         app.register_blueprint(create_config_blueprint(server_session_id="1234567890"))
 

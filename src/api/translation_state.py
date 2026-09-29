@@ -471,24 +471,34 @@ class TranslationStateManager:
                 pass
 
 
-# Global instance
-_state_manager = TranslationStateManager()
+# Process-wide instance. Keep it lazy so importing this module for tooling,
+# static analysis, or tests never opens or migrates the production jobs DB.
+_state_manager: Optional[TranslationStateManager] = None
+_state_manager_lock = threading.Lock()
 
 
 def get_state_manager() -> TranslationStateManager:
     """Get the global state manager instance"""
+    global _state_manager
+    if _state_manager is None:
+        with _state_manager_lock:
+            if _state_manager is None:
+                _state_manager = TranslationStateManager()
     return _state_manager
 
 
 def get_glossary_store() -> "GlossaryStore":
     """Return the process-wide shared GlossaryStore."""
-    return _state_manager.get_glossary_store()
+    return get_state_manager().get_glossary_store()
 
 
 @atexit.register
 def _shutdown_glossary_store() -> None:
     """Close all GlossaryStore connections on interpreter shutdown."""
+    manager = _state_manager
+    if manager is None:
+        return
     try:
-        _state_manager.close_glossary_store()
+        manager.close_glossary_store()
     except Exception:
         pass

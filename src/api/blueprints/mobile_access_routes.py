@@ -8,7 +8,9 @@ import logging
 import os
 import re
 import socket
+import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Callable
 
@@ -19,6 +21,8 @@ from src.utils.branding import REPOSITORY_URL, ROUTE_PREFIX, env_value
 
 TAILSCALE_IP_RE = re.compile(r"^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
 MOBILE_ACCESS_LOG_LIMIT = 60
+MOBILE_ACCESS_MAX_EVENTS = 2000
+MOBILE_ACCESS_COMPACT_BYTES = 1024 * 1024
 
 
 def configured_magicdns_url() -> str:
@@ -96,9 +100,15 @@ class MobileAccessEventStore:
         self,
         config_path_provider: Callable[[], str],
         logger: logging.Logger | None = None,
+        *,
+        max_events: int = MOBILE_ACCESS_MAX_EVENTS,
+        compact_after_bytes: int = MOBILE_ACCESS_COMPACT_BYTES,
     ) -> None:
         self._config_path_provider = config_path_provider
         self._logger = logger or logging.getLogger(__name__)
+        self._max_events = max(1, int(max_events))
+        self._compact_after_bytes = max(1, int(compact_after_bytes))
+        self._lock = threading.Lock()
 
     @property
     def path(self) -> Path:
@@ -107,7 +117,6 @@ class MobileAccessEventStore:
     def append(self, kind: str, context: dict) -> None:
         """Append only request metadata needed to confirm phone connectivity."""
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
             event = {
                 "timestamp": time.time(),
                 "kind": kind,
@@ -120,33 +129,56 @@ class MobileAccessEventStore:
                 "is_mobile": bool(context.get("is_mobile")),
                 "user_agent": str(context.get("user_agent") or "")[:240],
             }
-            with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+            with self._lock:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                with self.path.open("a", encoding="utf-8") as handle:
+                    handle.write(
+                        json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n"
+                    )
+                if self.path.stat().st_size > self._compact_after_bytes:
+                    self._compact_locked()
         except Exception as exc:
             self._logger.debug("Could not write mobile access event: %s", exc)
 
+    def _compact_locked(self) -> None:
+        """Keep only the latest valid events; caller holds ``self._lock``."""
+        recent_lines: deque[str] = deque(maxlen=self._max_events)
+        with self.path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                recent_lines.append(line.rstrip("\n"))
+
+        temporary_path = self.path.with_name(f".{self.path.name}.tmp")
+        with temporary_path.open("w", encoding="utf-8") as handle:
+            for line in recent_lines:
+                handle.write(line + "\n")
+        os.replace(temporary_path, self.path)
+
     def read(self, limit: int = MOBILE_ACCESS_LOG_LIMIT) -> list[dict]:
         """Return the latest valid diagnostic events, newest first."""
+        bounded_limit = max(1, int(limit))
         try:
-            if not self.path.exists():
-                return []
-            lines = self.path.read_text(encoding="utf-8").splitlines()
+            with self._lock:
+                if not self.path.exists():
+                    return []
+                events: deque[dict] = deque(maxlen=bounded_limit)
+                with self.path.open("r", encoding="utf-8") as handle:
+                    for line in handle:
+                        if not line.strip():
+                            continue
+                        try:
+                            events.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
         except Exception as exc:
             self._logger.debug("Could not read mobile access events: %s", exc)
             return []
-
-        events = []
-        for line in reversed(lines[-max(1, int(limit) * 2) :]):
-            if not line.strip():
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            events.append(event)
-            if len(events) >= limit:
-                break
-        return events
+        return list(reversed(events))
 
 
 def _disable_cache(response):

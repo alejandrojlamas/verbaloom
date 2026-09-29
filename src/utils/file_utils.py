@@ -7,9 +7,12 @@ import aiofiles
 import re
 import zipfile
 from pathlib import Path
-from typing import Optional, Callable, Tuple
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 from src.core.srt_processor import SRTProcessor
+
+if TYPE_CHECKING:
+    from src.tts.tts_config import TTSConfig
 
 
 PARTIAL_PREFIX = "[partial] "

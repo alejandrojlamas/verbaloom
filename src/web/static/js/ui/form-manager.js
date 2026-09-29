@@ -441,7 +441,9 @@ export const FormManager = {
                 console.log('[FormManager] Applying DEFAULT_TARGET_LANGUAGE from server:', config.default_target_language);
                 setDefaultLanguage('targetLang', 'customTargetLang', config.default_target_language);
             } else {
-                console.log('[FormManager] No DEFAULT_TARGET_LANGUAGE from server, keeping current value');
+                const browserTargetLanguage = this.detectBrowserLanguage();
+                console.log('[FormManager] No DEFAULT_TARGET_LANGUAGE from server; using browser language:', browserTargetLanguage);
+                setDefaultLanguage('targetLang', 'customTargetLang', browserTargetLanguage);
             }
 
             // Set source language from server config if available

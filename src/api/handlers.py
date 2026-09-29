@@ -186,6 +186,11 @@ def _begin_active_run_stats(
         "elapsed_time": accumulated,
         "elapsed_seconds": accumulated,
         "eta_seconds": None,
+        # Give the watchdog a fresh baseline before the provider produces its
+        # first log or chunk. Otherwise a request that hangs immediately can
+        # remain "running" forever because there is no activity timestamp to
+        # compare.
+        "last_activity_at": started_at,
     })
     return current
 
@@ -2455,8 +2460,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                         + "; ".join(publication_report.errors[:4]),
                     )
                 else:
+                    current_stats = (
+                        state_manager.get_translation_field(translation_id, 'stats')
+                        or {}
+                    )
                     stats = _canonicalize_published_epub_stats(
-                        state_manager.get_translation_field(translation_id, 'stats') or stats,
+                        current_stats,
                         publication_report,
                     )
                     state_manager.update_stats(translation_id, stats)

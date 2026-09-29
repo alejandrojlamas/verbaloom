@@ -15,7 +15,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from flask import Blueprint, jsonify, request
 
@@ -42,6 +42,9 @@ from src.utils.custom_instructions import is_safe_filename, load_custom_instruct
 from src.utils.file_detector import detect_file_type
 from src.utils.language_detector import LanguageDetector
 from src.utils.text_encoding import clean_text_artifacts
+
+if TYPE_CHECKING:
+    from src.api.sample_state import SampleStateManager
 
 
 # Per-run concurrency cap. The product spec asks for `min(K * N, 8)` to avoid

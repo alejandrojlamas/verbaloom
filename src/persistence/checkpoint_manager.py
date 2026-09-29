@@ -6,9 +6,12 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from .database import Database
+
+if TYPE_CHECKING:
+    from src.core.epub.xhtml_translation_state import XHTMLTranslationState
 
 _RUNTIME_ONLY_CONFIG_KEYS = {
     '_fidelity_report',

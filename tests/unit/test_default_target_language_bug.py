@@ -102,6 +102,17 @@ class TestDefaultTargetLanguageBug:
             assert data['default_source_language'] == 'Spanish', \
                 f"Expected 'Spanish' but got '{data.get('default_source_language')}'"
 
+    def test_frontend_uses_browser_language_when_server_default_is_empty(self):
+        form_manager = (
+            project_root / "src" / "web" / "static" / "js" / "ui" / "form-manager.js"
+        ).read_text(encoding="utf-8")
+
+        assert "const browserTargetLanguage = this.detectBrowserLanguage();" in form_manager
+        assert (
+            "setDefaultLanguage('targetLang', 'customTargetLang', browserTargetLanguage);"
+            in form_manager
+        )
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

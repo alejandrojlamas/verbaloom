@@ -43,6 +43,11 @@ class Database:
                 timeout=30.0
             )
             conn.row_factory = sqlite3.Row
+            # SQLite does not enforce declared foreign keys unless each
+            # connection opts in. Without this pragma, deleting a job leaves
+            # every checkpoint chunk behind even though the schema declares
+            # ON DELETE CASCADE.
+            conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
             self._local.connection = conn
@@ -102,6 +107,18 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_chunks_translation
                 ON checkpoint_chunks(translation_id)
+            """)
+
+            # Repair databases created while foreign-key enforcement was off.
+            # A chunk without a parent job cannot be resumed or reconstructed,
+            # so retaining it only leaks translated text and disk space.
+            cursor.execute("""
+                DELETE FROM checkpoint_chunks
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM translation_jobs
+                    WHERE translation_jobs.translation_id = checkpoint_chunks.translation_id
+                )
             """)
 
             conn.commit()

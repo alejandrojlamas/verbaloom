@@ -23,6 +23,13 @@ repos:
   # Local tests with pytest
   - repo: local
     hooks:
+      - id: ruff-critical
+        name: ruff (undefined names and syntax)
+        entry: ruff check src scripts tests --select E9,F63,F7,F82
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
       - id: pytest
         name: pytest (unit tests)
         entry: pytest tests/unit -v --tb=short

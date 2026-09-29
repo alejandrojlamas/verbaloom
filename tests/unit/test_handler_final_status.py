@@ -62,6 +62,12 @@ def test_published_epub_stats_use_native_processed_chunk_truth():
     assert result["quality_degraded"] is False
 
 
+def test_publishable_epub_branch_does_not_use_an_uninitialized_stats_fallback():
+    source = inspect.getsource(perform_actual_translation)
+
+    assert "get_translation_field(translation_id, 'stats') or stats" not in source
+
+
 def test_failed_publication_does_not_rewrite_epub_stats():
     stats = {"total_chunks": 160, "failed_chunks": 4}
 
@@ -257,6 +263,7 @@ def test_active_timing_excludes_paused_wall_time_and_estimates_remaining_work():
         {"completed_chunks": 40, "total_chunks": 100},
         now=1_000.0,
     )
+    assert started["last_activity_at"] == 1_000.0
     current = {**started, "completed_chunks": 50}
 
     timed = _apply_active_timing(current, now=1_100.0)

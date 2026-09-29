@@ -51,6 +51,25 @@ def test_mobile_event_store_skips_corrupt_lines_and_reads_newest_first(tmp_path)
     assert [event["kind"] for event in events] == ["second", "first"]
 
 
+def test_mobile_event_store_compacts_unbounded_history(tmp_path):
+    store = MobileAccessEventStore(
+        lambda: str(tmp_path),
+        max_events=3,
+        compact_after_bytes=1,
+    )
+
+    for index in range(10):
+        store.append(f"event-{index}", {"request_path": f"/{index}"})
+
+    persisted = store.path.read_text(encoding="utf-8").splitlines()
+    assert len(persisted) == 3
+    assert [event["kind"] for event in store.read(limit=10)] == [
+        "event-9",
+        "event-8",
+        "event-7",
+    ]
+
+
 def test_mobile_detection_does_not_treat_desktop_chrome_as_mobile():
     app = Flask(__name__)
     cases = (
@@ -111,7 +130,8 @@ def test_external_android_event_excludes_probes_from_the_mac():
     )
 
 
-def test_mobile_routes_keep_aliases_and_escape_request_metadata(tmp_path):
+def test_mobile_routes_keep_aliases_and_escape_request_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("PORT", "5000")
     app = Flask(__name__)
     blueprint = Blueprint("mobile_test", __name__)
     register_mobile_access_routes(

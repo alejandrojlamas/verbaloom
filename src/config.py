@@ -98,6 +98,23 @@ _RELOADABLE_ENV_SETTINGS = (
 _NOTIFY_BOOL_ATTRS = {'NOTIFY_ON_SUCCESS', 'NOTIFY_ON_FAILURE', 'NOTIFY_ON_INTERRUPTION'}
 _NOTIFY_INT_ATTRS = {'NOTIFY_TIMEOUT_SECONDS'}
 
+# These names are assigned by _apply_reloadable_env_settings(). Explicit
+# declarations keep static analysis useful without duplicating runtime values.
+API_ENDPOINT = ""
+DEFAULT_MODEL = ""
+LLM_PROVIDER = ""
+GEMINI_API_KEY = ""
+OPENAI_API_KEY = ""
+OPENROUTER_API_KEY = ""
+OPENROUTER_MODEL = ""
+MISTRAL_API_KEY = ""
+MISTRAL_MODEL = ""
+DEEPSEEK_API_KEY = ""
+DEEPSEEK_MODEL = ""
+POE_API_KEY = ""
+POE_MODEL = ""
+NIM_API_KEY = ""
+
 
 def _apply_reloadable_env_settings():
     g = globals()
