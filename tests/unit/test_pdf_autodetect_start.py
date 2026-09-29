@@ -132,9 +132,15 @@ def test_interrupting_pricing_wait_is_immediate_and_keeps_checkpoint(tmp_path):
             self.data[translation_id]["interrupted"] = interrupted
 
     state = WaitingState()
+    cancelled_handoffs = []
     app = Flask(__name__)
     app.register_blueprint(
-        create_translation_blueprint(state, lambda *_args: None, output_dir=tmp_path)
+        create_translation_blueprint(
+            state,
+            lambda *_args: None,
+            output_dir=tmp_path,
+            cancel_translation_handoff=cancelled_handoffs.append,
+        )
     )
 
     response = app.test_client().post("/api/translation/job-1/interrupt")
@@ -144,6 +150,91 @@ def test_interrupting_pricing_wait_is_immediate_and_keeps_checkpoint(tmp_path):
     assert state.data["job-1"]["interrupted"] is True
     assert state.data["job-1"]["resume_at_utc"] is None
     assert state.checkpoint_manager.interrupted == ["job-1"]
+    assert cancelled_handoffs == ["job-1"]
+
+
+def test_manual_resume_replaces_any_pending_automatic_handoff(tmp_path):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    preserved = uploads / "book.txt"
+    preserved.write_text("source", encoding="utf-8")
+
+    config = {
+        "file_type": "txt",
+        "preserved_input_path": str(preserved),
+        "llm_provider": "ollama",
+        "llm_api_endpoint": "http://127.0.0.1:11434/api/generate",
+        "model": "local-model",
+        "source_language": "English",
+        "target_language": "Spanish",
+        "output_filename": "book-es.txt",
+        "_manual_pause_requested": True,
+    }
+    checkpoint = {
+        "job": {
+            "status": "interrupted",
+            "config": config,
+            "progress": {"total_chunks": 2, "completed_chunks": 1},
+        },
+        "resume_from_index": 1,
+    }
+
+    class Checkpoints:
+        uploads_dir = tmp_path / "checkpoint-uploads"
+
+        def load_checkpoint(self, _translation_id):
+            return checkpoint
+
+        def update_job_config(self, _translation_id, updated):
+            checkpoint["job"]["config"] = updated
+
+        def mark_running(self, _translation_id):
+            checkpoint["job"]["status"] = "running"
+
+    class State:
+        def __init__(self):
+            self.checkpoint_manager = Checkpoints()
+            self.data = {}
+
+        def get_all_translations(self):
+            return self.data
+
+        def restore_job_from_checkpoint(self, translation_id):
+            self.data[translation_id] = {
+                "status": "paused",
+                "config": dict(config),
+                "interrupted": False,
+            }
+            return True
+
+        def set_translation_field(self, translation_id, field, value):
+            self.data[translation_id][field] = value
+
+    starts = []
+
+    def start_job(translation_id, resumed_config, **kwargs):
+        starts.append((translation_id, resumed_config, kwargs))
+        return "handoff_replaced"
+
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_translation_blueprint(
+            State(),
+            start_job,
+            output_dir=tmp_path,
+        )
+    )
+
+    response = app.test_client().post("/api/resume/job-1", json={})
+
+    assert response.status_code == 200
+    assert response.get_json()["worker_state"] == "handoff_replaced"
+    assert starts[0][0] == "job-1"
+    assert starts[0][2] == {
+        "allow_handoff": True,
+        "replace_handoff": True,
+    }
+    assert "_manual_pause_requested" not in starts[0][1]
 
 
 def test_file_translate_rejects_unmanaged_input_and_output_traversal(tmp_path):

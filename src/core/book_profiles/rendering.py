@@ -1385,10 +1385,20 @@ def _replace_profile_term_counted(
         (match.start(), match.end())
         for match in _profile_term_pattern(target).finditer(text)
     )
+    # Most profiles contain many protected names that cannot possibly contain
+    # this source term. Scanning every one over a whole book for every exact
+    # correction made this path multiplicative and was observed holding the
+    # worker inside regex searches. Only phrases that actually contain the
+    # source token can shield one of its matches.
+    relevant_protected_terms = tuple(
+        term
+        for term in dict.fromkeys(protected_terms)
+        if len(str(term or "").strip()) > len(str(source or "").strip())
+        and pattern.search(str(term or ""))
+    )
     protected_ranges = tuple(
         (match.start(), match.end())
-        for term in protected_terms
-        if len(str(term or "").strip()) > len(str(source or "").strip())
+        for term in relevant_protected_terms
         for match in _profile_term_pattern(term).finditer(text)
     )
     immutable_ranges = _immutable_literal_ranges(text)

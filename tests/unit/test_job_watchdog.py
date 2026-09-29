@@ -71,6 +71,38 @@ def test_stale_running_job_is_flagged_and_synced_to_db(wired_state_manager):
     assert translation_id in resumable_ids
 
 
+def test_managed_stale_job_requests_one_process_recovery_without_error(
+    wired_state_manager,
+):
+    state_manager = wired_state_manager
+    checkpoint_manager = state_manager.get_checkpoint_manager()
+    translation_id = "trans_managed_stale"
+    _create_running_job(
+        state_manager,
+        translation_id,
+        last_activity_at=time.time() - 10_000,
+    )
+    requests = []
+    watchdog = JobWatchdog(
+        state_manager,
+        stale_after_seconds=3600,
+        restart_callback=lambda job_id, message: requests.append((job_id, message)),
+    )
+
+    assert watchdog.check_once() == [translation_id]
+    assert watchdog.check_once() == []
+    assert len(requests) == 1
+    assert requests[0][0] == translation_id
+    assert state_manager.get_translation_field(translation_id, "status") == "running"
+    assert state_manager.get_translation_field(translation_id, "error") is None
+    assert state_manager.get_translation_field(
+        translation_id, "watchdog_recovery_requested"
+    ) is True
+    assert checkpoint_manager.db.get_job(translation_id)["status"] == "running"
+    stats = state_manager.get_translation_field(translation_id, "stats")
+    assert stats["live_activity_event"] == "watchdog_process_recovery"
+
+
 def test_recent_activity_job_is_not_flagged(wired_state_manager):
     state_manager = wired_state_manager
     translation_id = "trans_healthy"

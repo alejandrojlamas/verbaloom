@@ -500,7 +500,7 @@ window.interruptCurrentTranslation = async () => {
         try {
             const activeData = await ApiClient.getActiveTranslations();
             const activeJob = (activeData.translations || []).find((job) => {
-                return ['running', 'queued', 'pricing_wait', 'rate_limited'].includes(job.status);
+                return ['running', 'queued', 'pricing_wait', 'provider_wait'].includes(job.status);
             });
             if (activeJob?.translation_id) {
                 currentJob = {

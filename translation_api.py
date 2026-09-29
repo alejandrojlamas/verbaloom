@@ -86,7 +86,7 @@ from src.config import (
 )
 from src.api.routes import configure_routes
 from src.api.websocket import configure_websocket_handlers
-from src.api.handlers import start_translation_job
+from src.api.handlers import cancel_translation_handoff, start_translation_job
 from src.api.startup_recovery import restore_jobs_after_restart
 from src.api.translation_state import get_state_manager
 from src.api.job_watchdog import JobWatchdog
@@ -272,12 +272,56 @@ logger.info(f"Output folder '{OUTPUT_DIR}' is ready")
 # Static files are now handled automatically by Flask
 
 # Wrapper function for starting translation jobs
-def start_job_wrapper(translation_id, config):
+def start_job_wrapper(
+    translation_id,
+    config,
+    *,
+    allow_handoff=False,
+    replace_handoff=False,
+):
     """Wrapper to inject dependencies into job starter"""
-    start_translation_job(translation_id, config, state_manager, OUTPUT_DIR, socketio)
+    return start_translation_job(
+        translation_id,
+        config,
+        state_manager,
+        OUTPUT_DIR,
+        socketio,
+        allow_handoff=allow_handoff,
+        replace_handoff=replace_handoff,
+    )
+
+
+def _managed_watchdog_restart(translation_id: str, message: str) -> None:
+    """Exit once so launchd/systemd can replace a genuinely stuck process."""
+    logger.error(
+        "Watchdog requested managed recovery for %s: %s",
+        translation_id,
+        message,
+    )
+
+    def terminate_after_flush() -> None:
+        # Give Socket.IO/log handlers a brief opportunity to publish the
+        # recovery state.  The checkpoint itself was persisted before this.
+        import time
+
+        time.sleep(0.5)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(
+        target=terminate_after_flush,
+        name="managed-watchdog-restart",
+        daemon=True,
+    ).start()
 
 # Configure routes and WebSocket handlers
-configure_routes(app, state_manager, OUTPUT_DIR, start_job_wrapper, socketio)
+configure_routes(
+    app,
+    state_manager,
+    OUTPUT_DIR,
+    start_job_wrapper,
+    socketio,
+    cancel_translation_handoff=cancel_translation_handoff,
+)
 configure_websocket_handlers(socketio, state_manager)
 
 # Restore incomplete jobs from database on startup
@@ -431,7 +475,16 @@ def start_server():
         # exception-based auto-recovery paths in handlers.py ever fire) and
         # mark it resumable instead of leaving it invisible until a full
         # server restart. See src/api/job_watchdog.py for the reasoning.
-        job_watchdog = JobWatchdog(state_manager, socketio=socketio)
+        managed_restart = (
+            _managed_watchdog_restart
+            if os.environ.get("VERBALOOM_MANAGED_SERVICE") == "1"
+            else None
+        )
+        job_watchdog = JobWatchdog(
+            state_manager,
+            socketio=socketio,
+            restart_callback=managed_restart,
+        )
         job_watchdog.start()
 
         socketio.run(app, debug=False, host=HOST, port=PORT, allow_unsafe_werkzeug=True)

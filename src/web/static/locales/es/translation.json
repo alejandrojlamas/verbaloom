@@ -226,5 +226,7 @@
   "prompt_context_profile": "Perfil: {{profile}}",
   "prompt_context_profile_glossary": "Glosario del perfil: {{matched}}/{{total}} coinciden, {{rendered}} inyectadas",
   "prompt_context_manual_glossary": "Glosario: {{matched}}/{{total}} coinciden",
-  "prompt_context_last_chunk": "Fragmento {{chunk}}: perfil {{profile}}, glosario {{manual}}"
+  "prompt_context_last_chunk": "Fragmento {{chunk}}: perfil {{profile}}, glosario {{manual}}",
+  "translation_provider_waiting_short": "Esperando al proveedor",
+  "translation_provider_waiting_msg": "{{name}} está esperando al proveedor y se reanudará automáticamente. Su checkpoint está protegido."
 }

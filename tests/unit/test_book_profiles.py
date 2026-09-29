@@ -2417,6 +2417,46 @@ def test_profile_exact_translation_corrections_prefilter_unmatched_pairs(monkeyp
     assert visited == ["Machine Learning"]
 
 
+def test_exact_correction_does_not_scan_irrelevant_protected_terms(monkeypatch):
+    from src.core.book_profiles import rendering
+
+    original = rendering._profile_term_pattern
+    scanned: list[str] = []
+
+    class TrackedPattern:
+        def __init__(self, term):
+            self.term = term
+            self.pattern = original(term)
+
+        def search(self, value):
+            return self.pattern.search(value)
+
+        def finditer(self, value):
+            scanned.append(self.term)
+            return self.pattern.finditer(value)
+
+        def sub(self, replacement, value):
+            return self.pattern.sub(replacement, value)
+
+    monkeypatch.setattr(
+        rendering,
+        "_profile_term_pattern",
+        lambda term: TrackedPattern(term),
+    )
+
+    corrected, count = rendering._replace_profile_term_counted(
+        "Alpha met Sir Alpha Prime.",
+        "Alpha",
+        "Alfa",
+        protected_terms=("Completely Unrelated Name", "Sir Alpha Prime"),
+    )
+
+    assert corrected == "Alfa met Sir Alpha Prime."
+    assert count == 1
+    assert "Sir Alpha Prime" in scanned
+    assert "Completely Unrelated Name" not in scanned
+
+
 def test_short_translation_rule_does_not_corrupt_protected_long_name(
     tmp_path,
     monkeypatch,

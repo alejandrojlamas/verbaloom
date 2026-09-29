@@ -22,7 +22,7 @@ const STORAGE_VERSION = 1;
 const STORAGE_KEY_PREFIX = 'verbaloom_translation_state';
 const TRANSLATION_STATE_STORAGE_KEY = `${STORAGE_KEY_PREFIX}_v${STORAGE_VERSION}`;
 const TERMINAL_STATUSES = new Set(['completed', 'error', 'interrupted', 'rate_limited', 'partial']);
-const ACTIVE_STATUSES = new Set(['running', 'queued', 'pricing_wait']);
+const ACTIVE_STATUSES = new Set(['running', 'queued', 'pricing_wait', 'provider_wait']);
 const TRANSFORM_MODE_LABELS = {
     modernize: 'Modernize',
     simplify: 'Explain',
@@ -567,6 +567,25 @@ export const TranslationTracker = {
                 data
             );
             this.updateActiveTranslationsState();
+        } else if (data.status === 'provider_wait') {
+            DomHelpers.show('progressSection');
+            DomHelpers.show('statsGrid');
+            DomHelpers.show('interruptBtn');
+            this.updateTranslationTitle(currentFile);
+            this.updateFileStatusInList(
+                currentFile.name,
+                t('translation:translation_provider_waiting_short')
+            );
+            const waitMessage = data.log || t(
+                'translation:translation_provider_waiting_msg',
+                { name: currentFile.name }
+            );
+            ProgressManager.updateLiveStatus({
+                live_status: waitMessage,
+                live_status_kind: 'scheduled_pause',
+            });
+            MessageLogger.showMessage(waitMessage, 'info');
+            this.updateActiveTranslationsState();
         } else if (data.status === 'pricing_wait') {
             DomHelpers.show('progressSection');
             DomHelpers.show('statsGrid');
@@ -758,6 +777,11 @@ export const TranslationTracker = {
                 time: job.resume_at_local || '',
             });
         }
+        if (job.status === 'provider_wait') {
+            return t('translation:translation_provider_waiting_msg', {
+                name: job.output_filename || 'LLM',
+            });
+        }
 
         const lastChange = this._liveProgressLastChangeAt.get(job.translation_id) || Date.now();
         const secondsSinceChange = Math.floor((Date.now() - lastChange) / 1000);
@@ -820,6 +844,7 @@ export const TranslationTracker = {
         }
         if (text.includes('checkpoint')) return 'Saving progress';
         if (text.includes('rate limited')) return 'Waiting for provider';
+        if (data.status === 'provider_wait') return 'Waiting for provider';
         if (data.status === 'running') return 'Processing';
         return '';
     },

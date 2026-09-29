@@ -113,6 +113,7 @@ from src.core.fidelity_supervisor import (
     supervise_fidelity,
 )
 from src.core.llm_output_guard import guard_llm_output
+from src.core.llm.request_deadline import await_llm_call
 from src.core.llm.utils.extraction import TranslationExtractor
 from src.core.text_transform import apply_faithful_modernize_defaults
 from src.core.book_profiles import (
@@ -914,9 +915,11 @@ async def attempt_placeholder_correction(
                             f"📐 Correction: Updating context window: {llm_client.context_window} → {new_ctx}")
                 llm_client.context_window = new_ctx
 
-            llm_response = await llm_client.make_request(
+            llm_response = await await_llm_call(
+                llm_client.make_request,
                 prompt_pair.user,
-                system_prompt=prompt_pair.system
+                provider=llm_client,
+                system_prompt=prompt_pair.system,
             )
 
             if llm_response is None:
@@ -2380,8 +2383,12 @@ async def _refine_epub_chunks(
 
             import time
             start_time = time.time()
-            llm_response = await llm_client.make_request(
-                prompt_pair.user, model_name, system_prompt=prompt_pair.system
+            llm_response = await await_llm_call(
+                llm_client.make_request,
+                prompt_pair.user,
+                model_name,
+                provider=llm_client,
+                system_prompt=prompt_pair.system,
             )
             execution_time = time.time() - start_time
 

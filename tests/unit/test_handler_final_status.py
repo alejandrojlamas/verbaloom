@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 
 import pytest
@@ -16,7 +17,10 @@ from src.api.handlers import (
     _finalization_recovery_exhausted_stats,
     _job_has_unresolved_work,
     _job_is_ready_for_final_audits,
+    _is_transient_worker_failure,
+    _interruptible_provider_wait,
     _live_activity_label,
+    _provider_wait_seconds,
     _resolve_job_output_path,
     _strip_legacy_automatic_recovery_config,
     perform_actual_translation,
@@ -444,17 +448,21 @@ def test_worker_exception_budget_resets_after_checkpoint_progress():
     assert progressed["stuck_count"] == 1
 
 
-def test_rate_limit_auto_resume_stops_after_configured_ceiling():
+def test_rate_limit_auto_resume_uses_unbounded_capped_backoff():
     config = {"max_rate_limit_auto_resumes": 2}
     first = _build_rate_limit_auto_resume_plan(config, resume_index=7)
     second = _build_rate_limit_auto_resume_plan(first["config"], resume_index=7)
-    exhausted = _build_rate_limit_auto_resume_plan(second["config"], resume_index=7)
+    third = _build_rate_limit_auto_resume_plan(second["config"], resume_index=7)
 
     assert first["allowed"] is True
     assert second["allowed"] is True
-    assert exhausted["allowed"] is False
-    assert exhausted["stuck_count"] == 3
-    assert exhausted["max_resumes"] == 2
+    assert third["allowed"] is True
+    assert third["stuck_count"] == 3
+    assert third["max_resumes"] is None
+    assert first["delay_seconds"] == 60
+    assert second["delay_seconds"] == 180
+    assert third["delay_seconds"] == 600
+    assert "max_rate_limit_auto_resumes" not in third["config"]
 
 
 def test_rate_limit_progress_resets_stuck_counter():
@@ -466,6 +474,84 @@ def test_rate_limit_progress_resets_stuck_counter():
 
     assert progressed["allowed"] is True
     assert progressed["stuck_count"] == 1
+
+
+def test_provider_wait_honors_suggested_delay_and_caps_automatic_backoff():
+    assert _provider_wait_seconds({}, 5) == 60
+    assert _provider_wait_seconds({"_auto_resume_stuck_count": 1}, 240) == 240
+    assert _provider_wait_seconds({"_auto_resume_stuck_count": 99}, None) == 1800
+
+
+def test_provider_wait_stops_immediately_after_manual_interrupt():
+    class State:
+        def exists(self, _translation_id):
+            return True
+
+        def get_translation_field(self, _translation_id, field):
+            assert field == "interrupted"
+            return True
+
+    waited = asyncio.run(_interruptible_provider_wait(State(), "book", 1800))
+
+    assert waited is False
+
+
+def test_transient_worker_failures_keep_recovering_after_deterministic_budget():
+    checkpoint = {
+        "resume_from_index": 4,
+        "job": {"progress": {"total_chunks": 10, "completed_chunks": 4}},
+        "chunks": [],
+    }
+    config = {}
+    plans = []
+    for _ in range(5):
+        plan = _build_worker_exception_recovery_plan(
+            config,
+            checkpoint,
+            TimeoutError("provider operation timed out"),
+        )
+        assert plan is not None
+        plans.append(plan)
+        config = plan["config"]
+
+    assert plans[-1]["transient"] is True
+    assert plans[-1]["max_stuck_recoveries"] is None
+    assert plans[-1]["delay_seconds"] == 600
+    assert _is_transient_worker_failure(RuntimeError("server disconnected"))
+    assert not _is_transient_worker_failure(ValueError("bad local config"))
+
+
+def test_delayed_recovery_worker_cannot_revive_manual_pause(tmp_path):
+    class State:
+        def __init__(self):
+            self.data = {
+                "status": "interrupted",
+                "interrupted": True,
+                "config": {"_manual_pause_requested": True},
+            }
+
+        def exists(self, _translation_id):
+            return True
+
+        def get_translation_field(self, _translation_id, field):
+            return self.data.get(field)
+
+        def set_translation_field(self, _translation_id, field, value):
+            self.data[field] = value
+
+    state = State()
+    asyncio.run(
+        perform_actual_translation(
+            "book",
+            {"model": "stale-recovery-config"},
+            state,
+            str(tmp_path),
+            None,
+        )
+    )
+
+    assert state.data["status"] == "interrupted"
+    assert state.data["config"] == {"_manual_pause_requested": True}
 
 
 def test_pricing_resume_preserves_checkpoint_without_spending_429_budget():

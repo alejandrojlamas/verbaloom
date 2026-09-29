@@ -12,8 +12,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 from src.api.safe_payloads import client_safe_log_entry
+from src.api.job_supervisor import JobSupervisor
 from src.api.services.path_validator import PathValidator
-from src.config import AUTO_PAUSE_ON_RATE_LIMIT, RATE_LIMIT_AUTO_RESUME_DELAY
+from src.config import (
+    AUTO_PAUSE_ON_RATE_LIMIT,
+    MAX_TRANSLATION_ATTEMPTS,
+    RATE_LIMIT_AUTO_RESUME_DELAY,
+)
 from src.core.adapters import refine_file, translate_file
 from src.core.audiobook_sanitizer import (
     audiobook_profile_enabled,
@@ -98,7 +103,9 @@ _FAILED_CHUNK_RECOVERY_POLICY_VERSION = 2
 _DEFAULT_MAX_STUCK_RECOVERIES = 2
 _DEFAULT_MAX_FINALIZATION_RECOVERIES = 2
 _DEFAULT_MAX_WORKER_RECOVERIES = 2
-_DEFAULT_MAX_RATE_LIMIT_AUTO_RESUMES = 5
+_PROVIDER_WAIT_BACKOFF_SECONDS = (60, 180, 600, 1800)
+
+_TRANSLATION_WORKER_SUPERVISOR = JobSupervisor()
 
 
 def _strip_legacy_automatic_recovery_config(
@@ -414,8 +421,15 @@ def _finalization_recovery_exhausted_stats(
 def _build_worker_exception_recovery_plan(
     config: Dict[str, Any],
     checkpoint_data: Dict[str, Any] | None,
+    error: BaseException | None = None,
 ) -> Dict[str, Any] | None:
-    """Recover a crashed worker from durable progress, with a strict ceiling."""
+    """Recover a crashed worker from durable progress.
+
+    Deterministic application errors keep a strict same-checkpoint ceiling.
+    Network disconnects and total-operation timeouts are availability failures:
+    they use a capped backoff and remain self-healing instead of becoming a
+    manual pause after an arbitrary number of attempts.
+    """
     if (
         not checkpoint_data
         or not _config_flag(config.get("auto_recover_worker_errors"), True)
@@ -445,11 +459,12 @@ def _build_worker_exception_recovery_plan(
         previous_index = None
         previous_stuck = 0
     stuck_count = previous_stuck + 1 if previous_index == resume_index else 1
-    if stuck_count > max_recoveries:
+    transient = _is_transient_worker_failure(error)
+    if not transient and stuck_count > max_recoveries:
         return None
 
-    delay_steps = (3, 15)
-    delay_seconds = delay_steps[min(cycle - 1, len(delay_steps) - 1)]
+    delay_steps = (3, 15, 60, 180, 600) if transient else (3, 15)
+    delay_seconds = delay_steps[min(stuck_count - 1, len(delay_steps) - 1)]
     new_config = dict(config)
     new_config.update({
         "is_resume": True,
@@ -466,9 +481,40 @@ def _build_worker_exception_recovery_plan(
         "resume_index": resume_index,
         "cycle": cycle,
         "stuck_count": stuck_count,
-        "max_stuck_recoveries": max_recoveries,
+        "max_stuck_recoveries": None if transient else max_recoveries,
         "delay_seconds": delay_seconds,
+        "transient": transient,
     }
+
+
+def _is_transient_worker_failure(error: BaseException | None) -> bool:
+    """Classify failures that can recover without changing book content."""
+    if error is None:
+        return False
+    if isinstance(error, (TimeoutError, ConnectionError)):
+        return True
+    fingerprint = " ".join(
+        (
+            type(error).__module__,
+            type(error).__name__,
+            str(error),
+        )
+    ).casefold()
+    return any(
+        marker in fingerprint
+        for marker in (
+            "timeout",
+            "timed out",
+            "connection reset",
+            "connection aborted",
+            "server disconnected",
+            "remote protocol",
+            "temporarily unavailable",
+            "service unavailable",
+            "bad gateway",
+            "gateway timeout",
+        )
+    )
 
 
 def _build_rate_limit_auto_resume_plan(
@@ -476,18 +522,12 @@ def _build_rate_limit_auto_resume_plan(
     *,
     resume_index: int,
 ) -> Dict[str, Any]:
-    """Return a durable, bounded provider-throttle recovery decision."""
-    try:
-        max_resumes = max(
-            0,
-            int(
-                config.get("max_rate_limit_auto_resumes")
-                if config.get("max_rate_limit_auto_resumes") is not None
-                else _DEFAULT_MAX_RATE_LIMIT_AUTO_RESUMES
-            ),
-        )
-    except (TypeError, ValueError):
-        max_resumes = _DEFAULT_MAX_RATE_LIMIT_AUTO_RESUMES
+    """Return durable provider-throttle recovery state.
+
+    A retryable 429 is an availability wait, not a failed book.  Keep retrying
+    with a capped backoff until the provider recovers or the user explicitly
+    pauses.  Content/quality failures remain independently bounded.
+    """
     try:
         last_resume_index = int(config.get("_auto_resume_last_index"))
     except (TypeError, ValueError):
@@ -507,14 +547,17 @@ def _build_rate_limit_auto_resume_plan(
         "resume_from_index": resume_index,
         "_auto_resume_last_index": resume_index,
         "_auto_resume_stuck_count": stuck_count,
-        "max_rate_limit_auto_resumes": max_resumes,
     })
+    new_config.pop("max_rate_limit_auto_resumes", None)
     return {
-        "allowed": stuck_count <= max_resumes,
+        "allowed": True,
         "config": new_config,
         "stuck_count": stuck_count,
-        "max_resumes": max_resumes,
+        "max_resumes": None,
         "resume_index": resume_index,
+        "delay_seconds": _PROVIDER_WAIT_BACKOFF_SECONDS[
+            min(stuck_count - 1, len(_PROVIDER_WAIT_BACKOFF_SECONDS) - 1)
+        ],
     }
 
 
@@ -538,6 +581,43 @@ def _build_pricing_auto_resume_plan(
         "max_resumes": 0,
         "resume_index": int(resume_index),
     }
+
+
+def _provider_wait_seconds(
+    config: Dict[str, Any],
+    suggested_seconds: int | float | None,
+) -> float:
+    """Choose a capped progressive wait without treating it as failure."""
+    try:
+        next_attempt = max(1, int(config.get("_auto_resume_stuck_count") or 0) + 1)
+    except (TypeError, ValueError):
+        next_attempt = 1
+    backoff = _PROVIDER_WAIT_BACKOFF_SECONDS[
+        min(next_attempt - 1, len(_PROVIDER_WAIT_BACKOFF_SECONDS) - 1)
+    ]
+    try:
+        suggested = max(0.0, float(suggested_seconds or 0.0))
+    except (TypeError, ValueError):
+        suggested = 0.0
+    return max(float(backoff), suggested)
+
+
+async def _interruptible_provider_wait(
+    state_manager: Any,
+    translation_id: str,
+    wait_seconds: int | float,
+) -> bool:
+    """Wait for a provider while allowing a manual pause within one second."""
+    deadline = time.monotonic() + max(0.0, float(wait_seconds))
+    while True:
+        if not state_manager.exists(translation_id):
+            return False
+        if state_manager.get_translation_field(translation_id, "interrupted"):
+            return False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return True
+        await asyncio.sleep(min(1.0, remaining))
 
 
 def _failed_chunk_recovery_exhausted_stats(
@@ -580,6 +660,10 @@ def _schedule_failed_chunk_recovery(
     def _restart() -> None:
         if not state_manager.exists(translation_id):
             return
+        if not state_manager.get_translation_field(
+            translation_id, 'recovery_scheduled'
+        ):
+            return
         if state_manager.get_translation_field(translation_id, 'interrupted'):
             state_manager.set_translation_field(translation_id, 'recovery_scheduled', False)
             return
@@ -593,6 +677,7 @@ def _schedule_failed_chunk_recovery(
             state_manager,
             output_dir,
             socketio,
+            allow_handoff=True,
         )
 
     timer = threading.Timer(float(plan['delay_seconds']), _restart)
@@ -1203,6 +1288,18 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     if not state_manager.exists(translation_id):
         return
 
+    current_config = (
+        state_manager.get_translation_field(translation_id, "config") or {}
+    )
+    if (
+        state_manager.get_translation_field(translation_id, "interrupted")
+        or current_config.get("_manual_pause_requested")
+    ):
+        # A delayed recovery timer can reach the supervisor at the same instant
+        # as a user pause.  Never let that stale worker revive the job.
+        state_manager.set_translation_field(translation_id, "status", "interrupted")
+        return
+
     config, legacy_recovery_config_removed = (
         _strip_legacy_automatic_recovery_config(config)
     )
@@ -1410,7 +1507,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         status = str(
             state_manager.get_translation_field(translation_id, 'status') or ''
         ).strip().lower()
-        if status not in {'running', 'queued', 'rate_limited'}:
+        if status not in {'running', 'queued', 'provider_wait'}:
             return
         _store_and_emit_stats({
             'live_status': label,
@@ -1990,7 +2087,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 auto_adjust_context=config.get('auto_adjust_context', True),
                 min_chunk_size=config.get('min_chunk_size', 5),
                 max_tokens_per_chunk=config.get('max_tokens_per_chunk'),
-                max_attempts=config.get('max_attempts', 2),
+                max_attempts=config.get('max_attempts', MAX_TRANSLATION_ATTEMPTS),
                 prompt_options=config.get('prompt_options', {}),
                 bilingual_output=config.get('bilingual_output', False),
                 message="Running translation pass.",
@@ -3020,8 +3117,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         # Auto-resume mode keeps the job running: wait, then re-enter from the checkpoint.
         if not auto_pause:
-            wait_seconds = e.retry_after or RATE_LIMIT_AUTO_RESUME_DELAY
             if pricing_pause:
+                wait_seconds = e.retry_after or RATE_LIMIT_AUTO_RESUME_DELAY
                 resume_local = getattr(e, 'next_available_at_local', '')
                 wait_msg = (
                     "DeepSeek entró en horario de tarifa alta. No se enviarán "
@@ -3031,10 +3128,14 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 waiting_status = "pricing_wait"
                 pause_reason = "deepseek_peak_pricing"
             else:
+                wait_seconds = _provider_wait_seconds(config, e.retry_after)
                 wait_msg = (f"⏳ Rate limited by {provider_name}.{retry_msg} "
                             f"Auto-resume in {wait_seconds}s (auto-pause disabled).")
                 wait_event = "rate_limit_auto_resume"
-                waiting_status = "rate_limited"
+                # This is an active, self-healing wait.  ``rate_limited`` is
+                # reserved for a real terminal pause; the frontend used to
+                # stop polling here even though this worker later resumed.
+                waiting_status = "provider_wait"
                 pause_reason = "rate_limited"
             _log_message_callback(wait_event, wait_msg)
 
@@ -3090,7 +3191,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 ),
             }, state_manager)
 
-            await asyncio.sleep(wait_seconds)
+            wait_completed = await _interruptible_provider_wait(
+                state_manager,
+                translation_id,
+                wait_seconds,
+            )
+            if not wait_completed and not state_manager.exists(translation_id):
+                return
 
             # A manual interrupt wins over provider recovery and keeps its own
             # durable reason instead of being mislabeled as a rate-limit pause.
@@ -3113,13 +3220,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             else:
                 cp_data = checkpoint_manager.load_checkpoint(translation_id)
                 if cp_data:
-                    # Track consecutive auto-resume cycles that fail without
-                    # advancing the checkpoint. The bounded budget prevents a
-                    # throttled account from keeping a book "active" for hours.
+                    # Persist the provider-wait attempt so a repeated throttle
+                    # uses progressive backoff after the handoff.
                     resume_index = int(cp_data['resume_from_index'])
                     if pricing_pause:
-                        # This wait has a deterministic end. It must not consume
-                        # the bounded retry budget intended for repeated 429s.
+                        # This wait has a deterministic end and does not change
+                        # the provider-throttle counter.
                         rate_limit_plan = _build_pricing_auto_resume_plan(
                             config,
                             resume_index=resume_index,
@@ -3129,41 +3235,35 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                             config,
                             resume_index=resume_index,
                         )
-                    stuck_count = rate_limit_plan["stuck_count"]
-                    max_rate_limit_resumes = rate_limit_plan["max_resumes"]
-                    if not rate_limit_plan["allowed"]:
-                        _log_message_callback(
-                            "rate_limit_auto_resume_exhausted",
-                            f"⏸️ El proveedor sigue limitando el trabajo en el fragmento "
-                            f"{resume_index}. Se agotaron {max_rate_limit_resumes} "
-                            "reanudaciones automáticas sin avance; el checkpoint queda "
-                            "intacto para evitar un ciclo de horas.",
-                        )
-                    else:
-                        new_config = rate_limit_plan["config"]
-                        checkpoint_manager.mark_running(translation_id)
-                        checkpoint_manager.update_job_config(translation_id, new_config)
-                        state_manager.set_translation_field(translation_id, 'config', new_config)
-                        state_manager.set_translation_field(translation_id, 'status', 'running')
-                        state_manager.set_translation_field(translation_id, 'interrupted', False)
-                        state_manager.set_translation_field(translation_id, 'pause_reason', None)
-                        state_manager.set_translation_field(translation_id, 'resume_at_utc', None)
-                        state_manager.set_translation_field(translation_id, 'resume_at_local', None)
-                        emit_update(socketio, translation_id, {
-                            'status': 'running',
-                            'log': f"▶️ Auto-resuming from chunk {resume_index}..."
-                        }, state_manager)
-                        # Start a fresh worker instead of recursively awaiting this
-                        # coroutine. Repeated throttling must not grow the stack.
-                        start_translation_job(
-                            translation_id, new_config, state_manager, output_dir, socketio
-                        )
-                        _log_message_callback(
-                            "rate_limit_auto_resume_scheduled",
-                            f"▶️ Reanudación programada desde el fragmento {resume_index}; "
-                            "el worker anterior se cerrará limpiamente.",
-                        )
-                        return
+                    new_config = rate_limit_plan["config"]
+                    checkpoint_manager.mark_running(translation_id)
+                    checkpoint_manager.update_job_config(translation_id, new_config)
+                    state_manager.set_translation_field(translation_id, 'config', new_config)
+                    state_manager.set_translation_field(translation_id, 'status', 'running')
+                    state_manager.set_translation_field(translation_id, 'interrupted', False)
+                    state_manager.set_translation_field(translation_id, 'pause_reason', None)
+                    state_manager.set_translation_field(translation_id, 'resume_at_utc', None)
+                    state_manager.set_translation_field(translation_id, 'resume_at_local', None)
+                    emit_update(socketio, translation_id, {
+                        'status': 'running',
+                        'log': f"▶️ Auto-resuming from chunk {resume_index}..."
+                    }, state_manager)
+                    # The supervisor queues this handoff until the current
+                    # worker has fully exited, preventing two checkpoint writers.
+                    start_translation_job(
+                        translation_id,
+                        new_config,
+                        state_manager,
+                        output_dir,
+                        socketio,
+                        allow_handoff=True,
+                    )
+                    _log_message_callback(
+                        "rate_limit_auto_resume_scheduled",
+                        f"▶️ Reanudación programada desde el fragmento {resume_index}; "
+                        "el worker anterior se cerrará limpiamente.",
+                    )
+                    return
                 # No checkpoint available, fall through to the pause path below.
                 _log_message_callback("rate_limit_no_checkpoint",
                     "⚠️ Auto-resume requested but no checkpoint found, falling back to pause.")
@@ -3262,6 +3362,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             recovery_plan = _build_worker_exception_recovery_plan(
                 config,
                 checkpoint_data,
+                e,
             )
             if recovery_plan is not None:
                 cycle = recovery_plan["cycle"]
@@ -3290,12 +3391,19 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     translation_id,
                     recovery_plan['config'],
                 )
+                retry_budget = (
+                    "sin límite fijo y con espera progresiva"
+                    if recovery_plan.get('transient')
+                    else (
+                        f"intento {recovery_plan['stuck_count']}/"
+                        f"{recovery_plan['max_stuck_recoveries']} en este punto"
+                    )
+                )
                 _log_message_callback(
                     "worker_exception_auto_recovery_scheduled",
                     "🔄 El worker falló, pero el avance está íntegro. "
                     f"Se reanudará desde el checkpoint en {delay_seconds}s "
-                    f"(intento {recovery_plan['stuck_count']}/"
-                    f"{recovery_plan['max_stuck_recoveries']} en este punto).",
+                    f"({retry_budget}).",
                 )
                 emit_update(socketio, translation_id, {
                     'status': 'running',
@@ -3443,7 +3551,26 @@ async def _perform_tts_generation(translation_id, config, output_filepath, state
         }, namespace='/')
 
 
-def start_translation_job(translation_id, config, state_manager, output_dir, socketio):
+def get_translation_worker_supervisor() -> JobSupervisor:
+    """Return the process-wide single-owner translation supervisor."""
+    return _TRANSLATION_WORKER_SUPERVISOR
+
+
+def cancel_translation_handoff(translation_id) -> bool:
+    """Cancel an automatic replacement worker after an explicit user pause."""
+    return _TRANSLATION_WORKER_SUPERVISOR.cancel_pending_handoff(translation_id)
+
+
+def start_translation_job(
+    translation_id,
+    config,
+    state_manager,
+    output_dir,
+    socketio,
+    *,
+    allow_handoff=False,
+    replace_handoff=False,
+):
     """
     Start a translation job in a separate thread
 
@@ -3454,9 +3581,11 @@ def start_translation_job(translation_id, config, state_manager, output_dir, soc
         output_dir (str): Output directory path
         socketio: SocketIO instance
     """
-    thread = threading.Thread(
-        target=run_translation_async_wrapper,
-        args=(translation_id, config, state_manager, output_dir, socketio)
+    return _TRANSLATION_WORKER_SUPERVISOR.start(
+        translation_id,
+        run_translation_async_wrapper,
+        args=(translation_id, config, state_manager, output_dir, socketio),
+        allow_handoff=allow_handoff,
+        replace_handoff=replace_handoff,
+        thread_name=f"translation-{str(translation_id)[-12:]}",
     )
-    thread.daemon = True
-    thread.start()

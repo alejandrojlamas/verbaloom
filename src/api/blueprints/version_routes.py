@@ -27,7 +27,7 @@ def _list_active_jobs(state_manager) -> list:
     try:
         for tid, tdata in state_manager.get_all_translations().items():
             status = tdata.get("status")
-            if status in ("running", "queued", "pricing_wait"):
+            if status in ("running", "queued", "pricing_wait", "provider_wait"):
                 active.append({
                     "id": tid,
                     "status": status,

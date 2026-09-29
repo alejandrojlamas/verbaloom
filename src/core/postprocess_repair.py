@@ -23,6 +23,7 @@ from src.core.book_profiles.detectors import (
     lost_profile_proper_nouns,
 )
 from src.core.llm import RateLimitError
+from src.core.llm.request_deadline import await_llm_call
 from src.core.llm_client import LLMClient, create_llm_client
 from src.core.llm_output_guard import guard_llm_output
 from src.core.locale_quality import (
@@ -347,10 +348,12 @@ async def repair_flagged_chunks(
                 if check_interruption_callback and check_interruption_callback():
                     break
                 try:
-                    response = await client.make_request(
+                    response = await await_llm_call(
+                        client.make_request,
                         user_prompt,
+                        provider=client,
                         model=model_name,
-                        timeout=REQUEST_TIMEOUT,
+                        request_timeout=REQUEST_TIMEOUT,
                         system_prompt=system_prompt,
                     )
                 except RateLimitError:

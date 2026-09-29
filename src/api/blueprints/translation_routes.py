@@ -17,6 +17,7 @@ from src.core.deepseek_pricing import (
 from src.persistence.checkpoint_reconcile import checkpoint_progress_snapshot
 from src.config import (
     REQUEST_TIMEOUT,
+    MAX_TRANSLATION_ATTEMPTS,
     OLLAMA_NUM_CTX,
     AUTO_PAUSE_ON_RATE_LIMIT,
     OLLAMA_API_ENDPOINT,
@@ -426,6 +427,7 @@ def create_translation_blueprint(
     start_translation_job,
     socketio=None,
     output_dir=None,
+    cancel_translation_handoff=None,
 ):
     """
     Create and configure the translation blueprint
@@ -591,7 +593,7 @@ def create_translation_blueprint(
             'llm_api_endpoint': llm_api_endpoint,
             'request_timeout': int(data.get('timeout', REQUEST_TIMEOUT)),
             'context_window': int(data.get('context_window', OLLAMA_NUM_CTX)),
-            'max_attempts': int(data.get('max_attempts', 2)),
+            'max_attempts': int(data.get('max_attempts', MAX_TRANSLATION_ATTEMPTS)),
             'retry_delay': int(data.get('retry_delay', 2)),
             'output_filename': data['output_filename'],
             'input_filename': input_filename,
@@ -744,7 +746,15 @@ def create_translation_blueprint(
 
         job_data = state_manager.get_translation(translation_id)
         status = job_data.get('status')
-        if status == 'pricing_wait':
+        if (
+            status in {'running', 'queued', 'pricing_wait', 'provider_wait', 'rate_limited'}
+            and callable(cancel_translation_handoff)
+        ):
+            cancel_translation_handoff(translation_id)
+            state_manager.set_translation_field(
+                translation_id, 'recovery_scheduled', False
+            )
+        if status in {'pricing_wait', 'provider_wait'}:
             _persist_manual_pause_request(state_manager, translation_id)
             state_manager.set_interrupted(translation_id, True)
             state_manager.set_translation_field(translation_id, 'status', 'interrupted')
@@ -759,7 +769,7 @@ def create_translation_blueprint(
                     'log': 'Espera programada cancelada; el checkpoint se conservó.',
                 }, namespace='/')
             return jsonify({
-                "message": "Scheduled pricing wait cancelled. The checkpoint remains resumable."
+                "message": "Scheduled provider wait cancelled. The checkpoint remains resumable."
             }), 200
 
         if status in ('running', 'queued'):
@@ -812,11 +822,7 @@ def create_translation_blueprint(
         active_translations = []
         for tid, tdata in all_translations.items():
             status = tdata.get('status')
-            is_transient_rate_limit = (
-                status == 'rate_limited'
-                and not bool(tdata.get('interrupted'))
-            )
-            if status in ['running', 'queued', 'pricing_wait'] or is_transient_rate_limit:
+            if status in ['running', 'queued', 'pricing_wait', 'provider_wait']:
                 active_translations.append({
                     'id': tid,
                     'status': status,
@@ -935,14 +941,20 @@ def create_translation_blueprint(
         state_manager.checkpoint_manager.mark_running(translation_id)
 
         # Start the translation job (the wrapper will inject dependencies)
-        start_translation_job(translation_id, config)
+        start_result = start_translation_job(
+            translation_id,
+            config,
+            allow_handoff=True,
+            replace_handoff=True,
+        )
 
         return jsonify({
             "translation_id": translation_id,
             "message": "Translation resumed successfully",
             "resume_from_chunk": checkpoint_data['resume_from_index'],
             "model": config.get('model'),
-            "llm_provider": config.get('llm_provider')
+            "llm_provider": config.get('llm_provider'),
+            "worker_state": start_result,
         }), 200
 
     @bp.route('/api/checkpoint/<translation_id>', methods=['DELETE'])

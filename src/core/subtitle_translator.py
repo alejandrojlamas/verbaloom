@@ -31,6 +31,7 @@ from .fidelity_supervisor import (
     supervise_fidelity,
 )
 from .llm_output_guard import guard_llm_output
+from .llm.request_deadline import await_llm_call
 from .epub import TagPreserver
 from src.utils.text_encoding import clean_text_artifacts
 
@@ -345,8 +346,12 @@ async def refine_subtitle_translations(
                                  f"Block {block_idx + 1}: retry attempt {attempt} "
                                  f"({len(local_subtitle_tuples) - len(block_refined)} subtitles still missing)")
 
-                llm_response = await llm_client.make_request(
-                    prompt_pair.user, model_name, system_prompt=prompt_pair.system
+                llm_response = await await_llm_call(
+                    llm_client.make_request,
+                    prompt_pair.user,
+                    model_name,
+                    provider=llm_client,
+                    system_prompt=prompt_pair.system,
                 )
 
                 if llm_response and llm_response.content:
@@ -661,8 +666,12 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                     # Use provided client or default - pass system and user prompts separately
                     client = llm_client or default_client
                     start_time = time.time()
-                    llm_response = await client.make_request(
-                        prompt_pair.user, model_name, system_prompt=prompt_pair.system
+                    llm_response = await await_llm_call(
+                        client.make_request,
+                        prompt_pair.user,
+                        model_name,
+                        provider=client,
+                        system_prompt=prompt_pair.system,
                     )
                     execution_time = time.time() - start_time
 

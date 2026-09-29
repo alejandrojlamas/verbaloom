@@ -30,7 +30,14 @@ from .blueprints import (
 from .sample_state import SampleStateManager
 
 
-def configure_routes(app, state_manager, output_dir, start_translation_job, socketio=None):
+def configure_routes(
+    app,
+    state_manager,
+    output_dir,
+    start_translation_job,
+    socketio=None,
+    cancel_translation_handoff=None,
+):
     """
     Configure Flask routes by registering all blueprints
 
@@ -53,6 +60,7 @@ def configure_routes(app, state_manager, output_dir, start_translation_job, sock
         start_translation_job,
         socketio,
         output_dir=output_dir,
+        cancel_translation_handoff=cancel_translation_handoff,
     )
     app.register_blueprint(translation_bp)
 

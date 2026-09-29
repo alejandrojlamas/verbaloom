@@ -226,5 +226,7 @@
   "prompt_context_profile": "Profile: {{profile}}",
   "prompt_context_profile_glossary": "Profile glossary: {{matched}}/{{total}} matched, {{rendered}} injected",
   "prompt_context_manual_glossary": "Glossary: {{matched}}/{{total}} matched",
-  "prompt_context_last_chunk": "Chunk {{chunk}}: profile {{profile}}, glossary {{manual}}"
+  "prompt_context_last_chunk": "Chunk {{chunk}}: profile {{profile}}, glossary {{manual}}",
+  "translation_provider_waiting_short": "Waiting for provider",
+  "translation_provider_waiting_msg": "{{name}} is waiting for the provider and will resume automatically. Its checkpoint is safe."
 }
