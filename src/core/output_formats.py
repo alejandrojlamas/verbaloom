@@ -75,6 +75,7 @@ def convert_output_file(
     destination_path: str | Path,
     output_format: str,
     structure_hints: dict | None = None,
+    epub_metadata: dict | None = None,
 ) -> None:
     """Convert a completed native output file to ``output_format``."""
     fmt = normalize_output_format(output_format)
@@ -96,7 +97,13 @@ def convert_output_file(
     elif fmt == "pdf":
         _write_pdf(text, destination)
     elif fmt == "epub":
-        _write_epub(text, destination, title=destination.stem, structure_hints=structure_hints)
+        _write_epub(
+            text,
+            destination,
+            title=destination.stem,
+            structure_hints=structure_hints,
+            epub_metadata=epub_metadata,
+        )
 
 
 def write_text_as_output(
@@ -104,6 +111,7 @@ def write_text_as_output(
     destination_path: str | Path,
     output_format: str,
     structure_hints: dict | None = None,
+    epub_metadata: dict | None = None,
 ) -> None:
     """Write already-prepared text as one of the supported delivery formats."""
     fmt = normalize_output_format(output_format)
@@ -123,7 +131,13 @@ def write_text_as_output(
     elif fmt == "pdf":
         _write_pdf(text or "", destination)
     elif fmt == "epub":
-        _write_epub(text or "", destination, title=destination.stem, structure_hints=structure_hints)
+        _write_epub(
+            text or "",
+            destination,
+            title=destination.stem,
+            structure_hints=structure_hints,
+            epub_metadata=epub_metadata,
+        )
 
 
 def extract_readable_text(path: str | Path) -> str:
@@ -737,8 +751,18 @@ def _write_epub(
     destination: Path,
     title: str | None = None,
     structure_hints: dict | None = None,
+    epub_metadata: dict | None = None,
 ) -> None:
-    book_title = _clean_heading(title or destination.stem or "Libro traducido")
+    from src.core.epub.lang_support import get_language_code
+    from src.core.epub.publication_structure import render_typographic_cover_bytes
+
+    metadata = dict(epub_metadata or {})
+    book_title = _clean_heading(
+        str(metadata.get("title") or title or destination.stem or "Libro traducido")
+    )
+    book_subtitle = _clean_heading(str(metadata.get("subtitle") or ""))
+    book_creator = _clean_heading(str(metadata.get("creator") or metadata.get("author") or ""))
+    language_code = get_language_code(str(metadata.get("language") or "Spanish")) or "es"
     text, epub_tables = _extract_epub_markdown_tables(text)
     sections = _apply_epub_structure_hints(
         _build_output_sections(text, book_title),
@@ -768,19 +792,42 @@ def _write_epub(
         )
         zf.writestr(
             "OEBPS/nav.xhtml",
-            _epub_nav_xhtml(book_title, sections, chapter_files),
+            _epub_nav_xhtml(book_title, sections, chapter_files, language_code),
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
+        zf.writestr(
+            "OEBPS/cover.xhtml",
+            _epub_cover_xhtml(book_title, language_code),
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
+        zf.writestr(
+            "OEBPS/images/cover.jpg",
+            render_typographic_cover_bytes(
+                title=book_title,
+                subtitle=book_subtitle,
+                author=book_creator,
+                language_code=language_code,
+            ),
             compress_type=zipfile.ZIP_DEFLATED,
         )
         zf.writestr(
             "OEBPS/content.opf",
-            _epub_package_opf(book_title, book_id, modified, chapter_files),
+            _epub_package_opf(
+                book_title,
+                book_subtitle,
+                book_creator,
+                language_code,
+                book_id,
+                modified,
+                chapter_files,
+            ),
             compress_type=zipfile.ZIP_DEFLATED,
         )
 
         for idx, (section, filename) in enumerate(zip(sections, chapter_files), start=1):
             zf.writestr(
                 filename,
-                _epub_chapter_xhtml(section, idx, epub_tables),
+                _epub_chapter_xhtml(section, idx, epub_tables, language_code),
                 compress_type=zipfile.ZIP_DEFLATED,
             )
 
@@ -935,11 +982,35 @@ html {
 body {
   font-family: Georgia, "Times New Roman", serif;
   line-height: 1.55;
-  margin: 0;
-  padding: 0;
+  box-sizing: border-box;
+  width: 88%;
+  max-width: 42em;
+  margin: 0 auto;
+  padding: 5% 0;
   hyphens: auto;
   widows: 2;
   orphans: 2;
+}
+body.cover-page {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111318;
+  text-align: center;
+}
+body.cover-page img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 100vh;
+  object-fit: contain;
+  margin: 0 auto;
 }
 section.chapter {
   break-before: page;
@@ -1004,18 +1075,20 @@ def _epub_nav_xhtml(
     book_title: str,
     sections: list[_OutputSection],
     chapter_files: list[str],
+    language_code: str,
 ) -> str:
     items = []
-    for section, filename in zip(sections, chapter_files):
+    for index, (section, filename) in enumerate(zip(sections, chapter_files), start=1):
         href = posixpath.basename(filename)
         items.append(
-            f'<li><a href="{html.escape(href, quote=True)}">'
+            f'<li><a href="{html.escape(href, quote=True)}#chapter-{index:03d}">'
             f"{html.escape(section.title)}</a></li>"
         )
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="es" xml:lang="es">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{html.escape(language_code)}" xml:lang="{html.escape(language_code)}">
   <head>
     <title>{html.escape(book_title)}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <link rel="stylesheet" type="text/css" href="styles.css"/>
   </head>
   <body>
@@ -1025,6 +1098,27 @@ def _epub_nav_xhtml(
         {"".join(items)}
       </ol>
     </nav>
+    <nav epub:type="landmarks" hidden="hidden">
+      <h2>{"Guía" if language_code == "es" else "Guide"}</h2>
+      <ol>
+        <li><a epub:type="cover" href="cover.xhtml">{"Portada" if language_code == "es" else "Cover"}</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>
+"""
+
+
+def _epub_cover_xhtml(book_title: str, language_code: str) -> str:
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{html.escape(language_code)}" xml:lang="{html.escape(language_code)}">
+  <head>
+    <title>{html.escape(book_title)}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link rel="stylesheet" type="text/css" href="styles.css"/>
+  </head>
+  <body class="cover-page" epub:type="cover">
+    <img src="images/cover.jpg" alt="{html.escape(book_title, quote=True)}"/>
   </body>
 </html>
 """
@@ -1032,6 +1126,9 @@ def _epub_nav_xhtml(
 
 def _epub_package_opf(
     book_title: str,
+    book_subtitle: str,
+    book_creator: str,
+    language_code: str,
     book_id: str,
     modified: str,
     chapter_files: list[str],
@@ -1039,8 +1136,10 @@ def _epub_package_opf(
     manifest_items = [
         '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
         '<item id="css" href="styles.css" media-type="text/css"/>',
+        '<item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml"/>',
+        '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>',
     ]
-    spine_items = []
+    spine_items = ['<itemref idref="cover-page" linear="yes"/>']
     for idx, filename in enumerate(chapter_files, start=1):
         href = posixpath.basename(filename)
         manifest_items.append(
@@ -1049,12 +1148,25 @@ def _epub_package_opf(
         )
         spine_items.append(f'<itemref idref="chap{idx}"/>')
 
+    subtitle_metadata = (
+        f'<dc:title id="title-subtitle">{html.escape(book_subtitle)}</dc:title>'
+        '<meta property="title-type" refines="#title-subtitle">subtitle</meta>'
+        if book_subtitle
+        else ""
+    )
+    creator_metadata = (
+        f"<dc:creator>{html.escape(book_creator)}</dc:creator>" if book_creator else ""
+    )
+
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <package version="3.0" unique-identifier="bookid" xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <metadata>
     <dc:identifier id="bookid">{html.escape(book_id)}</dc:identifier>
-    <dc:title>{html.escape(book_title)}</dc:title>
-    <dc:language>es</dc:language>
+    <dc:title id="title-main">{html.escape(book_title)}</dc:title>
+    <meta property="title-type" refines="#title-main">main</meta>
+    {subtitle_metadata}
+    {creator_metadata}
+    <dc:language>{html.escape(language_code)}</dc:language>
     <meta property="dcterms:modified">{html.escape(modified)}</meta>
   </metadata>
   <manifest>
@@ -1114,6 +1226,7 @@ def _epub_chapter_xhtml(
     section: _OutputSection,
     chapter_index: int,
     table_map: dict[str, str] | None = None,
+    language_code: str = "es",
 ) -> str:
     body_parts = [f"<h1>{html.escape(section.title)}</h1>"]
     table_map = table_map or {}
@@ -1139,9 +1252,10 @@ def _epub_chapter_xhtml(
         idx += 1
         visible_index += 1
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="es" xml:lang="es">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{html.escape(language_code)}" xml:lang="{html.escape(language_code)}">
   <head>
     <title>{html.escape(section.title)}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <link rel="stylesheet" type="text/css" href="styles.css"/>
   </head>
   <body id="chapter-{chapter_index:03d}">

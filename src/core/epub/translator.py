@@ -296,6 +296,10 @@ async def translate_epub_file(
                 content_files=manifest_data['content_files'],
                 parsed_xhtml_docs=results['parsed_docs'],
                 target_language=target_language,
+                title=str(prompt_options.get('target_metadata_title') or ''),
+                subtitle=str(prompt_options.get('target_metadata_subtitle') or ''),
+                author=str(prompt_options.get('target_metadata_author') or ''),
+                package_root=temp_dir,
             )
             await _save_translated_files(
                 parsed_xhtml_docs=results['parsed_docs'],
@@ -306,6 +310,7 @@ async def translate_epub_file(
                     "epub_professionalized",
                     "Publicación EPUB: "
                     f"portada={'sí' if professional_report.cover_declared else 'no'}, "
+                    f"capítulos={professional_report.navigation_entries}, "
                     f"documentos estilizados={professional_report.styled_documents}, "
                     f"CSS ajustados={professional_report.css_augmented + professional_report.css_created}.",
                 )

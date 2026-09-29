@@ -72,6 +72,57 @@ def _write_epub(
         archive.writestr("cover.jpg", cover_bytes)
 
 
+def _write_coverless_source_and_finished_output(source: Path, output: Path) -> None:
+    container = b'''<?xml version="1.0"?>
+    <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+      <rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+    </container>'''
+    source_opf = b'''<?xml version="1.0" encoding="utf-8"?>
+    <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
+      <metadata><dc:title>Testbuch</dc:title><dc:language>de</dc:language><meta name="cover" content="missing-cover"/></metadata>
+      <manifest><item id="missing-cover" href="images/missing-cover.jpg" media-type="image/jpeg" properties="cover-image"/><item id="missing-cover-page" href="missing-cover.xhtml" media-type="application/xhtml+xml"/><item id="title" href="title.xhtml" media-type="application/xhtml+xml"/><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+      <spine><itemref idref="missing-cover-page"/><itemref idref="title"/><itemref idref="chapter"/></spine>
+      <guide><reference type="cover" title="Cover" href="missing-cover.xhtml"/></guide>
+    </package>'''
+    output_opf = b'''<?xml version="1.0" encoding="utf-8"?>
+    <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
+      <metadata><dc:title>Libro de prueba</dc:title><dc:language>es</dc:language><meta name="cover" content="verbaloom-cover-image"/></metadata>
+      <manifest>
+        <item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>
+        <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+        <item id="verbaloom-cover-image" href="images/verbaloom-cover.jpg" media-type="image/jpeg" properties="cover-image"/>
+        <item id="verbaloom-cover-page" href="verbaloom-cover.xhtml" media-type="application/xhtml+xml"/>
+        <item id="verbaloom-navigation" href="verbaloom-nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+      </manifest>
+      <spine><itemref idref="verbaloom-cover-page"/><itemref idref="title"/><itemref idref="chapter"/></spine>
+      <guide><reference type="cover" title="Portada" href="verbaloom-cover.xhtml"/></guide>
+    </package>'''
+    source_chapter = b'''<html xmlns="http://www.w3.org/1999/xhtml" lang="de" xml:lang="de"><body><h1>Kapitel Eins</h1><p>Am Morgen begann die lange Reise durch die Landschaft und alle erinnerten sich an das alte Haus.</p></body></html>'''
+    output_chapter = '''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="es" xml:lang="es"><body class="verbaloom-chapter" epub:type="chapter"><h1 id="ch-1" class="verbaloom-chapter-title">Capítulo uno</h1><p>Por la mañana comenzó el largo viaje por el paisaje y todos recordaron la casa antigua.</p></body></html>'''.encode()
+    source_title = b'''<html xmlns="http://www.w3.org/1999/xhtml" lang="de" xml:lang="de"><body><section><h1>Testbuch</h1></section></body></html>'''
+    output_title = b'''<html xmlns="http://www.w3.org/1999/xhtml" lang="es" xml:lang="es"><body><section><h1>Libro de prueba</h1></section></body></html>'''
+    cover_page = b'''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="es" xml:lang="es"><head><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head><body epub:type="cover"><img src="images/verbaloom-cover.jpg" alt="Libro de prueba"/></body></html>'''
+    nav = '''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="es" xml:lang="es"><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml#ch-1">Capítulo uno</a></li></ol></nav></body></html>'''.encode()
+    cover_buffer = BytesIO()
+    Image.new("RGB", (1600, 2560), "navy").save(cover_buffer, format="JPEG")
+
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        archive.writestr("META-INF/container.xml", container)
+        archive.writestr("content.opf", source_opf)
+        archive.writestr("title.xhtml", source_title)
+        archive.writestr("chapter.xhtml", source_chapter)
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        archive.writestr("META-INF/container.xml", container)
+        archive.writestr("content.opf", output_opf)
+        archive.writestr("title.xhtml", output_title)
+        archive.writestr("chapter.xhtml", output_chapter)
+        archive.writestr("verbaloom-cover.xhtml", cover_page)
+        archive.writestr("verbaloom-nav.xhtml", nav)
+        archive.writestr("images/verbaloom-cover.jpg", cover_buffer.getvalue())
+
+
 def test_publication_gate_accepts_complete_structurally_preserved_translation(tmp_path):
     source = tmp_path / "source.epub"
     output = tmp_path / "output.epub"
@@ -110,6 +161,25 @@ def test_publication_gate_accepts_complete_structurally_preserved_translation(tm
     assert report.source_units == report.audited_units
     assert report.preserved_images == 1
     assert report.broken_links == 0
+
+
+def test_publication_gate_accepts_bounded_professional_cover_and_navigation_assets(tmp_path):
+    source = tmp_path / "source-no-cover.epub"
+    output = tmp_path / "output-professional.epub"
+    _write_coverless_source_and_finished_output(source, output)
+
+    report = audit_epub_publication(
+        source,
+        output,
+        source_language="German",
+        target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert report.publishable is True, report.errors
+    assert report.cover_image == "images/verbaloom-cover.jpg"
+    assert report.cover_page == "verbaloom-cover.xhtml"
+    assert any("professional publication assets added" in warning for warning in report.warnings)
 
 
 def test_publication_gate_accepts_bounded_blockquote_flow_repair(tmp_path):

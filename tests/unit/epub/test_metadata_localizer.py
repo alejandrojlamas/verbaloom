@@ -10,6 +10,7 @@ from src.core.epub.metadata_localizer import (
     infer_epub_title_page,
     localize_epub_metadata,
 )
+from src.core.epub.publication_structure import render_typographic_cover_bytes
 
 
 CONTAINER = b'''<?xml version="1.0"?>
@@ -44,12 +45,20 @@ def _write_epub2(path: Path, *, extra_identifier: bool = False):
         archive.writestr("OEBPS/Images/cover.jpg", b"preserved-image")
 
 
-def _write_epub3(path: Path):
-    opf = b'''<?xml version="1.0" encoding="utf-8"?>
+def _write_epub3(path: Path, *, generated_cover: bool = False):
+    cover_manifest = (
+        '<item id="generated-cover" href="images/verbaloom-cover.jpg" '
+        'media-type="image/jpeg" properties="cover-image"/>'
+        '<item id="generated-cover-page" href="verbaloom-cover.xhtml" '
+        'media-type="application/xhtml+xml"/>'
+        if generated_cover
+        else ""
+    )
+    opf = f'''<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
 <metadata><dc:title>Old Book</dc:title><dc:creator>Original Author</dc:creator><dc:identifier>urn:epub3</dc:identifier><dc:language>en</dc:language></metadata>
-<manifest><item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest>
-<spine><itemref idref="chapter"/></spine></package>'''
+<manifest><item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>{cover_manifest}</manifest>
+<spine><itemref idref="chapter"/></spine></package>'''.encode()
     nav = b'''<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="Text/chapter.xhtml#start">Introduction</a></li></ol></nav></body></html>'''
     with zipfile.ZipFile(path, "w") as archive:
@@ -58,6 +67,22 @@ def _write_epub3(path: Path):
         archive.writestr("OEBPS/content.opf", opf)
         archive.writestr("OEBPS/nav.xhtml", nav)
         archive.writestr("OEBPS/Text/chapter.xhtml", _chapter("Introduction"))
+        if generated_cover:
+            archive.writestr(
+                "OEBPS/images/verbaloom-cover.jpg",
+                render_typographic_cover_bytes(
+                    title="Old Book",
+                    author="Original Author",
+                    language_code="en",
+                ),
+            )
+            archive.writestr(
+                "OEBPS/verbaloom-cover.xhtml",
+                b'''<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+                <head><title>Old Book</title></head><body>
+                <img src="images/verbaloom-cover.jpg" alt="Old Book"/>
+                </body></html>''',
+            )
 
 
 def _write_epub3_with_refined_titles(path: Path):
@@ -158,6 +183,35 @@ def test_localizes_epub3_nav_label_and_preserves_target(tmp_path):
         anchor = nav.xpath("//*[local-name()='nav']//*[local-name()='a']")[0]
         assert "".join(anchor.itertext()) == "Introducción"
         assert anchor.get("href") == "Text/chapter.xhtml#start"
+
+
+def test_localizer_refreshes_only_generated_cover_with_localized_title(tmp_path):
+    source = tmp_path / "source3.epub"
+    output = tmp_path / "output3.epub"
+    _write_epub3(source)
+    _write_epub3(output, generated_cover=True)
+
+    report = localize_epub_metadata(
+        source,
+        output,
+        target_language="Spanish",
+        title="El libro actual",
+        subtitle="Una lectura",
+    )
+
+    expected = render_typographic_cover_bytes(
+        title="El libro actual",
+        subtitle="Una lectura",
+        author="Original Author",
+        language_code="es",
+    )
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("OEBPS/images/verbaloom-cover.jpg") == expected
+        cover_page = etree.fromstring(archive.read("OEBPS/verbaloom-cover.xhtml"))
+        assert cover_page.xpath("string(//*[local-name()='img']/@alt)") == (
+            "El libro actual: Una lectura"
+        )
+    assert report.generated_cover_refreshed is True
 
 
 def test_image_only_title_page_uses_opf_identity_not_promotional_front_matter(

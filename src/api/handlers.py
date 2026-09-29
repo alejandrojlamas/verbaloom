@@ -2162,6 +2162,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 ),
             ]
             structure_hints = None
+            epub_metadata = None
             if final_output_format == 'epub':
                 structure_hints = await _epub_structure_hints_for_conversion(
                     config,
@@ -2170,6 +2171,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     input_path_for_translate_module,
                     _log_message_callback,
                 )
+                metadata_options = config.get('prompt_options') or {}
+                epub_metadata = {
+                    'title': str(metadata_options.get('target_metadata_title') or '').strip(),
+                    'subtitle': str(metadata_options.get('target_metadata_subtitle') or '').strip(),
+                    'creator': str(metadata_options.get('target_metadata_author') or '').strip(),
+                    'language': config.get('target_language') or '',
+                }
             await engine.run_phase(
                 JobPhase.ASSEMBLE,
                 convert_output_file,
@@ -2177,6 +2185,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 destination_path=final_output_filepath_on_server,
                 output_format=final_output_format,
                 structure_hints=structure_hints,
+                epub_metadata=epub_metadata,
                 message=f"Converting final output to {final_output_format}.",
                 metadata={'output_format': final_output_format},
             )

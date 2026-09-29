@@ -51,6 +51,7 @@ class MetadataLocalizationReport:
     protected_metadata_restored: int = 0
     html_title_changes: int = 0
     navigation_label_changes: int = 0
+    generated_cover_refreshed: bool = False
     changed_files: int = 0
 
 
@@ -400,6 +401,7 @@ def _localize_xhtml(
     language_code: str,
     title: str,
     report: MetadataLocalizationReport,
+    cover_alt: str = "",
 ) -> bytes:
     root = _parse(payload)
     changed = False
@@ -422,6 +424,11 @@ def _localize_xhtml(
         if title and node.text != title:
             node.text = title
             report.html_title_changes += 1
+            changed = True
+    if cover_alt:
+        cover_images = root.xpath("//*[local-name()='body']//*[local-name()='img'][1]")
+        if cover_images and cover_images[0].get("alt") != cover_alt:
+            cover_images[0].set("alt", cover_alt)
             changed = True
     return _serialize(root, payload) if changed else payload
 
@@ -466,8 +473,47 @@ def localize_epub_metadata(
             )
             _href_by_id, nav_files, ncx_files = _manifest_info(package, output_opf)
             replacements: dict[str, bytes] = {output_opf: localized_opf}
+            from .publication_structure import (
+                GENERATED_COVER_IMAGE,
+                GENERATED_COVER_PAGE,
+                render_typographic_cover_bytes,
+            )
+
+            opf_dir = posixpath.dirname(output_opf)
+            generated_cover_path = ""
+            generated_cover_page_path = ""
+            for item in package.xpath(
+                "//*[local-name()='manifest']/*[local-name()='item']"
+            ):
+                href = str(item.get("href") or "")
+                normalized_href = posixpath.normpath(href)
+                if normalized_href == GENERATED_COVER_IMAGE:
+                    generated_cover_path = posixpath.normpath(
+                        posixpath.join(opf_dir, href)
+                    )
+                elif normalized_href == GENERATED_COVER_PAGE:
+                    generated_cover_page_path = posixpath.normpath(
+                        posixpath.join(opf_dir, href)
+                    )
+            localized_title, localized_subtitle = _metadata_title_parts(package)
+            effective_title = title or localized_title
+            effective_subtitle = subtitle or localized_subtitle
+            full_title = _full_title(effective_title, effective_subtitle)
+            if generated_cover_path in output.namelist():
+                creators = package.xpath(
+                    "//*[local-name()='metadata']/*[local-name()='creator']/text()"
+                )
+                refreshed_cover = render_typographic_cover_bytes(
+                    title=effective_title,
+                    subtitle=effective_subtitle,
+                    author="; ".join(str(value).strip() for value in creators if str(value).strip()),
+                    language_code=language_code,
+                )
+                replacements[generated_cover_path] = refreshed_cover
+                report.generated_cover_refreshed = (
+                    refreshed_cover != output.read(generated_cover_path)
+                )
             document_labels: dict[str, str] = {}
-            full_title = _full_title(title, subtitle)
             for toc_path in ncx_files:
                 payload, href_labels = _localize_ncx(
                     output.read(toc_path), title=full_title, labels=labels, report=report
@@ -488,6 +534,11 @@ def localize_epub_metadata(
                     language_code=language_code,
                     title=document_labels.get(name, full_title),
                     report=report,
+                    cover_alt=(
+                        full_title
+                        if name == generated_cover_page_path
+                        else ""
+                    ),
                 )
             with zipfile.ZipFile(tmp_path, "w") as rebuilt:
                 for info in output.infolist():

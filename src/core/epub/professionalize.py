@@ -238,6 +238,12 @@ class ProfessionalizationReport:
     cover_image_href: str = ""
     cover_declared: bool = False
     cover_page_declared: bool = False
+    cover_generated: bool = False
+    cover_page_created: bool = False
+    navigation_href: str = ""
+    navigation_created: bool = False
+    navigation_entries: int = 0
+    chapter_headings: int = 0
     styled_documents: int = 0
     semantic_markers: int = 0
     furniture_markers: int = 0
@@ -826,6 +832,10 @@ def apply_professional_epub_layer(
     content_files: list[str],
     parsed_xhtml_docs: Dict[str, etree._Element],
     target_language: str,
+    title: str = "",
+    subtitle: str = "",
+    author: str = "",
+    package_root: str | Path | None = None,
 ) -> ProfessionalizationReport:
     """Apply conservative, idempotent publication semantics and styling."""
     report = ProfessionalizationReport()
@@ -910,6 +920,31 @@ def apply_professional_epub_layer(
         body = next(iter(doc.xpath("//*[local-name()='body']")), None)
         if body is not None:
             report.furniture_markers += _mark_commercial_furniture(body)
+
+    from .publication_structure import finish_epub_publication
+
+    structure_report = finish_epub_publication(
+        opf_tree=opf_tree,
+        opf_dir=opf_dir_path,
+        content_files=content_files,
+        parsed_xhtml_docs=parsed_xhtml_docs,
+        target_language=target_language,
+        title=title,
+        subtitle=subtitle,
+        author=author,
+        package_root=package_root,
+    )
+    report.cover_image_href = structure_report.cover_image_href
+    report.cover_declared = bool(structure_report.cover_image_href)
+    report.cover_page_declared = bool(structure_report.cover_page_href)
+    report.cover_generated = structure_report.cover_generated
+    report.cover_page_created = structure_report.cover_page_created
+    report.navigation_href = structure_report.navigation_href or structure_report.ncx_href
+    report.navigation_created = (
+        structure_report.navigation_created or structure_report.ncx_created
+    )
+    report.navigation_entries = structure_report.navigation_entries
+    report.chapter_headings = structure_report.chapter_headings
 
     report.css_augmented, report.css_created = _ensure_stylesheet(
         opf_root=root,

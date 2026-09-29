@@ -411,7 +411,7 @@ def test_cover_lookup_resolves_filesystem_aliases(tmp_path: Path):
     assert opf.xpath("string(//*[local-name()='reference' and @type='cover']/@href)") == "chapter.xhtml"
 
 
-def test_missing_cover_page_does_not_create_an_invalid_empty_guide(tmp_path: Path):
+def test_declared_cover_image_gets_a_real_cover_page_and_guide(tmp_path: Path):
     (tmp_path / "images").mkdir()
     Image.new("RGB", (600, 900), "navy").save(tmp_path / "images" / "first.jpg")
     opf = _package()
@@ -431,8 +431,12 @@ def test_missing_cover_page_does_not_create_an_invalid_empty_guide(tmp_path: Pat
         target_language="Spanish",
     )
 
-    assert report.cover_page_declared is False
-    assert not opf.xpath("//*[local-name()='guide']")
+    assert report.cover_page_declared is True
+    assert report.cover_page_created is True
+    assert (tmp_path / "verbaloom-cover.xhtml").is_file()
+    assert opf.xpath(
+        "string(//*[local-name()='guide']/*[local-name()='reference' and @type='cover']/@href)"
+    ) == "verbaloom-cover.xhtml"
 
 
 def test_marks_metadata_proven_running_page_headers_without_hiding_real_years(tmp_path: Path):

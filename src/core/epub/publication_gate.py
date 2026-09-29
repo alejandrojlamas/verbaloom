@@ -35,6 +35,12 @@ from src.utils.language_detector import LanguageDetector
 from .lang_support import get_language_code
 from .dom_boundaries import audit_epub_dom_boundaries
 from .professionalize import count_invalid_blockquote_inline_runs
+from .publication_structure import (
+    GENERATED_COVER_IMAGE,
+    GENERATED_COVER_PAGE,
+    GENERATED_NAVIGATION,
+    GENERATED_NCX,
+)
 from .unit_contract import EPUB_PIPELINE_VERSION, EPUB_PROMPT_VERSION, stable_unit_id, text_sha256
 
 
@@ -282,6 +288,40 @@ def _broken_toc_targets(snapshot: EpubSnapshot) -> list[str]:
         elif fragment and fragment not in snapshot.ids.get(path, set()):
             broken.append(target)
     return broken
+
+
+def _is_allowed_publication_asset(snapshot: EpubSnapshot, name: str) -> bool:
+    """Accept only deterministic assets produced by the EPUB finisher."""
+    resource = snapshot.manifest_resources.get(name, {})
+    basename = Path(name).name
+    normalized = str(name).replace("\\", "/")
+    if basename in {"verbaloom-professional.css", "tbl-professional.css"}:
+        return resource.get("media_type") == "text/css"
+    if normalized.endswith(f"/{GENERATED_COVER_IMAGE}") or normalized == GENERATED_COVER_IMAGE:
+        return bool(
+            resource.get("media_type") == "image/jpeg"
+            and "cover-image" in resource.get("properties", "").split()
+            and snapshot.cover_image == name
+        )
+    if basename == Path(GENERATED_COVER_PAGE).name:
+        return bool(
+            resource.get("media_type") == "application/xhtml+xml"
+            and snapshot.cover_page == name
+            and snapshot.spine
+            and snapshot.spine[0] == name
+        )
+    if basename == Path(GENERATED_NAVIGATION).name:
+        return bool(
+            resource.get("media_type") == "application/xhtml+xml"
+            and "nav" in resource.get("properties", "").split()
+            and name in snapshot.nav_files
+        )
+    if basename == Path(GENERATED_NCX).name:
+        return bool(
+            resource.get("media_type") == "application/x-dtbncx+xml"
+            and name in snapshot.ncx_files
+        )
+    return False
 
 
 def _probable_undeclared_cover(
@@ -564,19 +604,27 @@ def audit_epub_publication(
         )
     if output.duplicate_id_count:
         report.errors.append(f"{output.duplicate_id_count} duplicate XHTML id attribute(s)")
-    if source.spine != output.spine:
+    source_reading_spine = [
+        file_href
+        for file_href in source.spine
+        if file_href != source.cover_page or file_href in source.entry_names
+    ]
+    cover_prefixed_spine = bool(
+        output.cover_page
+        and output.spine
+        and output.spine[0] == output.cover_page
+        and output.spine[1:] == source_reading_spine
+        and output.cover_page not in source_reading_spine
+    )
+    if source.spine != output.spine and not cover_prefixed_spine:
         report.errors.append("spine order differs from the source EPUB")
     if set(source.entry_names) != set(output.entry_names):
         missing = sorted(set(source.entry_names) - set(output.entry_names))
         added = sorted(set(output.entry_names) - set(source.entry_names))
-        allowed_added = [
-            name for name in added
-            if Path(name).name in {"verbaloom-professional.css", "tbl-professional.css"}
-            and output.manifest_resources.get(name, {}).get("media_type") == "text/css"
-        ]
+        allowed_added = [name for name in added if _is_allowed_publication_asset(output, name)]
         unexpected_added = sorted(set(added) - set(allowed_added))
         if allowed_added:
-            report.warnings.append(f"professional reading stylesheet added: {allowed_added}")
+            report.warnings.append(f"professional publication assets added: {allowed_added}")
         if not missing and not unexpected_added:
             added = []
         else:
@@ -601,7 +649,18 @@ def audit_epub_publication(
             f"{report.inherited_broken_toc_targets} invalid table-of-contents target(s) "
             "were inherited unchanged from the source EPUB"
         )
-    expected_cover = source.cover_image or source.obvious_cover_image
+    generated_navigation = any(
+        Path(name).name in {Path(GENERATED_NAVIGATION).name, Path(GENERATED_NCX).name}
+        for name in [*output.nav_files, *output.ncx_files]
+    )
+    if generated_navigation:
+        if not output.toc_entries:
+            report.errors.append("generated table of contents is empty")
+    expected_cover = (
+        source.cover_image
+        if source.cover_image in source.entry_names
+        else source.obvious_cover_image
+    )
     if expected_cover and output.cover_image != expected_cover:
         report.errors.append(
             f"existing cover was not declared correctly: expected {expected_cover}; "

@@ -1,4 +1,6 @@
 from pathlib import Path
+import shutil
+import subprocess
 import zipfile
 
 import pytest
@@ -105,6 +107,60 @@ def test_convert_text_to_epub_adds_editorial_chapter_semantics_and_breaks(tmp_pa
     assert "page-break-before: always" in styles
     assert "page-break-after: avoid" in styles
     assert "widows: 2" in styles
+
+
+def test_convert_text_to_epub_builds_professional_package_with_cover_and_metadata(tmp_path):
+    source = tmp_path / "source.txt"
+    destination = tmp_path / "translated.epub"
+    source.write_text(
+        "Capítulo uno\n\nPrimer párrafo.\n\n"
+        "Capítulo dos\n\nSegundo párrafo.",
+        encoding="utf-8",
+    )
+
+    convert_output_file(
+        source,
+        destination,
+        "epub",
+        epub_metadata={
+            "title": "La ciudad y la memoria",
+            "subtitle": "Una novela",
+            "creator": "Ana Torres",
+            "language": "Spanish",
+        },
+    )
+
+    with zipfile.ZipFile(destination) as zf:
+        names = set(zf.namelist())
+        package = zf.read("OEBPS/content.opf").decode("utf-8")
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        cover_page = zf.read("OEBPS/cover.xhtml").decode("utf-8")
+        cover_bytes = zf.read("OEBPS/images/cover.jpg")
+
+    assert "OEBPS/images/cover.jpg" in names
+    assert "OEBPS/cover.xhtml" in names
+    assert '<dc:title id="title-main">La ciudad y la memoria</dc:title>' in package
+    assert '<dc:title id="title-subtitle">Una novela</dc:title>' in package
+    assert '<dc:creator>Ana Torres</dc:creator>' in package
+    assert '<dc:language>es</dc:language>' in package
+    assert 'properties="cover-image"' in package
+    assert '<itemref idref="cover-page" linear="yes"/>' in package
+    assert 'epub:type="landmarks"' in nav
+    assert 'href="cover.xhtml"' in nav
+    assert 'lang="es" xml:lang="es"' in nav
+    assert 'src="images/cover.jpg"' in cover_page
+    assert cover_bytes.startswith(b"\xff\xd8")
+
+    epubcheck = shutil.which("epubcheck") or "/opt/homebrew/bin/epubcheck"
+    if Path(epubcheck).exists():
+        checked = subprocess.run(
+            [epubcheck, str(destination)],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=False,
+        )
+        assert checked.returncode == 0, checked.stdout + checked.stderr
 
 
 def test_convert_text_to_epub_keeps_adjacent_markdown_tables_separate(tmp_path):
