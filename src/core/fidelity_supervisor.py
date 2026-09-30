@@ -1452,18 +1452,14 @@ def _copied_source_language_phrases(
                 continue
             if _is_intentional_source_language_literal(source_segment, phrase):
                 continue
+            if _is_honorific_name_sequence(surfaces):
+                continue
             if _is_multiword_proper_name(
                 surfaces,
                 source_text=source_segment,
             ):
                 continue
             if _looks_like_work_title_sequence(surfaces):
-                continue
-            if (
-                folded[0] in _PROPER_NAME_LEADERS
-                and len(surfaces) > 1
-                and all(token[:1].isupper() for token in surfaces[1:])
-            ):
                 continue
             if (
                 len(surfaces) >= 2
@@ -1818,6 +1814,67 @@ _PROPER_NAME_LEADERS = {
     "rey", "saint", "san", "santa", "señor", "señora", "sir", "sr",
     "sra", "st", "viejo", "vieja", "young",
 }
+
+
+def _is_honorific_name_sequence(tokens: list[str]) -> bool:
+    """Recognize one or more honorific-led names, including initials.
+
+    Historical prose often lists people as ``sir T. A. Bridges, sir John
+    Browne``. A repeated lower-case honorific made the full overlap look like
+    untranslated source prose even though every lexical item was a proper name.
+    This parser accepts only complete name-shaped runs; any ordinary lower-case
+    verb or noun still makes the sequence fail closed.
+    """
+    values = [str(token or "").strip(".'’-") for token in tokens]
+    values = [value for value in values if value]
+    if not 2 <= len(values) <= 24:
+        return False
+
+    index = 0
+    groups = 0
+    anchors = 0
+    saw_leader = False
+    while index < len(values):
+        group_has_leader = values[index].casefold() in _PROPER_NAME_LEADERS
+        if group_has_leader:
+            saw_leader = True
+            index += 1
+        group_anchors = 0
+        while index < len(values):
+            value = values[index]
+            folded = value.casefold()
+            if folded in _PROPER_NAME_LEADERS and group_anchors > 0:
+                break
+            if folded in _PROPER_NAME_CONNECTORS and group_anchors > 0:
+                next_anchor = index
+                while (
+                    next_anchor < len(values)
+                    and values[next_anchor].casefold() in _PROPER_NAME_CONNECTORS
+                ):
+                    next_anchor += 1
+                if next_anchor >= len(values):
+                    return False
+                following = values[next_anchor]
+                if (
+                    following.casefold() in _PROPER_NAME_LEADERS
+                    or not following[:1].isupper()
+                ):
+                    return False
+                index = next_anchor
+                continue
+            if value[:1].isupper() or (len(value) >= 2 and value.isupper()):
+                group_anchors += 1
+                anchors += 1
+                index += 1
+                continue
+            return False
+        if group_anchors == 0:
+            return False
+        if not group_has_leader and group_anchors < 2:
+            return False
+        groups += 1
+
+    return saw_leader and anchors >= 1 and groups >= 1
 
 
 def _is_multiword_proper_name(

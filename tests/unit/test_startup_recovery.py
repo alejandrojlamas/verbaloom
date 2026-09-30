@@ -113,6 +113,33 @@ def test_startup_auto_resumes_one_genuinely_active_job(tmp_path):
     assert state.states["job-1"]["status"] == "running"
 
 
+def test_startup_preserves_durable_provider_schedule_for_worker_preflight(tmp_path):
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"book")
+    checkpoint = _checkpoint(source)
+    checkpoint["job"]["config"].update({
+        "_scheduled_resume_at_epoch": 2_000_000_000.0,
+        "_scheduled_resume_at_utc": "2033-05-18T03:33:20+00:00",
+        "_scheduled_resume_reason": "deepseek_peak_pricing",
+        "_scheduled_resume_status": "pricing_wait",
+    })
+    manager = _CheckpointManager({"job-1": checkpoint}, ["job-1"])
+    state = _StateManager(
+        manager,
+        [{"translation_id": "job-1", "file_type": "epub", "progress": {}}],
+    )
+    starts = []
+
+    report, _ = restore_jobs_after_restart(
+        state,
+        lambda translation_id, config: starts.append((translation_id, config)),
+    )
+
+    assert report.resumed_job_ids == ["job-1"]
+    assert starts[0][1]["_scheduled_resume_at_epoch"] == 2_000_000_000.0
+    assert starts[0][1]["_scheduled_resume_status"] == "pricing_wait"
+
+
 def test_startup_never_revives_a_manual_pause(tmp_path):
     source = tmp_path / "book.epub"
     source.write_bytes(b"book")

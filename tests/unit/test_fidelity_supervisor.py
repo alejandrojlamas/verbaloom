@@ -2282,6 +2282,50 @@ def test_target_language_gate_does_not_reject_list_of_capitalized_places():
     assert "source_language_residual" not in {item.code for item in decision.rejections}
 
 
+def test_target_language_gate_keeps_repeated_honorific_names_with_initials():
+    source = (
+        "The mayor arrived with sir T. A. Bridges, sir John Browne, and others. "
+        "They entered the church together."
+    )
+    candidate = (
+        "El alcalde llegó con sir T. A. Bridges, sir John Browne y otros. "
+        "Entraron juntos en la iglesia."
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=0,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"target_language_gate": True},
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections
+    }
+
+
+def test_target_language_gate_does_not_hide_clause_between_honorific_names():
+    source = "Sir John told Sir Thomas to wait outside before sunset."
+    candidate = "Sir John told Sir Thomas to wait outside antes del anochecer."
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=0,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"target_language_gate": True},
+    )
+
+    assert "source_language_residual" in {
+        item.code for item in decision.rejections
+    }
+
+
 def test_target_language_gate_does_not_reject_capitalized_name_with_diacritic():
     source = (
         "Hölderlin schrieb über die Landschaft, während der Erzähler seine Reise fortsetzte."

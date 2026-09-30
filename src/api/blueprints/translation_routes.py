@@ -9,6 +9,7 @@ from pathlib import Path
 from flask import Blueprint, request, jsonify
 
 from src.api.safe_payloads import client_safe_config, client_safe_logs
+from src.api.resume_schedule import clear_resume_schedule
 from src.core.job_runtime_config import configure_editorial_guard_options
 from src.core.deepseek_pricing import (
     get_deepseek_pricing_status,
@@ -929,6 +930,9 @@ def create_translation_blueprint(
         config['is_resume'] = True
         config.pop('_manual_pause_requested', None)
         config.pop('_manual_pause_requested_at', None)
+        # An explicit user action starts a fresh provider attempt. DeepSeek's
+        # current peak-price gate above still prevents bypassing the cost policy.
+        config = clear_resume_schedule(config)
         # The interrupt fence remains raised until this worker owns execution.
         # An older worker may still be unwinding after a quick Pause/Resume.
         config['_explicit_resume_requested'] = True

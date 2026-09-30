@@ -16,6 +16,7 @@ from src.api.handlers import (
     _failed_chunk_recovery_exhausted_stats,
     _final_source_sample_diagnostics,
     _finalization_recovery_exhausted_stats,
+    _honor_persisted_resume_schedule,
     _interruptible_provider_wait,
     _is_transient_worker_failure,
     _job_has_unresolved_work,
@@ -570,6 +571,74 @@ def test_provider_wait_stops_immediately_after_manual_interrupt():
     waited = asyncio.run(_interruptible_provider_wait(State(), "book", 1800))
 
     assert waited is False
+
+
+def test_recovered_worker_honors_and_clears_durable_schedule(monkeypatch):
+    class Checkpoints:
+        def __init__(self):
+            self.configs = []
+
+        def mark_running(self, _translation_id):
+            return True
+
+        def update_job_config(self, _translation_id, config):
+            self.configs.append(dict(config))
+            return True
+
+        def update_progress(self, _translation_id, **_updates):
+            return True
+
+        def mark_interrupted(self, _translation_id):
+            return True
+
+    class State:
+        def __init__(self):
+            self.data = {"stats": {}, "interrupted": False}
+            self.checkpoints = Checkpoints()
+
+        def exists(self, _translation_id):
+            return True
+
+        def get_checkpoint_manager(self):
+            return self.checkpoints
+
+        def get_translation_field(self, _translation_id, field):
+            return self.data.get(field)
+
+        def set_translation_field(self, _translation_id, field, value):
+            self.data[field] = value
+
+    async def complete_wait(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(
+        "src.api.handlers._interruptible_provider_wait",
+        complete_wait,
+    )
+    monkeypatch.setattr("src.api.handlers.emit_update", lambda *_args, **_kwargs: None)
+    state = State()
+    config = {
+        "model": "deepseek-flash",
+        "_scheduled_resume_at_epoch": 4_000_000_000.0,
+        "_scheduled_resume_at_utc": "2096-10-02T07:06:40+00:00",
+        "_scheduled_resume_reason": "deepseek_peak_pricing",
+        "_scheduled_resume_status": "pricing_wait",
+    }
+
+    ready_config, ready = asyncio.run(
+        _honor_persisted_resume_schedule(
+            "book",
+            config,
+            state,
+            socketio=None,
+        )
+    )
+
+    assert ready is True
+    assert ready_config == {"model": "deepseek-flash"}
+    assert state.data["status"] == "running"
+    assert state.data["pause_reason"] is None
+    assert state.checkpoints.configs[-1] == ready_config
 
 
 def test_transient_worker_failures_keep_recovering_after_deterministic_budget():
