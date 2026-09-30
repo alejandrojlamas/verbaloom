@@ -11,7 +11,7 @@ import { DomHelpers } from './dom-helpers.js';
 import { MessageLogger } from './message-logger.js';
 import { SearchableSelectFactory } from './searchable-select.js';
 import { ApiKeyUtils } from '../utils/api-key-utils.js';
-import { TranslationTracker } from '../translation/translation-tracker.js?v=20260717-live-recovery';
+import { TranslationTracker } from '../translation/translation-tracker.js?v=20260929-eta';
 import { SettingsManager } from '../core/settings-manager.js';
 import { t } from '../i18n/i18n.js';
 

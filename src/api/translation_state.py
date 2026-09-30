@@ -8,6 +8,8 @@ import copy
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, TYPE_CHECKING
+
+from src.core.progress import apply_active_timing, restore_timing_checkpoint
 from src.persistence.checkpoint_manager import CheckpointManager
 
 if TYPE_CHECKING:
@@ -300,11 +302,13 @@ class TranslationStateManager:
                     current_value = summary_stats.get(restored_key)
                     if restored_value is not None and current_value in (None, '', 0, 0.0):
                         summary_stats[restored_key] = restored_value
-                start_time = summary_stats.get('start_time')
-                if data.get('status') in ('running', 'queued') and start_time:
-                    elapsed_time = time.time() - start_time
-                else:
-                    elapsed_time = summary_stats.get('elapsed_time')
+                status = data.get('status')
+                summary_stats = apply_active_timing(
+                    summary_stats,
+                    status=status,
+                    advance=status == 'running',
+                )
+                elapsed_time = summary_stats.get('elapsed_time')
                 progress_value, percent_value = _summary_progress_values(
                     data.get('progress'),
                     summary_stats,
@@ -358,6 +362,17 @@ class TranslationStateManager:
                     "failure_recovery_stuck_count": summary_stats.get('failure_recovery_stuck_count', 0),
                     "elapsed_seconds": summary_stats.get('elapsed_seconds'),
                     "eta_seconds": summary_stats.get('eta_seconds'),
+                    "eta_lower_seconds": summary_stats.get('eta_lower_seconds'),
+                    "eta_upper_seconds": summary_stats.get('eta_upper_seconds'),
+                    "eta_confidence": summary_stats.get('eta_confidence'),
+                    "eta_status": summary_stats.get('eta_status'),
+                    "eta_basis": summary_stats.get('eta_basis'),
+                    "eta_sample_units": summary_stats.get('eta_sample_units'),
+                    "job_phase": summary_stats.get('job_phase') or data.get('job_phase'),
+                    "job_phase_status": (
+                        summary_stats.get('job_phase_status')
+                        or data.get('job_phase_status')
+                    ),
                     "prompt_context": summary_stats.get('prompt_context') or {},
                     "last_translation": data.get('last_translation')
                 })
@@ -404,7 +419,7 @@ class TranslationStateManager:
             return False
 
         job = checkpoint_data['job']
-        restored_stats = copy.deepcopy(job['progress'])
+        restored_stats = restore_timing_checkpoint(copy.deepcopy(job['progress']))
         restored_progress, _ = _summary_progress_values(None, restored_stats)
         with self._lock:
             # Restore job into in-memory state

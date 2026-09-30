@@ -14,6 +14,7 @@ from src.core.deepseek_pricing import (
     get_deepseek_pricing_status,
     is_official_deepseek_endpoint,
 )
+from src.core.progress import apply_active_timing
 from src.persistence.checkpoint_reconcile import checkpoint_progress_snapshot
 from src.config import (
     REQUEST_TIMEOUT,
@@ -678,14 +679,12 @@ def create_translation_blueprint(
             'failed_chunks': 0
         })
 
-        # Calculate elapsed time
-        if job_data.get('status') == 'running' or job_data.get('status') == 'queued':
-            elapsed = time.time() - stats.get('start_time', time.time())
-        else:
-            elapsed = stats.get('elapsed_time', time.time() - stats.get('start_time', time.time()))
-
-        stats_payload = _json_safe(dict(stats))
-        stats_payload['elapsed_time'] = elapsed
+        status = job_data.get('status')
+        stats_payload = _json_safe(apply_active_timing(
+            dict(stats),
+            status=status,
+            advance=status == 'running',
+        ))
 
         return jsonify({
             "translation_id": translation_id,

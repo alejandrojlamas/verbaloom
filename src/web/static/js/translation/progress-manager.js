@@ -9,12 +9,6 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { t } from '../i18n/i18n.js';
 import { navigateToSetting } from '../ui/settings-summary.js';
 
-// State for tracking chunk completion times (for ETA calculation)
-let chunkCompletionTimes = [];
-let lastCompletedChunks = 0;
-let lastElapsedTime = 0;
-const MAX_SAMPLES = 10; // Number of recent chunks to average for ETA
-
 /**
  * Format elapsed time in a human-readable format
  * - Under 60s: shows seconds (e.g., "45.2s")
@@ -40,71 +34,39 @@ export function formatElapsedTime(seconds) {
 }
 
 /**
- * Calculate and update estimated time remaining
- * Uses a moving average of the last N chunk completion times
- * @param {number} completedChunks - Number of completed chunks
- * @param {number} totalChunks - Total number of chunks
- * @param {number} elapsedTime - Total elapsed time in seconds
+ * Format a deliberately low-precision ETA. Exact seconds imply certainty that
+ * long LLM jobs do not have, especially while auditing or retrying a chunk.
  */
-function updateEstimatedTimeRemaining(completedChunks, totalChunks, elapsedTime) {
-    if (completedChunks < lastCompletedChunks || elapsedTime < lastElapsedTime) {
-        resetEtaTracking();
-    }
+export function formatEstimatedDuration(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value < 0) return null;
+    if (value < 60) return '<1m';
 
-    const remainingChunks = totalChunks - completedChunks;
-    if (remainingChunks <= 0) {
-        lastCompletedChunks = completedChunks;
-        lastElapsedTime = elapsedTime;
-        DomHelpers.setText('estimatedTimeRemaining', '0s');
-        return;
-    }
+    const totalMinutes = Math.max(1, Math.round(value / 60));
+    if (totalMinutes < 60) return `${totalMinutes}m`;
 
-    // First observation after opening/reloading the page must be a baseline,
-    // not a speed sample. Otherwise a resumed long job turns historical
-    // elapsed time (including pauses/restarts) into a fake per-chunk rate.
-    if (lastElapsedTime === 0 && lastCompletedChunks === 0) {
-        lastCompletedChunks = completedChunks;
-        lastElapsedTime = elapsedTime;
-        DomHelpers.setText('estimatedTimeRemaining', '--');
-        return;
-    }
-
-    // Track time per chunk when a new chunk is completed
-    if (completedChunks > lastCompletedChunks && elapsedTime > lastElapsedTime) {
-        const chunksCompleted = completedChunks - lastCompletedChunks;
-        const timeTaken = elapsedTime - lastElapsedTime;
-        const timePerChunk = timeTaken / chunksCompleted;
-
-        chunkCompletionTimes.push(timePerChunk);
-
-        // Keep only the last N samples
-        if (chunkCompletionTimes.length > MAX_SAMPLES) {
-            chunkCompletionTimes.shift();
-        }
-    }
-
-    lastCompletedChunks = completedChunks;
-    lastElapsedTime = elapsedTime;
-
-    if (chunkCompletionTimes.length === 0) {
-        DomHelpers.setText('estimatedTimeRemaining', '--');
-        return;
-    }
-
-    // Calculate average time per chunk from recent samples
-    const avgTimePerChunk = chunkCompletionTimes.reduce((a, b) => a + b, 0) / chunkCompletionTimes.length;
-    const estimatedRemaining = avgTimePerChunk * remainingChunks;
-
-    DomHelpers.setText('estimatedTimeRemaining', formatElapsedTime(estimatedRemaining));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = Math.round((totalMinutes % 60) / 5) * 5;
+    if (minutes === 60) return `${hours + 1}h`;
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
-/**
- * Reset ETA tracking state
- */
-function resetEtaTracking() {
-    chunkCompletionTimes = [];
-    lastCompletedChunks = 0;
-    lastElapsedTime = 0;
+export function estimatedTimeLabel(stats = {}) {
+    if (stats.eta_status === 'waiting') return t('translation:eta_waiting');
+    if (stats.eta_status === 'finalizing') return t('translation:eta_finalizing');
+    if (stats.eta_status === 'complete') return '0s';
+
+    const estimate = formatEstimatedDuration(stats.eta_seconds);
+    if (!estimate) return t('translation:eta_calculating');
+
+    const lower = formatEstimatedDuration(stats.eta_lower_seconds);
+    const upper = formatEstimatedDuration(stats.eta_upper_seconds);
+    if (lower && upper && lower !== upper) return `${lower}–${upper}`;
+    return `≈ ${estimate}`;
+}
+
+function updateEstimatedTimeRemaining(stats) {
+    DomHelpers.setText('estimatedTimeRemaining', estimatedTimeLabel(stats));
 }
 
 /**
@@ -478,11 +440,7 @@ function updateStatistics(stats, fileType) {
 
     if (stats.elapsed_time !== undefined) {
         DomHelpers.setText('elapsedTime', formatElapsedTime(stats.elapsed_time));
-        updateEstimatedTimeRemaining(
-            stats.completed_chunks || 0,
-            stats.total_chunks || 0,
-            stats.elapsed_time
-        );
+        updateEstimatedTimeRemaining(stats);
     }
 }
 
@@ -615,7 +573,6 @@ export const ProgressManager = {
         DomHelpers.setText('estimatedTimeRemaining', '--');
         updateLiveStatus({ live_status: '' });
         renderPromptContextSummary(null);
-        resetEtaTracking();
         DomHelpers.hide('statsGrid');
     },
 

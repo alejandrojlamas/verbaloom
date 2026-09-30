@@ -18,7 +18,7 @@ import { SettingsManager } from './core/settings-manager.js';
 // ========================================
 import { DomHelpers } from './ui/dom-helpers.js';
 import { MessageLogger } from './ui/message-logger.js';
-import { FormManager } from './ui/form-manager.js?v=20260608-deepseek-init';
+import { FormManager } from './ui/form-manager.js?v=20260929-eta';
 import { SettingsSummary } from './ui/settings-summary.js?v=20260628-transform-glossary';
 import { NotificationsManager } from './ui/notifications-manager.js';
 import { GlossaryManager } from './glossary/glossary-manager.js?v=20260704-ajl-mobile';
@@ -42,10 +42,10 @@ import { UsageManager } from './usage/usage-manager.js?v=20260613-live-usage';
 // ========================================
 // Translation Modules
 // ========================================
-import { TranslationTracker } from './translation/translation-tracker.js?v=20260717-live-recovery';
-import { BatchController } from './translation/batch-controller.js?v=20260705-transform-flow';
-import { ProgressManager } from './translation/progress-manager.js?v=20260705-transform-infer';
-import { ResumeManager } from './translation/resume-manager.js?v=20260610-recoverable-status';
+import { TranslationTracker } from './translation/translation-tracker.js?v=20260929-eta';
+import { BatchController } from './translation/batch-controller.js?v=20260929-eta';
+import { ProgressManager } from './translation/progress-manager.js?v=20260929-eta';
+import { ResumeManager } from './translation/resume-manager.js?v=20260929-eta';
 import { QuickTestManager } from './translation/quick-test.js?v=20260628-transform-glossary';
 import { TextTransformManager } from './translation/text-transform-manager.js?v=20260705-transform-flow';
 import { ProfilePrepManager } from './translation/profile-prep-manager.js?v=20260710-profile-recovery';

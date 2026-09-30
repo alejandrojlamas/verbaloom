@@ -274,13 +274,17 @@ def test_active_timing_excludes_paused_wall_time_and_estimates_remaining_work():
     timed = _apply_active_timing(current, now=1_100.0)
 
     assert timed["elapsed_seconds"] == 100.0
-    assert timed["eta_seconds"] == 500.0
+    # The work projection includes a small uncertainty/finalization reserve;
+    # the raw 500s chunk projection remains inside the reported range.
+    assert timed["eta_seconds"] == 525.0
+    assert timed["eta_lower_seconds"] < timed["eta_seconds"]
+    assert timed["eta_upper_seconds"] > timed["eta_seconds"]
 
     resumed = _begin_active_run_stats(timed, now=9_000.0)
     resumed["completed_chunks"] = 55
     timed_again = _apply_active_timing(resumed, now=9_050.0)
     assert timed_again["elapsed_seconds"] == 150.0
-    assert timed_again["eta_seconds"] == 450.0
+    assert timed_again["eta_seconds"] == 472.5
 
 
 def test_non_chunk_publication_failure_does_not_loop_translation_worker():

@@ -21,6 +21,12 @@ the pipeline; today it backs the unit tests and shares its segment math
 (:func:`global_percent`) with the bridge so both agree by construction.
 """
 
+from .eta import (
+    apply_active_timing,
+    begin_active_timing,
+    restore_timing_checkpoint,
+    timing_checkpoint_from_stats,
+)
 from .legacy import snapshot_from_legacy_stats
 from .snapshot import Phase, ProgressSnapshot, global_percent
 from .tracker import ProgressTracker
@@ -29,6 +35,10 @@ __all__ = [
     "Phase",
     "ProgressSnapshot",
     "ProgressTracker",
+    "apply_active_timing",
+    "begin_active_timing",
     "global_percent",
+    "restore_timing_checkpoint",
     "snapshot_from_legacy_stats",
+    "timing_checkpoint_from_stats",
 ]

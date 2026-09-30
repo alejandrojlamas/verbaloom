@@ -12,10 +12,10 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { Validators } from '../utils/validators.js';
 import { ApiKeyUtils } from '../utils/api-key-utils.js';
 import { StatusManager } from '../utils/status-manager.js';
-import { ProgressManager } from './progress-manager.js?v=20260705-transform-flow';
+import { ProgressManager } from './progress-manager.js?v=20260929-eta';
 import { renderTranslationTitle } from './progress-title.js?v=20260705-transform-flow';
 import { FileUpload, generateOutputFilename, normalizeOutputFormat, resolveOutputExtension } from '../files/file-upload.js';
-import { TranslationTracker } from './translation-tracker.js?v=20260717-live-recovery';
+import { TranslationTracker } from './translation-tracker.js?v=20260929-eta';
 import { t } from '../i18n/i18n.js';
 import { DeepSeekPricingManager } from '../providers/deepseek-pricing-manager.js?v=20260903';
 

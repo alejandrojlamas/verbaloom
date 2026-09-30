@@ -220,6 +220,7 @@ class CheckpointManager:
         failed_chunks: Optional[int] = None,
         status: Optional[str] = None,
         epub_accumulated_stats: Optional[Dict[str, Any]] = None,
+        eta_timing: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Update job progress without saving a chunk row."""
         return self.db.update_job_progress(
@@ -230,6 +231,7 @@ class CheckpointManager:
             failed_chunks=failed_chunks,
             status=status,
             epub_accumulated_stats=epub_accumulated_stats,
+            eta_timing=eta_timing,
         )
 
     def load_checkpoint(self, translation_id: str) -> Optional[Dict[str, Any]]:

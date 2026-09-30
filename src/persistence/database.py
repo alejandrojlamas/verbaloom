@@ -190,7 +190,8 @@ class Database:
         completed_chunks: Optional[int] = None,
         failed_chunks: Optional[int] = None,
         status: Optional[str] = None,
-        epub_accumulated_stats: Optional[Dict[str, Any]] = None
+        epub_accumulated_stats: Optional[Dict[str, Any]] = None,
+        eta_timing: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Update job progress information.
@@ -206,6 +207,8 @@ class Database:
                 fallback counters. Stored verbatim in the progress JSON so the
                 resume path can rehydrate counters that live above the
                 per-file checkpoint (token_alignment_used, fallback_used, ...).
+            eta_timing: Compact server-side timing state used to preserve the
+                learned ETA rate across pauses and process restarts.
 
         Returns:
             True if updated successfully
@@ -237,6 +240,8 @@ class Database:
                     progress['failed_chunks'] = failed_chunks
                 if epub_accumulated_stats is not None:
                     progress['epub_accumulated_stats'] = epub_accumulated_stats
+                if eta_timing is not None:
+                    progress['eta_timing'] = eta_timing
 
                 # Build update query
                 updates = ["progress = ?", "updated_at = CURRENT_TIMESTAMP"]

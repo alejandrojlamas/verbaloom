@@ -73,7 +73,12 @@ from src.core.output_formats import (
     requested_format_for_job,
     write_text_as_output,
 )
-from src.core.progress import snapshot_from_legacy_stats
+from src.core.progress import (
+    apply_active_timing,
+    begin_active_timing,
+    snapshot_from_legacy_stats,
+    timing_checkpoint_from_stats,
+)
 from src.core.quality_assurance import run_quality_assurance
 from src.core.usage import set_usage_context
 from src.persistence.checkpoint_reconcile import checkpoint_progress_snapshot
@@ -175,31 +180,7 @@ def _begin_active_run_stats(
     now: float | None = None,
 ) -> Dict[str, Any]:
     """Start a processing-time interval without counting paused wall time."""
-    current = dict(stats or {})
-    started_at = float(now if now is not None else time.time())
-    try:
-        accumulated = max(0.0, float(current.get("active_elapsed_seconds") or 0.0))
-    except (TypeError, ValueError):
-        accumulated = 0.0
-    try:
-        completed = max(0, int(current.get("completed_chunks") or 0))
-    except (TypeError, ValueError):
-        completed = 0
-    current.update({
-        "active_elapsed_before_run": accumulated,
-        "active_run_started_at": started_at,
-        "active_run_completed_baseline": completed,
-        "active_elapsed_seconds": accumulated,
-        "elapsed_time": accumulated,
-        "elapsed_seconds": accumulated,
-        "eta_seconds": None,
-        # Give the watchdog a fresh baseline before the provider produces its
-        # first log or chunk. Otherwise a request that hangs immediately can
-        # remain "running" forever because there is no activity timestamp to
-        # compare.
-        "last_activity_at": started_at,
-    })
-    return current
+    return begin_active_timing(stats, now=now)
 
 
 def _apply_active_timing(
@@ -207,36 +188,8 @@ def _apply_active_timing(
     *,
     now: float | None = None,
 ) -> Dict[str, Any]:
-    """Attach active elapsed time and a throughput-based ETA to one snapshot."""
-    current = dict(stats or {})
-    timestamp = float(now if now is not None else time.time())
-    try:
-        base = max(0.0, float(current.get("active_elapsed_before_run") or 0.0))
-        run_started = float(current.get("active_run_started_at") or timestamp)
-    except (TypeError, ValueError):
-        base = 0.0
-        run_started = timestamp
-    run_elapsed = max(0.0, timestamp - run_started)
-    active_elapsed = base + run_elapsed
-
-    try:
-        completed = max(0, int(current.get("completed_chunks") or 0))
-        baseline = max(0, int(current.get("active_run_completed_baseline") or 0))
-        total = max(0, int(current.get("total_chunks") or 0))
-    except (TypeError, ValueError):
-        completed = baseline = total = 0
-    run_completed = max(0, completed - baseline)
-    eta = None
-    if run_completed > 0 and total > completed and run_elapsed > 0:
-        eta = (run_elapsed / run_completed) * (total - completed)
-
-    current.update({
-        "active_elapsed_seconds": active_elapsed,
-        "elapsed_time": active_elapsed,
-        "elapsed_seconds": active_elapsed,
-        "eta_seconds": eta,
-    })
-    return current
+    """Attach active elapsed time and a server-authoritative ETA snapshot."""
+    return apply_active_timing(stats, now=now)
 
 
 def _live_activity_label(event: str, message: str = "", data: Any = None) -> str:
@@ -1364,6 +1317,14 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     active_stats = _begin_active_run_stats(
         state_manager.get_translation_field(translation_id, "stats") or {}
     )
+    output_format_hint = requested_format_for_job(
+        str(config.get("file_type") or "txt"),
+        config.get("output_format"),
+    )
+    active_stats.setdefault(
+        "eta_finalization_reserve_seconds",
+        120.0 if output_format_hint == "epub" else 45.0,
+    )
     state_manager.set_translation_field(translation_id, "stats", active_stats)
 
     set_usage_context(
@@ -1484,6 +1445,27 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         state_manager.set_translation_field(translation_id, 'job_phase', event.phase.value)
         state_manager.set_translation_field(translation_id, 'job_phase_status', event.status.value)
         state_manager.set_translation_field(translation_id, 'job_phase_event', event.to_dict())
+        phase_stats = {
+            'job_phase': event.phase.value,
+            'job_phase_status': event.status.value,
+            'job_phase_event': event.to_dict(),
+        }
+        if (
+            event.status.value == 'started'
+            and event.phase in {
+                JobPhase.AUDIT,
+                JobPhase.REPAIR,
+                JobPhase.ASSEMBLE,
+                JobPhase.PUBLISH,
+            }
+        ):
+            phase_stats.update({
+                'eta_seconds': None,
+                'eta_lower_seconds': None,
+                'eta_upper_seconds': None,
+                'eta_status': 'finalizing',
+            })
+        state_manager.update_stats(translation_id, phase_stats)
 
     engine = JobEngine(job_id=translation_id, on_phase_event=_record_job_phase)
     engine.mark_phase(JobPhase.PREPARE, "Initializing job runtime.")
@@ -1509,6 +1491,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     except (TypeError, ValueError):
         existing_percent = 0.0
     _progress_floor = {'value': max(0.0, min(existing_percent, 100.0))}
+    _eta_checkpoint = {'signature': None, 'saved_at': 0.0}
 
     def _store_and_emit_stats(stats_update: Dict[str, Any]) -> Dict[str, Any]:
         """Persist one fresh canonical snapshot and emit that exact snapshot."""
@@ -1554,6 +1537,26 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             'progress',
             snapshot['percent'],
         )
+        timing_checkpoint = timing_checkpoint_from_stats(current_stats)
+        timing_signature = tuple(str(current_stats.get(key) or '') for key in (
+            'completed_chunks',
+            'total_chunks',
+            'current_phase',
+            'job_phase',
+            '_eta_rate_observed_completed',
+        ))
+        if timing_checkpoint and (
+            timing_signature != _eta_checkpoint['signature']
+            or now - float(_eta_checkpoint['saved_at']) >= 60.0
+        ):
+            if checkpoint_manager.update_progress(
+                translation_id,
+                eta_timing=timing_checkpoint,
+            ):
+                _eta_checkpoint.update({
+                    'signature': timing_signature,
+                    'saved_at': now,
+                })
         emit_update(socketio, translation_id, {'stats': current_stats}, state_manager)
         return current_stats
 
@@ -3213,6 +3216,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 'live_activity_event': wait_event,
                 'provider_retry_at': time.time() + float(wait_seconds),
                 'eta_seconds': None,
+                'eta_lower_seconds': None,
+                'eta_upper_seconds': None,
+                'eta_status': 'waiting',
                 'last_activity_at': time.time(),
             })
             if pricing_pause:
@@ -3237,6 +3243,10 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 })
             state_manager.set_translation_field(
                 translation_id, 'stats', waiting_stats
+            )
+            checkpoint_manager.update_progress(
+                translation_id,
+                eta_timing=timing_checkpoint_from_stats(waiting_stats),
             )
             emit_update(socketio, translation_id, {
                 'status': waiting_status,

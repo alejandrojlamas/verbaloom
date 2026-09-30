@@ -306,6 +306,33 @@ class TestTranslationStateManager:
         assert summary["resume_at_local"] == "2026-09-04T04:00:00-06:00"
         assert summary["elapsed_time"] == 321.0
         assert summary["completed_chunks"] == 40
+        assert summary["eta_status"] == "waiting"
+
+    def test_running_summary_uses_active_time_instead_of_wall_clock(self, state_manager, monkeypatch):
+        config = {
+            "input_filename": "book.epub",
+            "output_filename": "book_es.epub",
+            "file_type": "epub",
+        }
+        state_manager.create_translation("trans_running", config)
+        state_manager.update_translation("trans_running", {"status": "running"})
+        state_manager.update_stats("trans_running", {
+            "start_time": 10.0,
+            "active_elapsed_before_run": 100.0,
+            "active_elapsed_seconds": 100.0,
+            "active_run_started_at": 950.0,
+            "active_run_completed_baseline": 5,
+            "total_chunks": 20,
+            "completed_chunks": 10,
+        })
+        monkeypatch.setattr("src.core.progress.eta.time.time", lambda: 1_000.0)
+
+        summary = state_manager.get_translation_summaries()[0]
+
+        # start_time would produce 990 seconds and include a prior pause. The
+        # active worker intervals contain only 150 seconds of real processing.
+        assert summary["elapsed_time"] == 150.0
+        assert summary["eta_status"] == "estimated"
 
     def test_get_translation_summaries_derives_progress_from_restored_root_counters(self, state_manager):
         """Checkpoint-restored jobs may carry chunk counters at the root level."""
@@ -719,6 +746,14 @@ class TestStateManagerCheckpointIntegration:
                 total_chunks=10,
                 completed_chunks=6
             )
+            checkpoint_mgr.update_progress(
+                "trans_001",
+                eta_timing={
+                    "active_elapsed_seconds": 42.5,
+                    "_eta_phase_key": "translate",
+                    "_eta_rate_seconds_per_unit": 7.0,
+                },
+            )
             checkpoint_mgr.mark_interrupted("trans_001")
 
             # Create new state manager (simulating server restart)
@@ -738,6 +773,9 @@ class TestStateManagerCheckpointIntegration:
             assert state['progress'] == 60.0
             assert state['config']['input_filename'] == "book.epub"
             assert 'resume_from_index' in state
+            assert state['stats']['active_elapsed_seconds'] == 42.5
+            assert state['stats']['_eta_rate_seconds_per_unit'] == 7.0
+            assert 'eta_timing' not in state['stats']
 
             checkpoint_mgr.close()
 

@@ -9,7 +9,7 @@ import { StateManager } from '../core/state-manager.js';
 import { ApiClient } from '../core/api-client.js';
 import { MessageLogger } from '../ui/message-logger.js';
 import { DomHelpers } from '../ui/dom-helpers.js';
-import { ProgressManager } from './progress-manager.js?v=20260705-transform-infer';
+import { ProgressManager } from './progress-manager.js?v=20260929-eta';
 import { t, getCurrentLocale, applyToDOM } from '../i18n/i18n.js';
 import { createProviderModelPicker } from '../providers/provider-model-picker.js';
 import { DeepSeekPricingManager } from '../providers/deepseek-pricing-manager.js?v=20260903';

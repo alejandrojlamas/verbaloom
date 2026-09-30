@@ -12,7 +12,7 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { StatusManager } from '../utils/status-manager.js';
 import { FileUpload } from '../files/file-upload.js';
 import { FileActions } from '../files/file-actions.js';
-import { ProgressManager, formatElapsedTime, deriveRateContext, buildRecommendationContent } from './progress-manager.js?v=20260705-transform-flow';
+import { ProgressManager, formatElapsedTime, deriveRateContext, buildRecommendationContent } from './progress-manager.js?v=20260929-eta';
 import { renderTranslationTitle, getFileIcon, createGenericEPUBIcon } from './progress-title.js?v=20260705-transform-flow';
 import { LifecycleManager } from '../utils/lifecycle-manager.js';
 import { t } from '../i18n/i18n.js';
@@ -742,6 +742,16 @@ export const TranslationTracker = {
             elapsed_time: job.elapsed_time ?? job.elapsed_seconds,
             elapsed_seconds: job.elapsed_seconds,
             eta_seconds: job.eta_seconds,
+            eta_lower_seconds: job.eta_lower_seconds,
+            eta_upper_seconds: job.eta_upper_seconds,
+            eta_confidence: job.eta_confidence,
+            eta_status: job.eta_status || (
+                ['pricing_wait', 'provider_wait'].includes(job.status) ? 'waiting' : undefined
+            ),
+            eta_basis: job.eta_basis,
+            eta_sample_units: job.eta_sample_units,
+            job_phase: job.job_phase,
+            job_status: job.status,
             progress_percent: job.progress_percent,
             percent: job.percent,
             phase: job.phase,
