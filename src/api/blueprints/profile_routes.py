@@ -629,7 +629,7 @@ def _collect_profile_prep_payload() -> dict[str, Any]:
         source_name = filenames[0] if len(filenames) == 1 else "combined-book-profile.txt"
 
     provider_type = str(form.get("provider") or "deepseek").lower()
-    model = str(form.get("model") or "deepseek-v4-flash")
+    model = str(form.get("model") or "deepseek-flash")
     review_model = str(
         form.get("review_model")
         or form.get("term_review_model")

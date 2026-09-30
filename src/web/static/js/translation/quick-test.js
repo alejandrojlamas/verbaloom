@@ -137,13 +137,13 @@ function readPromptOptions(file = {}, cfg = {}) {
             options.text_transform_profile = 'faithful_current_spanish';
             options.preserve_block_structure = true;
             options.transform_guard = 'strict';
-            options.transform_auditor_model = selectedProfile ? 'deepseek-v4-pro' : 'deepseek-v4-flash';
+            options.transform_auditor_model = selectedProfile ? 'deepseek-v4-pro' : 'deepseek-flash';
             options.transform_repair_attempts = 2;
             options.suppress_attribution_footer = true;
             options.editorial_quality_guard = true;
             options.fidelity_supervisor = true;
             options.fidelity_supervisor_mode = selectedProfile ? 'always' : 'alerted';
-            options.fidelity_supervisor_model = selectedProfile ? 'deepseek-v4-pro' : 'deepseek-v4-flash';
+            options.fidelity_supervisor_model = selectedProfile ? 'deepseek-v4-pro' : 'deepseek-flash';
             options.transform_fallback = 'best_candidate';
             if (selectedProfile) {
                 options.modernization_strength = 'high';

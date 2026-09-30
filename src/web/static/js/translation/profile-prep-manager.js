@@ -115,7 +115,7 @@ export const ProfilePrepManager = {
         formData.append('transform_mode', purpose);
         formData.append('profile_goal', purpose);
         formData.append('provider', 'deepseek');
-        formData.append('model', 'deepseek-v4-flash');
+        formData.append('model', 'deepseek-flash');
         formData.append('review_model', 'deepseek-v4-pro');
         formData.append('llm_full_coverage', 'true');
 
@@ -432,7 +432,7 @@ export const ProfilePrepManager = {
             ? `${termsReviewed || 0}/${termsTotal || 0}`
             : String(suggestions || 0));
         this.setText('profilePrepSignals', String(signals || 0));
-        const discoveryModel = job.model || 'deepseek-v4-flash';
+        const discoveryModel = job.model || 'deepseek-flash';
         const reviewModel = job.review_model || job.result?.profile?.review_model || 'deepseek-v4-pro';
         this.setText('profilePrepModelLabel', `${job.provider || 'deepseek'} · ${discoveryModel} · reviewer ${reviewModel}`);
     },

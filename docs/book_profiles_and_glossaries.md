@@ -88,7 +88,7 @@ The web UI can create a book profile before the main run:
    explanation, or literary polish.
 3. Click **Analyze with DeepSeek Flash**.
 4. The server extracts readable text, scans the full document locally, and runs
-   distributed discovery chunks through `deepseek-v4-flash`.
+   distributed discovery chunks through `deepseek-flash`.
 5. A generated profile is written under `profiles/auto_<book>/`.
 6. Mechanically safe entries go to `glossary/terms.yml`.
 7. Context-sensitive discoveries go to `glossary/pending_suggestions.yml`.

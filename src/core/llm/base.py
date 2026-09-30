@@ -81,6 +81,8 @@ class LLMResponse:
     completion_tokens: int = 0  # Number of tokens in the response
     prompt_cache_hit_tokens: int = 0  # Input tokens billed at provider cache-hit rate
     prompt_cache_miss_tokens: int = 0  # Input tokens billed at provider cache-miss rate
+    total_tokens: int = 0  # Provider-reported request total, when available
+    reasoning_tokens: int = 0  # Included in completion_tokens by reasoning providers
     context_used: int = 0  # Total context used (prompt + completion)
     context_limit: int = 0  # Context limit that was set for this request
     was_truncated: bool = False  # True if response was truncated due to context limit

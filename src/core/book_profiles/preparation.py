@@ -1363,7 +1363,7 @@ Perfil editorial generado antes del proceso principal a partir de `{source_name}
 - Idioma destino: {language or "auto"}
 - Locale objetivo: {target}
 - Proceso previsto: {mode}
-- Modelo recomendado para descubrimiento previo: deepseek-v4-flash
+- Modelo recomendado para descubrimiento previo: deepseek-flash
 - Modelo recomendado para revision/clasificacion del glosario: deepseek-v4-pro
 - Modelo recomendado para el proceso principal: deepseek-v4-pro
 {audiobook_section}

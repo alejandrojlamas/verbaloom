@@ -188,14 +188,15 @@ Pricing: [mistral.ai/technology](https://mistral.ai/technology)
 
 ## DeepSeek (Cloud)
 
-Chinese LLM provider with 64K context and OpenAI-compatible API. Supports thinking models.
+Chinese LLM provider with 1M context and an OpenAI-compatible API. Both current models support thinking and non-thinking modes.
 
 ### Models
 
 - `deepseek-v4-pro` — high-quality model
-- `deepseek-v4-flash` — faster economical model
-- `deepseek-chat` — legacy alias scheduled for deprecation on 2026-07-24
-- `deepseek-reasoner` — reasoning model with `<think>` blocks
+- `deepseek-flash` — DeepSeek V4.1 Flash, faster economical model
+
+Older saved IDs (`deepseek-v4-flash`, `deepseek-chat`, and
+`deepseek-reasoner`) are migrated to `deepseek-flash` when a job resumes.
 
 ### Setup
 

@@ -4,11 +4,59 @@ Default pricing data for providers without a public pricing API.
 Prices are in USD per 1 million tokens.
 Users can override these values via the UI (sent in /api/cost/estimate payload).
 
-Last updated: 2026-06-04
+Last updated: 2026-09-29
 Sources: official provider documentation pages.
 """
 
-LAST_UPDATED = "2026-06-04"
+from __future__ import annotations
+
+LAST_UPDATED = "2026-09-29"
+DEEPSEEK_PRICING_EFFECTIVE_AT = "2026-09-10T04:00:00+00:00"
+
+
+def _deepseek_rates(*, flash: tuple[float, float, float], pro: tuple[float, float, float]) -> dict:
+    """Build the official DeepSeek table, including resume-only aliases.
+
+    Tuple order is cache-hit input, cache-miss input, output. The canonical
+    public IDs are ``deepseek-flash`` and ``deepseek-v4-pro``. Legacy IDs stay
+    priced so old checkpoints remain auditable while new jobs use the current
+    names.
+    """
+
+    def entry(rates: tuple[float, float, float]) -> dict:
+        cache_hit, cache_miss, output = rates
+        return {
+            "input": cache_miss,
+            "input_cache_hit": cache_hit,
+            "input_cache_miss": cache_miss,
+            "output": output,
+        }
+
+    flash_entry = entry(flash)
+    pro_entry = entry(pro)
+    return {
+        "deepseek-flash": {**flash_entry, "note": "DeepSeek V4.1 Flash"},
+        "deepseek-v4-pro": {**pro_entry, "note": "DeepSeek V4 Pro"},
+        "deepseek-v4-flash": {**flash_entry, "note": "Legacy alias for deepseek-flash"},
+        "deepseek-v4-flash-vision-exp": {
+            **flash_entry,
+            "note": "Retired alias routed to deepseek-flash",
+        },
+        "deepseek-chat": {**flash_entry, "note": "Retired compatibility alias"},
+        "deepseek-reasoner": {**flash_entry, "note": "Retired compatibility alias"},
+    }
+
+
+DEEPSEEK_PRICING_TIERS = {
+    "off_peak": _deepseek_rates(
+        flash=(0.003, 0.15, 0.60),
+        pro=(0.022, 0.66, 1.98),
+    ),
+    "peak": _deepseek_rates(
+        flash=(0.006, 0.30, 1.20),
+        pro=(0.044, 1.32, 3.96),
+    ),
+}
 
 DEFAULT_PRICING = {
     "gemini": {
@@ -33,34 +81,10 @@ DEFAULT_PRICING = {
         "o1-mini":          {"input": 3.00,  "output": 12.00, "note": "Reasoning model"},
         "o3-mini":          {"input": 1.10,  "output": 4.40,  "note": "Reasoning model"},
     },
-    "deepseek": {
-        "deepseek-chat": {
-            "input": 0.14,
-            "input_cache_hit": 0.0028,
-            "input_cache_miss": 0.14,
-            "output": 0.28,
-            "note": "Compatibility alias for deepseek-v4-flash non-thinking mode",
-        },
-        "deepseek-reasoner": {
-            "input": 0.14,
-            "input_cache_hit": 0.0028,
-            "input_cache_miss": 0.14,
-            "output": 0.28,
-            "note": "Compatibility alias for deepseek-v4-flash thinking mode",
-        },
-        "deepseek-v4-flash": {
-            "input": 0.14,
-            "input_cache_hit": 0.0028,
-            "input_cache_miss": 0.14,
-            "output": 0.28,
-        },
-        "deepseek-v4-pro": {
-            "input": 0.435,
-            "input_cache_hit": 0.003625,
-            "input_cache_miss": 0.435,
-            "output": 0.87,
-        },
-    },
+    # The app waits through peak windows by default, so the static table used
+    # for future-job estimates is the off-peak table. Completed calls select
+    # the actual tier from their UTC timestamp in the usage ledger.
+    "deepseek": DEEPSEEK_PRICING_TIERS["off_peak"],
     "mistral": {
         "mistral-large-latest":  {"input": 2.00, "output": 6.00},
         "mistral-large-2411":    {"input": 2.00, "output": 6.00},
@@ -85,14 +109,26 @@ DEFAULT_PRICING = {
 }
 
 
-def get_default_pricing(provider: str, model: str) -> dict | None:
+def get_default_pricing(
+    provider: str,
+    model: str,
+    *,
+    pricing_tier: str | None = None,
+) -> dict | None:
     """
     Return {input, output} prices per 1M tokens for the given provider/model.
 
     Returns None if no default pricing is known.
     Lookup is case-insensitive and tolerates minor variants in model names.
     """
-    provider_data = DEFAULT_PRICING.get(provider.lower())
+    provider_name = provider.lower()
+    if provider_name == "deepseek":
+        tier = str(pricing_tier or "off_peak").strip().lower().replace("-", "_")
+        provider_data = DEEPSEEK_PRICING_TIERS.get(tier)
+        if provider_data is None:
+            provider_data = DEEPSEEK_PRICING_TIERS["off_peak"]
+    else:
+        provider_data = DEFAULT_PRICING.get(provider_name)
     if not provider_data:
         return None
 

@@ -1531,6 +1531,8 @@ def _merge_llm_usage(primary: Optional[LLMResponse], extra: Optional[LLMResponse
     primary.completion_tokens += extra.completion_tokens
     primary.prompt_cache_hit_tokens += getattr(extra, "prompt_cache_hit_tokens", 0) or 0
     primary.prompt_cache_miss_tokens += getattr(extra, "prompt_cache_miss_tokens", 0) or 0
+    primary.total_tokens += getattr(extra, "total_tokens", 0) or 0
+    primary.reasoning_tokens += getattr(extra, "reasoning_tokens", 0) or 0
     primary.context_used += extra.context_used
     primary.context_limit = max(primary.context_limit, extra.context_limit)
     primary.was_truncated = primary.was_truncated or extra.was_truncated

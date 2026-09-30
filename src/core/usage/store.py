@@ -7,10 +7,16 @@ import json
 import sqlite3
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from src.core.pricing import get_default_pricing
+from src.core.deepseek_pricing import effective_estimate_tier, get_deepseek_pricing_status
+from src.core.pricing import (
+    DEEPSEEK_PRICING_EFFECTIVE_AT,
+    calculate_usage_cost,
+    get_default_pricing,
+)
 from src.utils.branding import default_data_dir, env_value
 
 
@@ -30,13 +36,33 @@ def _hash_text(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8", errors="ignore")).hexdigest()[:20]
 
 
-def _pricing_for(provider: str, model: str) -> tuple[Optional[dict[str, float]], str]:
+def _pricing_for(
+    provider: str,
+    model: str,
+    *,
+    occurred_at: float | None = None,
+) -> tuple[Optional[dict[str, float]], str]:
     provider = (provider or "").lower()
     if provider == "ollama":
         return {"input": 0.0, "output": 0.0}, "local"
-    pricing = get_default_pricing(provider, model or "")
+    pricing_tier = None
+    source = "default_table"
+    if provider == "deepseek":
+        now = (
+            datetime.fromtimestamp(float(occurred_at), tz=timezone.utc)
+            if occurred_at is not None
+            else None
+        )
+        pricing_status = get_deepseek_pricing_status(now)
+        pricing_tier = (
+            pricing_status.pricing_tier
+            if occurred_at is not None
+            else effective_estimate_tier(pricing_status)
+        )
+        source = f"deepseek_official_2026-09-10_{pricing_tier}"
+    pricing = get_default_pricing(provider, model or "", pricing_tier=pricing_tier)
     if pricing:
-        return pricing, "default_table"
+        return pricing, source
     return None, "unknown"
 
 
@@ -47,22 +73,19 @@ def _cost_for(
     completion_tokens: int,
     prompt_cache_hit_tokens: int = 0,
     prompt_cache_miss_tokens: int = 0,
+    occurred_at: float | None = None,
 ) -> tuple[float, float, float, str]:
-    pricing, source = _pricing_for(provider, model)
+    pricing, source = _pricing_for(provider, model, occurred_at=occurred_at)
     if not pricing:
         return 0.0, 0.0, 0.0, source
-    input_rate = float(pricing.get("input_cache_miss", pricing.get("input", 0.0)) or 0.0)
-    cache_hit_rate = float(pricing.get("input_cache_hit", input_rate) or 0.0)
-    output_rate = float(pricing.get("output", 0.0) or 0.0)
-    cache_hit = max(0, int(prompt_cache_hit_tokens or 0))
-    cache_miss = max(0, int(prompt_cache_miss_tokens or 0))
-    if cache_hit or cache_miss:
-        unreported_input = max(0, int(prompt_tokens or 0) - cache_hit - cache_miss)
-        input_cost = (cache_hit * cache_hit_rate + (cache_miss + unreported_input) * input_rate) / 1_000_000
-    else:
-        input_cost = prompt_tokens * input_rate / 1_000_000
-    output_cost = completion_tokens * output_rate / 1_000_000
-    return input_cost, output_cost, input_cost + output_cost, source
+    input_cost, output_cost, total_cost = calculate_usage_cost(
+        pricing,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        prompt_cache_hit_tokens=prompt_cache_hit_tokens,
+        prompt_cache_miss_tokens=prompt_cache_miss_tokens,
+    )
+    return input_cost, output_cost, total_cost, source
 
 
 class TokenUsageStore:
@@ -122,6 +145,8 @@ class TokenUsageStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_translation ON token_usage_events(translation_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_book ON token_usage_events(book_name)")
             self._ensure_columns(conn)
+            self._repair_nonbillable_estimates(conn)
+            self._reprice_current_deepseek_events(conn)
 
     def _ensure_columns(self, conn: sqlite3.Connection) -> None:
         existing = {
@@ -133,6 +158,71 @@ class TokenUsageStore:
                 conn.execute(
                     f"ALTER TABLE token_usage_events ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0"
                 )
+
+    @staticmethod
+    def _repair_nonbillable_estimates(conn: sqlite3.Connection) -> None:
+        """Remove synthetic usage from calls that never returned provider usage."""
+
+        conn.execute(
+            """
+            UPDATE token_usage_events
+               SET prompt_tokens = 0,
+                   completion_tokens = 0,
+                   total_tokens = 0,
+                   input_cost_usd = 0,
+                   output_cost_usd = 0,
+                   total_cost_usd = 0,
+                   pricing_source = 'not_billed',
+                   estimated_tokens = 0
+             WHERE status IN ('error', 'empty_response')
+               AND estimated_tokens = 1
+               AND completion_tokens = 0
+               AND prompt_cache_hit_tokens = 0
+               AND prompt_cache_miss_tokens = 0
+            """
+        )
+
+    @staticmethod
+    def _reprice_current_deepseek_events(conn: sqlite3.Connection) -> None:
+        """Apply the current official DeepSeek schedule to post-change calls."""
+
+        effective_at = datetime.fromisoformat(DEEPSEEK_PRICING_EFFECTIVE_AT).timestamp()
+        rows = conn.execute(
+            """
+            SELECT id, created_at, model, prompt_tokens, completion_tokens,
+                   prompt_cache_hit_tokens, prompt_cache_miss_tokens
+              FROM token_usage_events
+             WHERE provider = 'deepseek'
+               AND status = 'ok'
+               AND created_at >= ?
+               AND pricing_source NOT LIKE 'deepseek_official_2026-09-10_%'
+            """,
+            (effective_at,),
+        ).fetchall()
+        updates = []
+        for row in rows:
+            input_cost, output_cost, total_cost, source = _cost_for(
+                "deepseek",
+                row["model"],
+                row["prompt_tokens"],
+                row["completion_tokens"],
+                prompt_cache_hit_tokens=row["prompt_cache_hit_tokens"],
+                prompt_cache_miss_tokens=row["prompt_cache_miss_tokens"],
+                occurred_at=row["created_at"],
+            )
+            if source == "unknown":
+                continue
+            updates.append((input_cost, output_cost, total_cost, source, row["id"]))
+        if updates:
+            conn.executemany(
+                """
+                UPDATE token_usage_events
+                   SET input_cost_usd = ?, output_cost_usd = ?,
+                       total_cost_usd = ?, pricing_source = ?
+                 WHERE id = ?
+                """,
+                updates,
+            )
 
     def record_call(
         self,
@@ -146,6 +236,7 @@ class TokenUsageStore:
         completion_tokens: int = 0,
         prompt_cache_hit_tokens: int = 0,
         prompt_cache_miss_tokens: int = 0,
+        total_tokens: int = 0,
         status: str = "ok",
         context: Optional[dict[str, Any]] = None,
         metadata: Optional[dict[str, Any]] = None,
@@ -154,17 +245,20 @@ class TokenUsageStore:
         metadata = metadata or {}
         prompt_text = f"{system_prompt or ''}\n{prompt or ''}".strip()
         estimated = status.startswith("estimated") or bool((metadata or {}).get("estimated_from"))
-        if not prompt_tokens:
+        should_estimate = status == "ok" or status.startswith("estimated")
+        if not prompt_tokens and should_estimate:
             prompt_tokens = _estimate_tokens(prompt_text)
             estimated = True
-        if not completion_tokens and response_content:
+        if not completion_tokens and response_content and should_estimate:
             completion_tokens = _estimate_tokens(response_content)
             estimated = True
         prompt_tokens = int(prompt_tokens or 0)
         completion_tokens = int(completion_tokens or 0)
         prompt_cache_hit_tokens = int(prompt_cache_hit_tokens or 0)
         prompt_cache_miss_tokens = int(prompt_cache_miss_tokens or 0)
-        total_tokens = prompt_tokens + completion_tokens
+        provider_total_tokens = max(0, int(total_tokens or 0))
+        total_tokens = max(provider_total_tokens, prompt_tokens + completion_tokens)
+        created_at = time.time()
         input_cost, output_cost, total_cost, pricing_source = _cost_for(
             provider,
             model,
@@ -172,10 +266,11 @@ class TokenUsageStore:
             completion_tokens,
             prompt_cache_hit_tokens=prompt_cache_hit_tokens,
             prompt_cache_miss_tokens=prompt_cache_miss_tokens,
+            occurred_at=created_at,
         )
 
         payload = {
-            "created_at": time.time(),
+            "created_at": created_at,
             "translation_id": context.get("translation_id"),
             "process_id": context.get("process_id") or context.get("translation_id"),
             "process_type": context.get("process_type") or "unknown",

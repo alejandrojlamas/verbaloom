@@ -32,7 +32,8 @@ from src.core.glossary.models import GlossaryConfig
 from src.core.llm.factory import create_llm_provider
 from src.core.llm.request_deadline import await_llm_call
 from src.core.llm_output_guard import guard_llm_output
-from src.core.pricing.pricing_data import get_default_pricing
+from src.core.deepseek_pricing import get_deepseek_pricing_status
+from src.core.pricing import calculate_usage_cost, get_default_pricing
 from src.core.sampling import cap_chunk_text, select_sample_indices
 from src.core.text_processor import split_text_into_chunks
 from src.prompts.prompts import (
@@ -300,17 +301,32 @@ def _instantiate_provider(column: Dict[str, Any]):
     return create_llm_provider(provider, **kwargs)
 
 
-def _compute_cost_usd(provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> Optional[float]:
+def _compute_cost_usd(
+    provider: str,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    *,
+    prompt_cache_hit_tokens: int = 0,
+    prompt_cache_miss_tokens: int = 0,
+) -> Optional[float]:
     """Best-effort USD cost for one LLM call. Returns None if pricing unknown."""
-    pricing = get_default_pricing(provider, model)
+    pricing_tier = (
+        get_deepseek_pricing_status().pricing_tier
+        if str(provider).lower() == "deepseek"
+        else None
+    )
+    pricing = get_default_pricing(provider, model, pricing_tier=pricing_tier)
     if not pricing:
         return None
-    input_rate = pricing.get("input", 0.0)
-    output_rate = pricing.get("output", 0.0)
-    return round(
-        (prompt_tokens * input_rate + completion_tokens * output_rate) / 1_000_000,
-        6,
+    _input_cost, _output_cost, total_cost = calculate_usage_cost(
+        pricing,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        prompt_cache_hit_tokens=prompt_cache_hit_tokens,
+        prompt_cache_miss_tokens=prompt_cache_miss_tokens,
     )
+    return round(total_cost, 6)
 
 
 async def _execute_cell(
@@ -378,6 +394,8 @@ async def _execute_cell(
             column.get("model", ""),
             response.prompt_tokens,
             response.completion_tokens,
+            prompt_cache_hit_tokens=response.prompt_cache_hit_tokens,
+            prompt_cache_miss_tokens=response.prompt_cache_miss_tokens,
         )
         src_len = max(1, len(ref_text))
         length_ratio = round(len(output_text) / src_len, 3)

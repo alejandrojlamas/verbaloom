@@ -434,7 +434,7 @@ MIN_CHUNK_SIZE_TOKENS = 50
 OPENROUTER_API_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
 MISTRAL_API_ENDPOINT = os.getenv('MISTRAL_API_ENDPOINT', 'https://api.mistral.ai/v1/chat/completions')
 DEEPSEEK_API_ENDPOINT = os.getenv('DEEPSEEK_API_ENDPOINT', 'https://api.deepseek.com/chat/completions')
-# DeepSeek V4 models (deepseek-v4-flash, deepseek-v4-pro) enable thinking by default,
+# Current DeepSeek models (deepseek-flash, deepseek-v4-pro) enable thinking by default,
 # wasting ~10-25x tokens on translation. Set to 'false' to keep thinking enabled.
 DEEPSEEK_DISABLE_THINKING = os.getenv('DEEPSEEK_DISABLE_THINKING', 'true').lower() == 'true'
 POE_API_ENDPOINT = os.getenv('POE_API_ENDPOINT', 'https://api.poe.com/v1/chat/completions')

@@ -147,7 +147,10 @@ export function populateModelSelectInto(selectEl, models, defaultModel = null, p
             const opt = document.createElement('option');
             opt.value = value;
             opt.textContent = label;
-            if (m.context_length) opt.title = `Context: ${m.context_length} tokens`;
+            const details = [];
+            if (m.context_length) details.push(`Context: ${m.context_length} tokens`);
+            if (m.description) details.push(m.description);
+            if (details.length) opt.title = details.join(' | ');
             if (value === defaultModel) { opt.selected = true; defaultFound = true; }
             selectEl.appendChild(opt);
         });

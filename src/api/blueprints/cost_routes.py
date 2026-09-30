@@ -10,7 +10,12 @@ from pathlib import Path
 
 from flask import Blueprint, request, jsonify
 
+from src.core.deepseek_pricing import (
+    effective_estimate_tier,
+    get_deepseek_pricing_status,
+)
 from src.core.pricing import (
+    DEEPSEEK_PRICING_TIERS,
     DEFAULT_PRICING,
     LAST_UPDATED,
     get_default_pricing,
@@ -40,11 +45,23 @@ def create_cost_blueprint(output_dir):
     @bp.route('/api/pricing/defaults', methods=['GET'])
     def get_pricing_defaults():
         """Return the default pricing table and last-updated date."""
+        pricing = {provider: dict(models) for provider, models in DEFAULT_PRICING.items()}
+        deepseek_status = get_deepseek_pricing_status()
+        deepseek_tier = effective_estimate_tier(deepseek_status)
+        pricing["deepseek"] = DEEPSEEK_PRICING_TIERS[deepseek_tier]
         return jsonify({
-            "pricing": DEFAULT_PRICING,
+            "pricing": pricing,
             "last_updated": LAST_UPDATED,
             "local_providers": sorted(LOCAL_PROVIDERS),
             "providers_with_api_pricing": sorted(PROVIDERS_WITH_API_PRICING),
+            "pricing_context": {
+                "deepseek": {
+                    "current_tier": deepseek_status.pricing_tier,
+                    "effective_estimate_tier": deepseek_tier,
+                    "off_peak_guard_enabled": deepseek_status.enabled,
+                    "source_url": deepseek_status.source_url,
+                }
+            },
         })
 
     @bp.route('/api/cost/estimate', methods=['POST'])
@@ -83,7 +100,18 @@ def create_cost_blueprint(output_dir):
                     "message": "Local model — no API cost",
                 })
 
-            pricing = _resolve_pricing(provider, model, data.get('pricing'))
+            pricing_tier = None
+            pricing_status = None
+            if provider == "deepseek":
+                pricing_status = get_deepseek_pricing_status()
+                pricing_tier = effective_estimate_tier(pricing_status)
+
+            pricing = _resolve_pricing(
+                provider,
+                model,
+                data.get('pricing'),
+                pricing_tier=pricing_tier,
+            )
             if pricing is None:
                 return jsonify({
                     "unknown": True,
@@ -121,8 +149,20 @@ def create_cost_blueprint(output_dir):
                 options=options,
             )
 
-            result["pricing_source"] = _pricing_source(provider, model, data.get('pricing'))
+            result["pricing_source"] = _pricing_source(
+                provider,
+                model,
+                data.get('pricing'),
+                pricing_tier=pricing_tier,
+            )
             result["pricing_last_updated"] = LAST_UPDATED
+            if pricing_status is not None:
+                result["pricing_tier"] = pricing_tier
+                result["pricing_current_tier"] = pricing_status.pricing_tier
+                result["pricing_waits_for_off_peak"] = bool(
+                    pricing_status.enabled and pricing_status.pricing_tier == "peak"
+                )
+                result["pricing_source_url"] = pricing_status.source_url
             return jsonify(result)
 
         except Exception as e:
@@ -132,24 +172,40 @@ def create_cost_blueprint(output_dir):
     return bp
 
 
-def _resolve_pricing(provider: str, model: str, override: dict | None):
+def _resolve_pricing(
+    provider: str,
+    model: str,
+    override: dict | None,
+    *,
+    pricing_tier: str | None = None,
+):
     if isinstance(override, dict) and 'input' in override and 'output' in override:
         try:
-            return {
+            pricing = {
                 "input": float(override['input']),
                 "output": float(override['output']),
             }
+            for key in ("input_cache_hit", "input_cache_miss"):
+                if key in override:
+                    pricing[key] = float(override[key])
+            return pricing
         except (TypeError, ValueError):
             pass
-    return get_default_pricing(provider, model)
+    return get_default_pricing(provider, model, pricing_tier=pricing_tier)
 
 
-def _pricing_source(provider: str, model: str, override: dict | None) -> str:
+def _pricing_source(
+    provider: str,
+    model: str,
+    override: dict | None,
+    *,
+    pricing_tier: str | None = None,
+) -> str:
     if isinstance(override, dict) and 'input' in override and 'output' in override:
         return "user_override"
     if provider in PROVIDERS_WITH_API_PRICING:
         return "provider_api"
-    if get_default_pricing(provider, model) is not None:
+    if get_default_pricing(provider, model, pricing_tier=pricing_tier) is not None:
         return "default_table"
     return "unknown"
 

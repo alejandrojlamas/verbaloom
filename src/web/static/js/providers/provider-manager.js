@@ -39,9 +39,16 @@ const OPENAI_MODELS = [
  * Fallback DeepSeek models list (used when API fetch fails)
  */
 const DEEPSEEK_FALLBACK_MODELS = [
-    { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro (1M ctx)' },
-    { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash (1M ctx)' },
-    { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner (legacy, thinking)' }
+    {
+        value: 'deepseek-flash',
+        label: 'DeepSeek V4.1 Flash (1M ctx)',
+        description: 'Fast, economical, multimodal model',
+    },
+    {
+        value: 'deepseek-v4-pro',
+        label: 'DeepSeek V4 Pro (1M ctx)',
+        description: 'Highest-quality text model',
+    },
 ];
 
 /**
@@ -834,7 +841,8 @@ export const ProviderManager = {
                 const formattedModels = data.models.map(m => ({
                     value: m.id,
                     label: m.name || m.id,
-                    context_length: m.context_length
+                    context_length: m.context_length,
+                    description: m.description || '',
                 }));
 
                 populateModelSelect(formattedModels, data.default, 'mistral');
@@ -887,7 +895,8 @@ export const ProviderManager = {
                 const formattedModels = data.models.map(m => ({
                     value: m.id,
                     label: m.name || m.id,
-                    context_length: m.context_length
+                    context_length: m.context_length,
+                    description: m.description || '',
                 }));
 
                 populateModelSelect(formattedModels, data.default, 'deepseek');

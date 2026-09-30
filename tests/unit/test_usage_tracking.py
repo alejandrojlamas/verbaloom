@@ -1,5 +1,6 @@
 import pytest
 import sqlite3
+from datetime import datetime, timezone
 
 from src.api.blueprints.usage_routes import _build_live_jobs
 from src.core.llm.base import LLMResponse
@@ -7,7 +8,12 @@ from src.core.usage.store import TokenUsageStore
 from src.core.usage.tracking_provider import UsageTrackingProvider
 
 
-def test_usage_store_records_cost_and_summary(tmp_path):
+OFF_PEAK_TIMESTAMP = datetime(2026, 9, 12, 12, tzinfo=timezone.utc).timestamp()
+PEAK_TIMESTAMP = datetime(2026, 9, 14, 2, tzinfo=timezone.utc).timestamp()
+
+
+def test_usage_store_records_cost_and_summary(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.core.usage.store.time.time", lambda: OFF_PEAK_TIMESTAMP)
     store = TokenUsageStore(tmp_path / "usage.db")
 
     store.record_call(
@@ -28,13 +34,14 @@ def test_usage_store_records_cost_and_summary(tmp_path):
     summary = store.summary()
     assert summary["totals"]["calls"] == 1
     assert summary["totals"]["total_tokens"] == 1_500_000
-    assert round(summary["totals"]["total_cost_usd"], 4) == 0.87
+    assert round(summary["totals"]["total_cost_usd"], 4) == 1.65
     assert summary["by_book"][0]["book_name"] == "Libro de prueba"
     assert summary["by_translation"][0]["translation_id"] == "job-1"
     assert summary["by_phase"][0]["phase"] == "llm_call"
 
 
-def test_usage_store_records_deepseek_cache_aware_cost(tmp_path):
+def test_usage_store_records_deepseek_cache_aware_cost(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.core.usage.store.time.time", lambda: OFF_PEAK_TIMESTAMP)
     store = TokenUsageStore(tmp_path / "usage.db")
 
     store.record_call(
@@ -56,7 +63,77 @@ def test_usage_store_records_deepseek_cache_aware_cost(tmp_path):
     assert totals["prompt_cache_miss_tokens"] == 100_000
     assert summary["by_book"][0]["prompt_cache_hit_tokens"] == 900_000
     assert summary["by_translation"][0]["prompt_cache_miss_tokens"] == 100_000
-    assert 0 < totals["total_cost_usd"] < 0.435
+    assert 0 < totals["total_cost_usd"] < 0.66
+
+
+def test_usage_store_records_actual_peak_tier_for_completed_calls(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.core.usage.store.time.time", lambda: PEAK_TIMESTAMP)
+    store = TokenUsageStore(tmp_path / "usage.db")
+
+    store.record_call(
+        provider="deepseek",
+        model="deepseek-flash",
+        prompt="hola",
+        prompt_tokens=1_000_000,
+        completion_tokens=1_000_000,
+        status="ok",
+    )
+
+    event = store.events()[0]
+    assert event["pricing_source"] == "deepseek_official_2026-09-10_peak"
+    assert event["total_cost_usd"] == pytest.approx(1.5)
+
+
+def test_usage_store_does_not_invent_billable_tokens_for_failed_calls(tmp_path):
+    store = TokenUsageStore(tmp_path / "usage.db")
+
+    store.record_call(
+        provider="deepseek",
+        model="deepseek-flash",
+        prompt="This prompt was blocked before a provider response.",
+        status="error",
+        metadata={"error": "DeepSeekPeakPricingError"},
+    )
+
+    event = store.events()[0]
+    assert event["prompt_tokens"] == 0
+    assert event["completion_tokens"] == 0
+    assert event["total_tokens"] == 0
+    assert event["total_cost_usd"] == 0
+    assert event["estimated_tokens"] == 0
+
+
+def test_usage_store_prefers_provider_reported_total(tmp_path):
+    store = TokenUsageStore(tmp_path / "usage.db")
+
+    store.record_call(
+        provider="deepseek",
+        model="deepseek-flash",
+        prompt="hola",
+        response_content="mundo",
+        prompt_tokens=12,
+        completion_tokens=7,
+        total_tokens=21,
+        status="ok",
+    )
+
+    assert store.events()[0]["total_tokens"] == 21
+
+
+def test_usage_store_never_undercounts_an_inconsistent_provider_total(tmp_path):
+    store = TokenUsageStore(tmp_path / "usage.db")
+
+    store.record_call(
+        provider="deepseek",
+        model="deepseek-flash",
+        prompt="hola",
+        prompt_tokens=12,
+        completion_tokens=7,
+        total_tokens=18,
+        status="ok",
+    )
+
+    assert store.events()[0]["total_tokens"] == 19
 
 
 @pytest.mark.asyncio
@@ -68,7 +145,7 @@ async def test_usage_tracking_provider_records_without_changing_response(tmp_pat
     monkeypatch.setattr(tracking_module, "default_usage_store", lambda: store)
 
     class FakeProvider:
-        model = "deepseek-v4-flash"
+        model = "deepseek-flash"
 
         async def generate(self, prompt, timeout=1, system_prompt=None, temperature=None):
             self.temperature = temperature
@@ -93,7 +170,7 @@ async def test_usage_tracking_provider_records_without_changing_response(tmp_pat
     events = store.events()
     assert len(events) == 1
     assert events[0]["provider"] == "deepseek"
-    assert events[0]["model"] == "deepseek-v4-flash"
+    assert events[0]["model"] == "deepseek-flash"
     assert events[0]["total_tokens"] == 19
     assert events[0]["prompt_cache_hit_tokens"] == 9
     assert events[0]["prompt_cache_miss_tokens"] == 3
@@ -109,7 +186,7 @@ async def test_usage_tracking_provider_infers_phase_and_propagates_model(tmp_pat
     monkeypatch.setattr(tracking_module, "default_usage_store", lambda: store)
 
     class FakeProvider:
-        model = "deepseek-v4-flash"
+        model = "deepseek-flash"
         context_window = 4096
 
         async def generate(self, prompt, timeout=1, system_prompt=None):

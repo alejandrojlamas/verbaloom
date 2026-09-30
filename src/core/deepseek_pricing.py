@@ -18,8 +18,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 UTC = timezone.utc
 DISPLAY_TIMEZONE = "America/Mexico_City"
 OFFICIAL_PRICING_URL = "https://api-docs.deepseek.com/quick_start/pricing/"
-SCHEDULE_VERIFIED_AT = "2026-09-03"
-SCHEDULE_ID = "deepseek-off-peak-2026-08-16"
+SCHEDULE_VERIFIED_AT = "2026-09-29"
+SCHEDULE_ID = "deepseek-off-peak-2026-09-10"
 
 # Official peak periods: Monday-Friday, 01:00-04:00 and 06:00-10:00 UTC.
 PEAK_WEEKDAYS_UTC = frozenset(range(5))
@@ -158,6 +158,17 @@ def get_deepseek_pricing_status(
         schedule_verified_at=SCHEDULE_VERIFIED_AT,
         source_url=OFFICIAL_PRICING_URL,
     )
+
+
+def effective_estimate_tier(status: DeepSeekPricingStatus) -> str:
+    """Return the tier a newly queued job is expected to pay.
+
+    With the default guard enabled, a job submitted during peak pricing waits
+    and starts in the next off-peak window. If the guard is disabled, estimates
+    must follow the current provider tier.
+    """
+
+    return "off_peak" if status.enabled else status.pricing_tier
 
 
 def cdmx_peak_schedule_description() -> tuple[str, ...]:

@@ -434,13 +434,13 @@ function promptOptionsForVariant({ profileId = '', transformMode = '' } = {}) {
         options.text_transform_profile = 'faithful_current_spanish';
         options.preserve_block_structure = true;
         options.transform_guard = 'strict';
-        options.transform_auditor_model = profileId ? 'deepseek-v4-pro' : 'deepseek-v4-flash';
+        options.transform_auditor_model = profileId ? 'deepseek-v4-pro' : 'deepseek-flash';
         options.transform_repair_attempts = 2;
         options.suppress_attribution_footer = true;
         options.editorial_quality_guard = true;
         options.fidelity_supervisor = true;
         options.fidelity_supervisor_mode = profileId ? 'always' : 'alerted';
-        options.fidelity_supervisor_model = profileId ? 'deepseek-v4-pro' : 'deepseek-v4-flash';
+        options.fidelity_supervisor_model = profileId ? 'deepseek-v4-pro' : 'deepseek-flash';
         options.transform_fallback = 'best_candidate';
         if (profileId) {
             options.preserve_archaisms = false;

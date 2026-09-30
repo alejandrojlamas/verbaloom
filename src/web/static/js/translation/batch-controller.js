@@ -177,13 +177,13 @@ function getTranslationConfig(file) {
             promptOptions.text_transform_profile = 'faithful_current_spanish';
             promptOptions.preserve_block_structure = true;
             promptOptions.transform_guard = 'strict';
-            promptOptions.transform_auditor_model = 'deepseek-v4-flash';
+            promptOptions.transform_auditor_model = 'deepseek-flash';
             promptOptions.transform_repair_attempts = 2;
             promptOptions.suppress_attribution_footer = true;
             promptOptions.editorial_quality_guard = true;
             promptOptions.fidelity_supervisor = true;
             promptOptions.fidelity_supervisor_mode = 'alerted';
-            promptOptions.fidelity_supervisor_model = 'deepseek-v4-flash';
+            promptOptions.fidelity_supervisor_model = 'deepseek-flash';
             promptOptions.transform_fallback = 'best_candidate';
             if (selectedBookProfile) {
                 promptOptions.modernization_strength = 'high';

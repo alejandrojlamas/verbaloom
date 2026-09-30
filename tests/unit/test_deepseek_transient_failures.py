@@ -19,13 +19,18 @@ class _ScriptedClient:
     def __init__(self, events):
         self.events = deque(events)
         self.calls = 0
+        self.last_kwargs = None
 
     async def post(self, *args, **kwargs):
         self.calls += 1
+        self.last_kwargs = kwargs
         event = self.events.popleft()
         if isinstance(event, Exception):
             raise event
         return event
+
+    async def get(self, *args, **kwargs):
+        return await self.post(*args, **kwargs)
 
 
 def _response(status: int, payload: dict | None = None) -> httpx.Response:
@@ -138,6 +143,121 @@ async def test_deepseek_exposes_provider_length_truncation(monkeypatch):
 
     assert result is not None
     assert result.was_truncated is True
+
+
+@pytest.mark.asyncio
+async def test_deepseek_flash_disables_default_thinking_and_uses_exact_usage(monkeypatch):
+    client = _ScriptedClient([
+        _response(
+            200,
+            {
+                "choices": [{"message": {"content": "Traducción completa."}}],
+                "usage": {
+                    "prompt_tokens": 17,
+                    "completion_tokens": 9,
+                    "total_tokens": 26,
+                    "prompt_tokens_details": {"cached_tokens": 5},
+                    "completion_tokens_details": {"reasoning_tokens": 0},
+                },
+            },
+        )
+    ])
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-flash",
+        api_endpoint="https://api.deepseek.test/chat/completions",
+    )
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    result = await provider.generate("Translate this complete unit.")
+
+    assert client.last_kwargs["json"]["thinking"] == {"type": "disabled"}
+    assert result.total_tokens == 26
+    assert result.context_used == 26
+    assert result.prompt_cache_hit_tokens == 5
+    assert result.prompt_cache_miss_tokens == 12
+    assert result.reasoning_tokens == 0
+
+
+def test_deepseek_fallback_catalog_contains_only_current_models():
+    provider = DeepSeekProvider(api_key="test-key")
+
+    models = provider._get_fallback_models()
+
+    assert [model["id"] for model in models] == [
+        "deepseek-flash",
+        "deepseek-v4-pro",
+    ]
+    assert models[0]["name"] == "DeepSeek V4.1 Flash"
+
+
+def test_deepseek_usage_total_cannot_be_lower_than_its_components():
+    usage = DeepSeekProvider._usage_counts({
+        "prompt_tokens": 8,
+        "completion_tokens": 3,
+        "total_tokens": 5,
+    })
+
+    assert usage["total"] == 11
+
+
+@pytest.mark.parametrize(
+    "legacy_model",
+    [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp",
+        "deepseek-chat",
+        "deepseek-reasoner",
+    ],
+)
+def test_deepseek_migrates_retired_model_ids(legacy_model):
+    provider = DeepSeekProvider(api_key="test-key", model=legacy_model)
+
+    assert provider.model == "deepseek-flash"
+
+
+def test_deepseek_custom_gateway_preserves_its_model_ids():
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        model="deepseek-reasoner",
+        api_endpoint="https://private-gateway.example/chat/completions",
+    )
+
+    assert provider.model == "deepseek-reasoner"
+
+
+@pytest.mark.asyncio
+async def test_deepseek_live_catalog_filters_retired_aliases(monkeypatch):
+    response = httpx.Response(
+        200,
+        request=httpx.Request("GET", "https://api.deepseek.test/models"),
+        json={
+            "data": [
+                {"id": "deepseek-chat"},
+                {"id": "deepseek-v4-pro"},
+                {"id": "deepseek-flash"},
+                {"id": "deepseek-reasoner"},
+            ]
+        },
+    )
+    client = _ScriptedClient([response])
+    provider = DeepSeekProvider(api_key="test-key")
+
+    async def get_client():
+        return client
+
+    monkeypatch.setattr(provider, "_get_client", get_client)
+
+    models = await provider.get_available_models()
+
+    assert [model["id"] for model in models] == [
+        "deepseek-flash",
+        "deepseek-v4-pro",
+    ]
 
 
 @pytest.mark.asyncio

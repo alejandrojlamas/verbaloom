@@ -12,7 +12,7 @@ Features:
     - Auto-disables V4 reasoning by default (translation-friendly)
 """
 
-from typing import List, Optional, Union
+from typing import Any, List, Mapping, Optional, Union
 import httpx
 import asyncio
 import json
@@ -38,7 +38,7 @@ class DeepSeekProvider(LLMProvider):
 
     DeepSeek provides powerful language models with excellent price/performance:
         - deepseek-v4-pro: Recommended high-quality model for translation
-        - deepseek-v4-flash: Faster economical model
+        - deepseek-flash: DeepSeek V4.1 Flash, faster and economical
 
     Configuration:
         endpoint: https://api.deepseek.com/chat/completions
@@ -57,6 +57,7 @@ class DeepSeekProvider(LLMProvider):
     MODELS_URL = "https://api.deepseek.com/models"
 
     MODEL_CONTEXT_SIZES = {
+        "deepseek-flash": 1_000_000,
         "deepseek-v4-pro": 1_000_000,
         "deepseek-v4-flash": 1_000_000,
         "deepseek-chat": 1_000_000,
@@ -66,12 +67,30 @@ class DeepSeekProvider(LLMProvider):
     }
 
     FALLBACK_MODELS = [
+        "deepseek-flash",
         "deepseek-v4-pro",
-        "deepseek-v4-flash",
     ]
 
+    LEGACY_MODEL_ALIASES = {
+        "deepseek-v4-flash": "deepseek-flash",
+        "deepseek-v4-flash-vision-exp": "deepseek-flash",
+        "deepseek-chat": "deepseek-flash",
+        "deepseek-reasoner": "deepseek-flash",
+    }
+
+    MODEL_METADATA = {
+        "deepseek-flash": {
+            "name": "DeepSeek V4.1 Flash",
+            "description": "Fast, economical, multimodal model",
+        },
+        "deepseek-v4-pro": {
+            "name": "DeepSeek V4 Pro",
+            "description": "Highest-quality text model",
+        },
+    }
+
     THINKING_MODELS = ["deepseek-reasoner", "deepseek-r1"]
-    THINKING_BY_DEFAULT_MODELS = ["deepseek-v4"]
+    THINKING_BY_DEFAULT_MODELS = ["deepseek-flash", "deepseek-v4"]
 
     def __init__(
         self,
@@ -90,8 +109,15 @@ class DeepSeekProvider(LLMProvider):
             disable_thinking: For models that think by default (V4 family),
                 inject ``thinking={"type":"disabled"}`` to skip reasoning tokens.
         """
-        super().__init__(model, api_keys=api_key, provider_name="deepseek")
-        self.api_endpoint = api_endpoint or self.API_URL
+        resolved_endpoint = api_endpoint or self.API_URL
+        normalized_model = model
+        if is_official_deepseek_endpoint(resolved_endpoint):
+            normalized_model = self.LEGACY_MODEL_ALIASES.get(
+                str(model or "").strip().lower(),
+                model,
+            )
+        super().__init__(normalized_model, api_keys=api_key, provider_name="deepseek")
+        self.api_endpoint = resolved_endpoint
         self.disable_thinking = disable_thinking
 
     def _get_context_limit(self) -> int:
@@ -145,27 +171,30 @@ class DeepSeekProvider(LLMProvider):
 
             for model in models_data:
                 model_id = model.get("id", "")
-                # Skip deepseek-reasoner: always thinks, no toggle. V4 models
-                # are kept (they think by default but we override that).
-                if "reasoner" in model_id.lower():
+                # DeepSeek exposes exactly two current public chat models. Do
+                # not reintroduce retired aliases if an older gateway lists
+                # them alongside the canonical IDs.
+                if model_id not in self.FALLBACK_MODELS:
                     continue
-                if "deepseek" in model_id.lower():
-                    context_length = model.get("max_context_length")
-                    if not context_length:
-                        for prefix, size in self.MODEL_CONTEXT_SIZES.items():
-                            if prefix in model_id.lower():
-                                context_length = size
-                                break
-                        if not context_length:
-                            context_length = 1_000_000
+                context_length = model.get("max_context_length")
+                if not context_length:
+                    context_length = self._get_context_limit_for_model(model_id)
 
-                    filtered_models.append({
-                        "id": model_id,
-                        "name": model_id,
-                        "context_length": context_length
-                    })
+                metadata = self.MODEL_METADATA.get(model_id, {})
+                filtered_models.append({
+                    "id": model_id,
+                    "name": metadata.get("name", model_id),
+                    "description": metadata.get("description", ""),
+                    "context_length": context_length,
+                })
 
-            filtered_models.sort(key=lambda x: x["name"])
+            preferred_order = {name: index for index, name in enumerate(self.FALLBACK_MODELS)}
+            filtered_models.sort(
+                key=lambda item: (
+                    preferred_order.get(item["id"], len(preferred_order)),
+                    item["id"],
+                )
+            )
 
             if len(filtered_models) < 1:
                 return self._get_fallback_models()
@@ -181,11 +210,52 @@ class DeepSeekProvider(LLMProvider):
         return [
             {
                 "id": m,
-                "name": m,
-                "context_length": self._get_context_limit_for_model(m)
+                "name": self.MODEL_METADATA.get(m, {}).get("name", m),
+                "description": self.MODEL_METADATA.get(m, {}).get("description", ""),
+                "context_length": self._get_context_limit_for_model(m),
             }
             for m in self.FALLBACK_MODELS
         ]
+
+    @staticmethod
+    def _usage_counts(usage: Mapping[str, Any] | None) -> dict[str, int]:
+        """Normalize DeepSeek's authoritative usage and cache breakdown."""
+
+        usage = usage or {}
+
+        def count(value: Any) -> int:
+            try:
+                return max(0, int(value or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        prompt = count(usage.get("prompt_tokens"))
+        completion = count(usage.get("completion_tokens"))
+        total = max(count(usage.get("total_tokens")), prompt + completion)
+        details = usage.get("prompt_tokens_details")
+        details = details if isinstance(details, Mapping) else {}
+        cache_hit = count(usage.get("prompt_cache_hit_tokens"))
+        if not cache_hit:
+            cache_hit = count(details.get("cached_tokens"))
+        cache_hit = min(cache_hit, prompt)
+
+        raw_cache_miss = usage.get("prompt_cache_miss_tokens")
+        cache_miss = count(raw_cache_miss)
+        if raw_cache_miss is None and prompt:
+            cache_miss = max(0, prompt - cache_hit)
+        cache_miss = min(cache_miss, max(0, prompt - cache_hit))
+
+        completion_details = usage.get("completion_tokens_details")
+        completion_details = completion_details if isinstance(completion_details, Mapping) else {}
+        reasoning = min(count(completion_details.get("reasoning_tokens")), completion)
+        return {
+            "prompt": prompt,
+            "completion": completion,
+            "total": total,
+            "cache_hit": cache_hit,
+            "cache_miss": cache_miss,
+            "reasoning": reasoning,
+        }
 
     def _get_context_limit_for_model(self, model_name: str) -> int:
         """Get context limit for a specific model name."""
@@ -314,11 +384,11 @@ class DeepSeekProvider(LLMProvider):
                     "max_output_tokens",
                 }
 
-                usage = result.get("usage", {})
-                prompt_tokens = usage.get("prompt_tokens", 0)
-                completion_tokens = usage.get("completion_tokens", 0)
-                cache_hit_tokens = int(usage.get("prompt_cache_hit_tokens", 0) or 0)
-                cache_miss_tokens = int(usage.get("prompt_cache_miss_tokens", 0) or 0)
+                usage = self._usage_counts(result.get("usage"))
+                prompt_tokens = usage["prompt"]
+                completion_tokens = usage["completion"]
+                cache_hit_tokens = usage["cache_hit"]
+                cache_miss_tokens = usage["cache_miss"]
 
                 cache_note = ""
                 cache_total = cache_hit_tokens + cache_miss_tokens
@@ -334,7 +404,9 @@ class DeepSeekProvider(LLMProvider):
                     completion_tokens=completion_tokens,
                     prompt_cache_hit_tokens=cache_hit_tokens,
                     prompt_cache_miss_tokens=cache_miss_tokens,
-                    context_used=prompt_tokens + completion_tokens,
+                    total_tokens=usage["total"],
+                    reasoning_tokens=usage["reasoning"],
+                    context_used=usage["total"],
                     context_limit=self._get_context_limit(),
                     was_truncated=was_truncated
                 )
@@ -359,11 +431,11 @@ class DeepSeekProvider(LLMProvider):
 
                 if e.response.status_code == 404:
                     print(f"❌ DeepSeek: Model '{self.model}' not found!")
-                    print(f"   Check available models at https://platform.deepseek.com/")
+                    print("   Check available models at https://platform.deepseek.com/")
                 elif e.response.status_code == 401:
-                    print(f"❌ DeepSeek: Invalid API key!")
+                    print("❌ DeepSeek: Invalid API key!")
                 elif e.response.status_code == 402:
-                    print(f"❌ DeepSeek: Insufficient credits!")
+                    print("❌ DeepSeek: Insufficient credits!")
                 else:
                     print(f"DeepSeek API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     print(f"Response details: Status {e.response.status_code}, Body: {error_body}...")

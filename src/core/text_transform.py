@@ -61,7 +61,7 @@ def apply_faithful_modernize_defaults(prompt_options: dict[str, Any]) -> dict[st
     prompt_options.setdefault("transform_guard", "strict")
     prompt_options.setdefault(
         "transform_auditor_model",
-        "deepseek-v4-pro" if uses_profile else "deepseek-v4-flash",
+        "deepseek-v4-pro" if uses_profile else "deepseek-flash",
     )
     prompt_options.setdefault("transform_repair_attempts", 2)
     prompt_options.setdefault("suppress_attribution_footer", True)
@@ -81,7 +81,7 @@ def apply_faithful_modernize_defaults(prompt_options: dict[str, Any]) -> dict[st
     prompt_options["fidelity_supervisor_model"] = str(
         prompt_options.get("fidelity_supervisor_model")
         or prompt_options.get("transform_auditor_model")
-        or "deepseek-v4-flash"
+        or "deepseek-flash"
     )
     prompt_options.setdefault("fidelity_supervisor_retry", True)
 

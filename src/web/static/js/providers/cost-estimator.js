@@ -24,6 +24,7 @@ const API_PRICING_PROVIDERS = new Set(['openrouter', 'poe']);
 
 let pricingDefaults = null;
 let pricingLastUpdated = null;
+let pricingContext = {};
 let listenersAttached = false;
 
 // Per-badge AbortControllers so a fresh refresh cancels stale in-flight calls.
@@ -46,6 +47,7 @@ function makeCacheKey(file, ctx) {
         op,
         refineAfter ? 1 : 0,
         ctx.options.text_cleanup ? 1 : 0,
+        ctx.pricingSignature,
     ].join('|');
 }
 
@@ -156,17 +158,20 @@ function resolvePricing(provider, model) {
     if (pricingDefaults && pricingDefaults[provider]) {
         const provData = pricingDefaults[provider];
         if (provData[model]) {
-            const { input, output } = provData[model];
+            const { input, output, input_cache_hit, input_cache_miss } = provData[model];
             return {
-                pricing: { input, output },
+                pricing: { input, output, input_cache_hit, input_cache_miss },
                 source: 'default_table',
             };
         }
         const lower = model.toLowerCase();
         for (const knownModel of Object.keys(provData)) {
             if (knownModel.toLowerCase() === lower) {
-                const { input, output } = provData[knownModel];
-                return { pricing: { input, output }, source: 'default_table' };
+                const { input, output, input_cache_hit, input_cache_miss } = provData[knownModel];
+                return {
+                    pricing: { input, output, input_cache_hit, input_cache_miss },
+                    source: 'default_table',
+                };
             }
         }
     }
@@ -277,6 +282,12 @@ function renderBadge(badge, state) {
     const tokensNote = state.input_tokens
         ? `${t('settings:cost_tokens_chunks', { tokens: state.input_tokens.toLocaleString(), chunks: state.n_chunks })}${passesNote}`
         : '';
+    const tierNote = state.pricing_tier === 'off_peak'
+        ? t('settings:cost_pricing_tier_off_peak')
+        : (state.pricing_tier === 'peak' ? t('settings:cost_pricing_tier_peak') : '');
+    const waitNote = state.pricing_waits_for_off_peak
+        ? t('settings:cost_pricing_waits_off_peak')
+        : '';
     const sourceNote = sourceLabel(state.pricing_source, state.pricing_last_updated);
 
     badge.innerHTML = `
@@ -284,7 +295,7 @@ function renderBadge(badge, state) {
         <span class="cost-badge-text">${display}</span>
         <button type="button" class="cost-badge-edit" data-action="edit" title="${t('settings:cost_edit_title')}">${t('settings:cost_edit_btn')}</button>
     `;
-    badge.title = [tokensNote, sourceNote].filter(Boolean).join(' • ');
+    badge.title = [tokensNote, tierNote, waitNote, sourceNote].filter(Boolean).join(' • ');
 }
 
 async function ensureDefaults() {
@@ -293,6 +304,7 @@ async function ensureDefaults() {
         const data = await ApiClient.getPricingDefaults();
         pricingDefaults = data?.pricing || {};
         pricingLastUpdated = data?.last_updated || null;
+        pricingContext = data?.pricing_context || {};
     } catch {
         pricingDefaults = {};
     }
@@ -328,9 +340,13 @@ async function estimateOne(badge, file, ctx) {
         src_lang: ctx.src,
         tgt_lang: ctx.tgt,
         options: fileOptions(file, ctx.options),
-        pricing: ctx.pricing,
         file_path: file.filePath,
     };
+    // Server defaults carry cache-aware DeepSeek rates and the effective
+    // peak/off-peak tier. Only send prices when the user or provider API is
+    // the actual source; sending defaults back as an "override" used to drop
+    // the cache split and mislabel the estimate.
+    if (ctx.source !== 'default_table') payload.pricing = ctx.pricing;
 
     try {
         const data = await ApiClient.estimateCost(payload, { signal: controller.signal });
@@ -342,7 +358,11 @@ async function estimateOne(badge, file, ctx) {
         } else if (data.no_content) {
             state = { kind: 'no_content' };
         } else {
-            state = { kind: 'estimated', ...data, pricing_source: ctx.source };
+            state = {
+                kind: 'estimated',
+                ...data,
+                pricing_source: data.pricing_source || ctx.source,
+            };
         }
         estimateCache.set(cacheKey, state);
         renderBadge(badge, state);
@@ -382,6 +402,7 @@ export const CostEstimator = {
         window.addEventListener('modelChanged', scheduleRefresh);
         window.addEventListener('fileListChanged', scheduleRefresh);
         window.addEventListener('translationOptionsChanged', scheduleRefresh);
+        window.addEventListener('deepseekPricingChanged', scheduleRefresh);
         // Rebuild badge innerHTML on language switch: renderBadge re-runs t()
         // each call, so a plain refresh() (which restores from cache) is enough.
         window.addEventListener('localeChanged', scheduleRefresh);
@@ -436,6 +457,12 @@ export const CostEstimator = {
         }
 
         const { src, tgt } = getLanguagePair();
+        const liveDeepSeekPricing = provider === 'deepseek'
+            ? StateManager.getState('providers.deepseekPricing') || {}
+            : {};
+        const effectiveLiveTier = liveDeepSeekPricing.enabled
+            ? 'off_peak'
+            : (liveDeepSeekPricing.pricing_tier || '');
         const ctx = {
             provider,
             model,
@@ -444,6 +471,11 @@ export const CostEstimator = {
             src,
             tgt,
             options: getOptions(),
+            pricingSignature: JSON.stringify({
+                pricing,
+                tier: effectiveLiveTier || pricingContext?.[provider]?.effective_estimate_tier || '',
+                updated: pricingLastUpdated || '',
+            }),
         };
 
         const files = StateManager.getState('files.toProcess') || [];
@@ -476,10 +508,10 @@ export const CostEstimator = {
         modal.id = 'costPricingModal';
         modal.className = 'modal-overlay';
         modal.innerHTML = `
-            <div class="modal-content cost-pricing-modal">
+            <div class="modal-content cost-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="costPricingModalTitle">
                 <div class="modal-header">
-                    <h3>${t('settings:cost_edit_modal_title')}</h3>
-                    <button class="close-btn" data-action="close">&times;</button>
+                    <h3 id="costPricingModalTitle">${t('settings:cost_edit_modal_title')}</h3>
+                    <button class="close-btn" data-action="close" title="${t('common:close')}" aria-label="${t('common:close')}">&times;</button>
                 </div>
                 <div class="modal-body">
                     <p class="cost-pricing-subtitle">
@@ -517,7 +549,13 @@ export const CostEstimator = {
         `;
         document.body.appendChild(modal);
 
-        const close = () => modal.remove();
+        const previouslyFocused = document.activeElement;
+        let onEsc = null;
+        const close = () => {
+            modal.remove();
+            if (onEsc) document.removeEventListener('keydown', onEsc);
+            if (previouslyFocused?.focus) previouslyFocused.focus();
+        };
 
         modal.addEventListener('click', (event) => {
             if (event.target === modal) close();
@@ -546,12 +584,12 @@ export const CostEstimator = {
             }
         });
 
-        const onEsc = (e) => {
+        onEsc = (e) => {
             if (e.key === 'Escape') {
                 close();
-                document.removeEventListener('keydown', onEsc);
             }
         };
         document.addEventListener('keydown', onEsc);
+        modal.querySelector('input, button')?.focus();
     },
 };

@@ -95,6 +95,11 @@ function scheduleRefresh() {
     refreshTimer = setTimeout(() => void DeepSeekPricingManager.refresh(), Math.max(1000, delay));
 }
 
+function pricingFingerprint(value) {
+    if (!value) return '';
+    return [value.pricing_tier, value.enabled ? 1 : 0, value.disabled ? 1 : 0].join('|');
+}
+
 function announceBlocked() {
     const when = formatLocalDate(availability?.next_available_at_utc);
     MessageLogger.showMessage(
@@ -122,10 +127,17 @@ export const DeepSeekPricingManager = {
 
     async refresh() {
         try {
-            availability = await ApiClient.getDeepSeekAvailability();
+            const previousFingerprint = pricingFingerprint(availability);
+            const nextAvailability = await ApiClient.getDeepSeekAvailability();
+            availability = nextAvailability;
             StateManager.setState('providers.deepseekPricing', availability);
             render();
             scheduleRefresh();
+            if (previousFingerprint && previousFingerprint !== pricingFingerprint(availability)) {
+                window.dispatchEvent(new CustomEvent('deepseekPricingChanged', {
+                    detail: availability,
+                }));
+            }
             return availability;
         } catch (error) {
             console.warn('[deepseek-pricing] availability check failed', error);

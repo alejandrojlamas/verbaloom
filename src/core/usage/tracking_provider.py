@@ -124,9 +124,13 @@ class UsageTrackingProvider:
                 completion_tokens=int(getattr(response, "completion_tokens", 0) or 0) if response else 0,
                 prompt_cache_hit_tokens=int(getattr(response, "prompt_cache_hit_tokens", 0) or 0) if response else 0,
                 prompt_cache_miss_tokens=int(getattr(response, "prompt_cache_miss_tokens", 0) or 0) if response else 0,
+                total_tokens=int(getattr(response, "total_tokens", 0) or 0) if response else 0,
                 status=status,
                 context=context,
-                metadata=metadata,
+                metadata={
+                    **metadata,
+                    "reasoning_tokens": int(getattr(response, "reasoning_tokens", 0) or 0) if response else 0,
+                },
             )
         except Exception as exc:
             # Usage tracking must never break translation.

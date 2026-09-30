@@ -281,7 +281,15 @@ export const SettingsManager = {
         // Apply last model (after models are loaded)
         if (prefs.lastModel) {
             // Store for later application after models load
-            window.__pendingModelSelection = prefs.lastModel;
+            const migratedModel = [
+                'deepseek-v4-flash',
+                'deepseek-v4-flash-vision-exp',
+                'deepseek-chat',
+                'deepseek-reasoner',
+            ].includes(prefs.lastModel)
+                ? 'deepseek-flash'
+                : prefs.lastModel;
+            window.__pendingModelSelection = migratedModel;
         }
 
         // Apply last languages

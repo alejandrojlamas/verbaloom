@@ -45,7 +45,7 @@ Historical upstream resources remain available in the
 New VerbaLoom work is tracked in
 [alejandrojlamas/verbaloom](https://github.com/alejandrojlamas/verbaloom).
 
-The recommended primary model is **DeepSeek Pro** (`deepseek-v4-pro`). It is the main target for the current long-book workflow and offers a strong balance of cost, context, and quality for translation, audit, and repair. **DeepSeek Flash** (`deepseek-v4-flash`) is used for cheaper preflight profile preparation.
+The recommended primary model is **DeepSeek Pro** (`deepseek-v4-pro`). It is the main target for the current long-book workflow and offers a strong balance of cost, context, and quality for translation, audit, and repair. **DeepSeek V4.1 Flash** (`deepseek-flash`) is used for cheaper preflight profile preparation.
 
 ## Highlights
 
@@ -228,7 +228,7 @@ Core agents:
   - Suggestions are pending by default, not automatically global.
 
 - **Preflight Profile Preparation**
-  - Before the expensive translation/modernization run, the web UI can scan the selected book with **DeepSeek Flash** (`deepseek-v4-flash`).
+  - Before the expensive translation/modernization run, the web UI can scan the selected book with **DeepSeek V4.1 Flash** (`deepseek-flash`).
   - The preflight scan creates a book-scoped editorial profile, approves only mechanically safe preserve-as-written entries, and stores all other discoveries as pending suggestions.
   - The preparation runs as a visible background job: the UI shows stage/chunk progress, then auto-saves and selects the generated profile when it finishes.
   - The generated profile appears in the **Editorial profile** selector and is passed into the main run, where **DeepSeek Pro** (`deepseek-v4-pro`) remains the recommended model for translation, audit, and repair.
