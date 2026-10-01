@@ -168,6 +168,33 @@ def test_rejects_changed_or_lost_numbers():
     assert "numbers_lost" in {issue.code for issue in decision.rejections}
 
 
+def test_localized_clock_separator_preserves_numeric_time():
+    decision = assess_fidelity(
+        "The time was about 9.30 p.m.",
+        "La hora era aproximadamente las 9:30 p. m.",
+        chunk_index=3,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+
+    assert "numbers_lost" not in {issue.code for issue in decision.rejections}
+    assert "numbers_lost" not in {issue.code for issue in decision.warnings}
+
+
+def test_colon_does_not_replace_decimal_without_time_context():
+    decision = assess_fidelity(
+        "The measurement was 9.30 millimeters.",
+        "La medida era 9:30 milímetros.",
+        chunk_index=3,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+
+    assert "numbers_lost" in {issue.code for issue in decision.rejections}
+
+
 def test_english_ocr_one_used_as_pronoun_is_not_a_lost_quantity():
     decision = assess_fidelity(
         (
@@ -2563,6 +2590,31 @@ def test_target_language_gate_keeps_dialogue_already_in_target_language():
     )
 
     assert "source_language_residual" not in {item.code for item in decision.rejections}
+
+
+def test_target_language_gate_keeps_repeated_target_markers_when_detector_is_wrong():
+    source = (
+        "He pointed toward the flames and whispered, 'Aviones... bombas... "
+        "mucho, mucho.' Then the houses collapsed."
+    )
+    candidate = (
+        "Señaló hacia las llamas y susurró: «Aviones... bombas... mucho, mucho». "
+        "Luego las casas se derrumbaron."
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=0,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"target_language_gate": True},
+    )
+
+    assert "source_language_residual" not in {
+        item.code for item in decision.rejections
+    }
 
 
 def test_target_language_gate_rejects_ambiguous_short_source_dialogue():

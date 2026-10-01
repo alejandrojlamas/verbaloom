@@ -66,6 +66,11 @@ _ARTIFACT_RE = re.compile(
 _NUMBER_RE = re.compile(
     r"(?<![\w])(?:\d+(?:[.,]\d+)?(?:\s*(?:x|X|×|\*)\s*10\^?-?\d+)?|10\^?-?\d+)(?![\w])"
 )
+_TIME_NUMBER_RE = re.compile(
+    r"(?<![\w])(?P<hour>[01]?\d|2[0-3])[.:](?P<minute>[0-5]\d)"
+    r"(?=\s*(?:[ap]\s*\.?\s*m\s*\.?|h(?:oras?)?|hours?|hrs?))",
+    re.IGNORECASE,
+)
 _DECADE_NUMBER_RE = re.compile(r"(?<![\w])(\d{3,4})s\b", re.IGNORECASE)
 _ENGLISH_OCR_I_AFTER_CUE_RE = re.compile(
     r"\bthe\s+rest\s+(?P<token>1)(?=\s+suppose\b)",
@@ -1549,10 +1554,19 @@ def _copied_source_language_phrases(
             target_code = _language_code(_language_key(target_key))
             if (
                 len(surfaces) <= 4
-                and detected_code != source_code
                 and (
                     detected_code == target_code
-                    or _has_distinct_target_language_marker(folded, target_key)
+                    or _has_repeated_target_language_marker_evidence(
+                        folded,
+                        target_key,
+                    )
+                    or (
+                        detected_code != source_code
+                        and _has_distinct_target_language_marker(
+                            folded,
+                            target_key,
+                        )
+                    )
                 )
             ):
                 # A foreign-language source can deliberately contain a short
@@ -1676,9 +1690,10 @@ _DISTINCT_TARGET_LANGUAGE_MARKERS = {
     "spanish": {
         "al", "con", "cuando", "del", "desde", "el", "ella", "ellas",
         "ellos", "era", "es", "estaba", "está", "fue", "fueron", "había",
-        "la", "las", "lo", "los", "más", "para", "pero", "por", "pues",
-        "que", "se", "son", "sobre", "su", "sus", "también", "una",
-        "unas", "uno", "unos",
+        "la", "las", "lo", "los", "más", "mucha", "muchas", "mucho",
+        "muchos", "muy", "para", "pero", "por", "pues", "que", "se",
+        "son", "sobre", "su", "sus", "también", "una", "unas", "uno",
+        "unos",
     },
     "english": {
         "and", "are", "as", "at", "be", "but", "by", "for", "from",
@@ -1712,6 +1727,27 @@ def _has_distinct_target_language_marker(
     marker_key = aliases.get(normalized, normalized)
     markers = _DISTINCT_TARGET_LANGUAGE_MARKERS.get(marker_key, set())
     return any(token in markers for token in folded_tokens)
+
+
+def _has_repeated_target_language_marker_evidence(
+    folded_tokens: list[str],
+    target_key: str,
+) -> bool:
+    """Recognize a short phrase that already carries target-language grammar.
+
+    Statistical detectors are unreliable on telegraphic dialogue. Requiring at
+    least two marker occurrences keeps one ambiguous loanword insufficient while
+    accepting phrases such as repeated Spanish quantifiers.
+    """
+    normalized = _language_key(target_key)
+    aliases = {
+        "es": "spanish", "espanol": "spanish", "español": "spanish",
+        "en": "english",
+        "fr": "french", "francais": "french", "français": "french",
+    }
+    marker_key = aliases.get(normalized, normalized)
+    markers = _DISTINCT_TARGET_LANGUAGE_MARKERS.get(marker_key, set())
+    return sum(token in markers for token in folded_tokens) >= 2
 
 
 def _looks_like_dialogue_source_overlap(source_segment: str, phrase: str) -> bool:
@@ -3726,11 +3762,21 @@ def _check_paragraph_ratio(source_paragraphs: int, candidate_paragraphs: int, is
 def _extract_numbers(text: str, *, language: str = "") -> Counter[str]:
     value = text or ""
     ignored_ocr_spans = _probable_english_ocr_i_spans(value, language=language)
+    time_matches = list(_TIME_NUMBER_RE.finditer(value))
+    time_spans = [match.span() for match in time_matches]
     raw_tokens = [
+        f"{int(match.group('hour'))}:{match.group('minute')}"
+        for match in time_matches
+    ]
+
+    def overlaps_time(span: tuple[int, int]) -> bool:
+        return any(span[0] < end and span[1] > start for start, end in time_spans)
+
+    raw_tokens.extend(
         _normalize_number_token(match.group(0))
         for match in _NUMBER_RE.finditer(value)
-        if match.span() not in ignored_ocr_spans
-    ]
+        if match.span() not in ignored_ocr_spans and not overlaps_time(match.span())
+    )
     raw_tokens.extend(match.group(1) for match in _DECADE_NUMBER_RE.finditer(value))
     ignored = _isolated_page_number_tokens(value)
     tokens: list[str] = []
