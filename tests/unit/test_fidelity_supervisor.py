@@ -187,6 +187,30 @@ def test_english_ocr_one_used_as_pronoun_is_not_a_lost_quantity():
     )
 
     assert "numbers_lost" not in {issue.code for issue in decision.rejections}
+    assert "numbers_lost" not in {issue.code for issue in decision.warnings}
+
+
+def test_english_ocr_one_after_comma_is_not_a_lost_quantity():
+    source = (
+        "Being led through the house, 1 found an old man with a child about "
+        "7 years old beside the 5 books of Moses; the rest 1 suppose were witnesses."
+    )
+    candidate = (
+        "Al entrar en la casa, encontré a un anciano con un niño de unos 7 años "
+        "junto a los 5 libros de Moisés; supongo que los demás eran testigos."
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=6,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+
+    assert "numbers_lost" not in {issue.code for issue in decision.rejections}
+    assert "numbers_lost" not in {issue.code for issue in decision.warnings}
 
 
 def test_real_single_quantity_remains_protected_from_ocr_filter():

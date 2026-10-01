@@ -1979,6 +1979,15 @@ Return its complete {target_language} translation now."""
                 "✓ La cita residual se tradujo sin alterar el resto del fragmento.",
             )
         return repaired, combined_response, []
+    if log_callback:
+        rejection_codes = ", ".join(
+            issue.code for issue in repair_issues if issue.severity == "reject"
+        ) or "quality_gate"
+        log_callback(
+            "target_language_gate_span_repair_rejected",
+            "⚠️ La cita se tradujo, pero el fragmento aún requiere reparación "
+            f"por: {rejection_codes}.",
+        )
     return candidate_text, combined_response, list(
         remaining_gate_issues or gate_issues
     )

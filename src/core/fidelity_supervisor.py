@@ -68,12 +68,16 @@ _NUMBER_RE = re.compile(
 )
 _DECADE_NUMBER_RE = re.compile(r"(?<![\w])(\d{3,4})s\b", re.IGNORECASE)
 _ENGLISH_OCR_I_AS_ONE_RE = re.compile(
-    r"(?:^|[>;.?!\n])\s*(?P<token>1)(?=\s+(?:"
+    r"(?:^|[>,;:.?!()\n])\s*(?P<token>1)(?=\s+(?:"
     r"am|was|will|would|have|had|can|could|shall|should|may|might|must|"
     r"do|did|seek|know|think|believe|want|wish|need|hope|fear|remember|"
-    r"understand|suppose|mean|feel|see|hear|say|tell|ask|find|learn|"
+    r"understand|suppose|mean|feel|see|hear|say|tell|ask|find|found|learn|"
     r"choose|prefer|admire|agree|accept|refuse|promise|expect"
     r")\b)",
+    re.IGNORECASE,
+)
+_ENGLISH_OCR_I_AFTER_CUE_RE = re.compile(
+    r"\bthe\s+rest\s+(?P<token>1)(?=\s+suppose\b)",
     re.IGNORECASE,
 )
 _CITATION_RE = re.compile(r"\[(?:\d{1,4}(?:\s*[,;]\s*\d{1,4})*)\]")
@@ -3708,16 +3712,22 @@ def _extract_numbers(text: str, *, language: str = "") -> Counter[str]:
 def _probable_english_ocr_i_spans(text: str, *, language: str = "") -> set[tuple[int, int]]:
     """Locate isolated ``1`` glyphs that are almost certainly OCR for English ``I``.
 
-    The guard remains conservative: a token is ignored only at a clause boundary,
-    before a common first-person verb, and when the declared source language is
-    English. Real quantities such as ``1 mile`` or ``1 person`` remain protected.
+    The guard remains conservative: a token is ignored only at a clause boundary
+    (including comma-delimited historical prose), before a common first-person
+    verb, and when the declared source language is English. Real quantities such
+    as ``1 mile`` or ``1 person`` remain protected.
     """
     normalized_language = _language_key(language)
     if normalized_language not in {"english", "en"}:
         return set()
+    value = text or ""
     return {
         match.span("token")
-        for match in _ENGLISH_OCR_I_AS_ONE_RE.finditer(text or "")
+        for pattern in (
+            _ENGLISH_OCR_I_AS_ONE_RE,
+            _ENGLISH_OCR_I_AFTER_CUE_RE,
+        )
+        for match in pattern.finditer(value)
     }
 
 
