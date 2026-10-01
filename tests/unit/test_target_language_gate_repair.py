@@ -139,6 +139,45 @@ async def test_translation_repairs_embedded_third_language_quote_as_bounded_span
     assert "third language" in client.system_prompts[1]
 
 
+@pytest.mark.asyncio
+async def test_translation_repairs_question_terminated_quote_with_ocr_pronouns():
+    source = (
+        "[id0]'Voulez-vous entrer, monsieur?'[id1]1 went into the lemon-house. "
+        "The fellows 1 knew stayed outside, and 1 said that it was colder within."
+    )
+    candidate = (
+        "[id0]«Voulez-vous entrer, monsieur?»[id1]Entré en el invernadero de "
+        "limoneros. Los compañeros que conocía se quedaron fuera, y dije que "
+        "dentro hacía más frío."
+    )
+    client = SequenceClient([
+        f"<TRANSLATION>{candidate}</TRANSLATION>",
+        "<TRANSLATION>¿Quiere entrar, señor?</TRANSLATION>",
+    ])
+
+    translated = await generate_translation_request(
+        main_content=source,
+        context_before="",
+        context_after="",
+        previous_translation_context="",
+        source_language="English",
+        target_language="Spanish",
+        model="deepseek-v4-pro",
+        llm_client=client,
+        has_placeholders=True,
+        placeholder_format=("[id", "]"),
+        prompt_options={"quality_alert_model": "same"},
+    )
+
+    assert translated == (
+        "[id0]«¿Quiere entrar, señor?»[id1]Entré en el invernadero de "
+        "limoneros. Los compañeros que conocía se quedaron fuera, y dije que "
+        "dentro hacía más frío."
+    )
+    assert len(client.prompts) == 2
+    assert "third language" in client.system_prompts[1]
+
+
 def test_all_caps_retry_normalizes_prose_but_keeps_short_titles_and_names():
     source = (
         "[id0]INTO THE DEEP[id1]“AN ADVENTURE STORY, A ROMANCE, AND AN ECOLOGICAL "

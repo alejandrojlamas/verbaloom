@@ -1812,6 +1812,27 @@ _RESIDUAL_DETAIL_SPAN_RE = re.compile(
 )
 _QUOTE_OPENERS = {'"', "'", "“", "‘", "«", "‹"}
 _QUOTE_CLOSERS = {'"', "'", "”", "’", "»", "›"}
+_QUOTE_TERMINAL_PUNCTUATION = frozenset(".,;:!?…")
+
+
+def _has_quoted_span_boundaries(text: str, start: int, end: int) -> bool:
+    """Return whether a lexical span is enclosed by quotation marks.
+
+    Residual diagnostics intentionally report words without terminal
+    punctuation. Real dialogue commonly places ``?`` or ``!`` between the last
+    reported word and the closing quote, so inspect past that punctuation
+    without including it in the replacement span.
+    """
+    before = (text or "")[:start].rstrip()
+    after = (text or "")[end:].lstrip()
+    while after and after[0] in _QUOTE_TERMINAL_PUNCTUATION:
+        after = after[1:].lstrip()
+    return bool(
+        before
+        and before[-1] in _QUOTE_OPENERS
+        and after
+        and after[0] in _QUOTE_CLOSERS
+    )
 
 
 def _quoted_residual_spans(source_text: str, candidate_text: str, issues: list) -> list[str]:
@@ -1845,13 +1866,10 @@ def _quoted_residual_spans(source_text: str, candidate_text: str, issues: list) 
             candidate_match = span_pattern.search(candidate_text)
             if source_match is None or candidate_match is None:
                 continue
-            before = source_text[:source_match.start()].rstrip()
-            after = source_text[source_match.end():].lstrip()
-            if (
-                not before
-                or before[-1] not in _QUOTE_OPENERS
-                or not after
-                or after[0] not in _QUOTE_CLOSERS
+            if not _has_quoted_span_boundaries(
+                source_text,
+                source_match.start(),
+                source_match.end(),
             ):
                 continue
             span = candidate_match.group(0)
@@ -1938,6 +1956,15 @@ Return its complete {target_language} translation now."""
             or len(replacement) > max(80, len(span) * 4)
         ):
             continue
+        span_offset = working.find(span)
+        if span_offset >= 0:
+            trailing = working[span_offset + len(span):].lstrip()
+            if (
+                trailing
+                and trailing[0] in _QUOTE_TERMINAL_PUNCTUATION
+                and replacement[-1:] in _QUOTE_TERMINAL_PUNCTUATION
+            ):
+                replacement = replacement[:-1].rstrip()
         working = working.replace(span, replacement, 1)
 
     if working == candidate_text:

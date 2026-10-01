@@ -213,11 +213,75 @@ def test_english_ocr_one_after_comma_is_not_a_lost_quantity():
     assert "numbers_lost" not in {issue.code for issue in decision.warnings}
 
 
+def test_english_ocr_one_handles_placeholders_clause_cues_and_past_verbs():
+    source = (
+        "1 almost wished it were night. [id0]1 went inside, where the fellows "
+        "1 knew waited. When 1 warm my hands, till 1 have enough heat, then 1 "
+        "notice the fire; and 1 shook off the snow. ‘It is warmer,’ 1 said. "
+        "At night - 1 [id1]think - we will leave. February 1913."
+    )
+    candidate = (
+        "Casi deseé que fuera de noche. [id0]Entré, donde esperaban los compañeros "
+        "que conocía. Cuando me caliento las manos, hasta tener suficiente calor, "
+        "entonces noto el fuego; y me sacudí la nieve. «Hace más calor», dije. "
+        "Por la noche, creo [id1], nos iremos. Febrero de 1913."
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=6,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+
+    assert "numbers_lost" not in {issue.code for issue in decision.rejections}
+    assert "numbers_lost" not in {issue.code for issue in decision.warnings}
+
+
 def test_real_single_quantity_remains_protected_from_ocr_filter():
     decision = assess_fidelity(
         "There was 1 survivor after the storm.",
         "No hubo sobrevivientes después de la tormenta.",
         chunk_index=7,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+
+    assert "numbers_lost" in {issue.code for issue in decision.rejections}
+
+
+@pytest.mark.parametrize(
+    "source,candidate",
+    [
+        (
+            "Chapter 1 said nothing about the storm.",
+            "El capítulo no decía nada sobre la tormenta.",
+        ),
+        (
+            "I had 1 thought before the meeting.",
+            "Tuve una idea antes de la reunión.",
+        ),
+        (
+            "There was 1 can of food in the shelter.",
+            "Había comida en el refugio.",
+        ),
+        (
+            "1 can of food remained in the shelter.",
+            "Quedaba comida en el refugio.",
+        ),
+    ],
+)
+def test_english_ocr_filter_keeps_quantities_before_verb_like_words(
+    source,
+    candidate,
+):
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=8,
         phase="translation",
         source_language="English",
         target_language="Spanish",

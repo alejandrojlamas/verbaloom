@@ -67,19 +67,52 @@ _NUMBER_RE = re.compile(
     r"(?<![\w])(?:\d+(?:[.,]\d+)?(?:\s*(?:x|X|×|\*)\s*10\^?-?\d+)?|10\^?-?\d+)(?![\w])"
 )
 _DECADE_NUMBER_RE = re.compile(r"(?<![\w])(\d{3,4})s\b", re.IGNORECASE)
-_ENGLISH_OCR_I_AS_ONE_RE = re.compile(
-    r"(?:^|[>,;:.?!()\n])\s*(?P<token>1)(?=\s+(?:"
-    r"am|was|will|would|have|had|can|could|shall|should|may|might|must|"
-    r"do|did|seek|know|think|believe|want|wish|need|hope|fear|remember|"
-    r"understand|suppose|mean|feel|see|hear|say|tell|ask|find|found|learn|"
-    r"choose|prefer|admire|agree|accept|refuse|promise|expect"
-    r")\b)",
-    re.IGNORECASE,
-)
 _ENGLISH_OCR_I_AFTER_CUE_RE = re.compile(
     r"\bthe\s+rest\s+(?P<token>1)(?=\s+suppose\b)",
     re.IGNORECASE,
 )
+_ENGLISH_OCR_I_TOKEN_RE = re.compile(r"(?<![\w])(?P<token>1)(?![\w])")
+_ENGLISH_OCR_I_ADVERBS = frozenset({
+    "almost", "already", "also", "always", "even", "ever", "hardly",
+    "immediately", "just", "merely", "never", "often", "only", "perhaps",
+    "really", "simply", "sometimes", "still", "then", "usually",
+})
+_ENGLISH_OCR_I_VERBS = frozenset({
+    "accept", "accepted", "admire", "admired", "agree", "agreed", "am",
+    "ask", "asked", "believe", "believed", "can", "choose", "chose",
+    "could", "did", "do", "expect", "expected", "fear", "feared", "feel",
+    "felt", "find", "found", "gave", "go", "got", "had", "have", "hear",
+    "heard", "hope", "hoped", "know", "knew", "learn", "learned", "left",
+    "look", "looked", "made", "may", "mean", "meant", "might", "must",
+    "need", "needed", "notice", "noticed", "prefer", "preferred", "promise",
+    "promised", "read", "refuse", "refused", "remember", "remembered", "say",
+    "said", "saw", "see", "seek", "shall", "shook", "should", "suppose",
+    "supposed", "take", "tell", "think", "thought", "told", "understand",
+    "understood", "want", "wanted", "warm", "was", "watch", "watched", "went",
+    "will", "wish", "wished", "would", "write", "wrote",
+})
+_ENGLISH_OCR_I_STRONG_VERBS = frozenset({
+    "accepted", "admired", "agreed", "asked", "believed", "chose", "expected",
+    "feared", "felt", "found", "gave", "got", "heard", "hoped", "knew",
+    "learned", "left", "looked", "made", "meant", "needed", "noticed",
+    "preferred", "promised", "refused", "remembered", "said", "saw", "shook",
+    "supposed", "told", "understood", "wanted", "watched", "went", "wished",
+    "wrote",
+})
+_ENGLISH_OCR_I_CLAUSE_CUES = frozenset({
+    "after", "although", "and", "as", "because", "before", "but", "if",
+    "or", "since", "so", "than", "then", "though", "till", "unless", "until",
+    "when", "whenever", "where", "whereas", "while", "yet",
+})
+_ENGLISH_OCR_I_QUANTITY_CUES = frozenset({
+    "act", "approximately", "book", "chapter", "exactly", "figure", "had",
+    "has", "have", "item", "line", "no", "number", "only", "page", "part",
+    "route", "scene", "section", "table", "total", "volume", "with",
+})
+_ENGLISH_OCR_I_NOMINAL_VERBS = frozenset({
+    "can", "hope", "need", "promise", "thought", "watch", "will", "wish",
+})
+_ENGLISH_OCR_I_NOMINAL_FOLLOWERS = frozenset({"about", "for", "of", "to"})
 _CITATION_RE = re.compile(r"\[(?:\d{1,4}(?:\s*[,;]\s*\d{1,4})*)\]")
 _PLACEHOLDER_PATTERNS = (
     re.compile(r"\[id\d+\]", re.IGNORECASE),
@@ -3721,14 +3754,66 @@ def _probable_english_ocr_i_spans(text: str, *, language: str = "") -> set[tuple
     if normalized_language not in {"english", "en"}:
         return set()
     value = text or ""
-    return {
+    spans = {
         match.span("token")
-        for pattern in (
-            _ENGLISH_OCR_I_AS_ONE_RE,
-            _ENGLISH_OCR_I_AFTER_CUE_RE,
-        )
-        for match in pattern.finditer(value)
+        for match in _ENGLISH_OCR_I_AFTER_CUE_RE.finditer(value)
     }
+    for match in _ENGLISH_OCR_I_TOKEN_RE.finditer(value):
+        token_span = match.span("token")
+        if token_span in spans:
+            continue
+
+        tail = value[token_span[1]:]
+        tail = re.sub(
+            r"^(?:\s|\[id\d+\])*",
+            "",
+            tail,
+            flags=re.IGNORECASE,
+        )
+        following_words = _ordered_surface_tokens(tail)[:4]
+        word_index = 0
+        while (
+            word_index < len(following_words)
+            and following_words[word_index].casefold() in _ENGLISH_OCR_I_ADVERBS
+        ):
+            word_index += 1
+        if word_index >= len(following_words):
+            continue
+        verb = following_words[word_index].casefold()
+        if verb not in _ENGLISH_OCR_I_VERBS:
+            continue
+        next_word = (
+            following_words[word_index + 1].casefold()
+            if word_index + 1 < len(following_words)
+            else ""
+        )
+        if (
+            verb in _ENGLISH_OCR_I_NOMINAL_VERBS
+            and next_word in _ENGLISH_OCR_I_NOMINAL_FOLLOWERS
+        ):
+            continue
+
+        prefix = value[:token_span[0]].rstrip()
+        prefix_without_placeholders = re.sub(
+            r"\[id\d+\]",
+            " ",
+            prefix,
+            flags=re.IGNORECASE,
+        )
+        preceding_words = _ordered_surface_tokens(prefix_without_placeholders)
+        previous_word = preceding_words[-1].casefold() if preceding_words else ""
+        punctuation_boundary = bool(
+            not prefix
+            or unicodedata.category(prefix[-1]).startswith("P")
+        )
+        clause_cue = previous_word in _ENGLISH_OCR_I_CLAUSE_CUES
+        strong_verb_context = bool(
+            verb in _ENGLISH_OCR_I_STRONG_VERBS
+            and previous_word not in _ENGLISH_OCR_I_QUANTITY_CUES
+        )
+        if punctuation_boundary or clause_cue or strong_verb_context:
+            spans.add(token_span)
+    return spans
 
 
 def _extract_citations(text: str) -> Counter[str]:
