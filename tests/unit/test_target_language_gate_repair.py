@@ -102,6 +102,43 @@ async def test_translation_repairs_source_language_residue_before_outer_retry():
     assert "TARGET-LANGUAGE GATE REPAIR" in client.system_prompts[1]
 
 
+@pytest.mark.asyncio
+async def test_translation_repairs_embedded_third_language_quote_as_bounded_span():
+    source = (
+        "The rabbi spoke in Italian to the visitor: ‘Ecco Signior mio, Un "
+        "Miracolo di dio’; because the 7-year-old child immediately stopped crying."
+    )
+    candidate = (
+        "El rabino habló en italiano al visitante: «Ecco Signior mio, Un "
+        "Miracolo di dio»; porque el niño de 7 años dejó de llorar de inmediato."
+    )
+    client = SequenceClient([
+        f"<TRANSLATION>{candidate}</TRANSLATION>",
+        "<TRANSLATION>He aquí, señor mío, un milagro de Dios</TRANSLATION>",
+    ])
+
+    translated = await generate_translation_request(
+        main_content=source,
+        context_before="",
+        context_after="",
+        previous_translation_context="",
+        source_language="English",
+        target_language="Spanish",
+        model="deepseek-flash",
+        llm_client=client,
+        prompt_options={"quality_alert_model": "same"},
+    )
+
+    assert translated == (
+        "El rabino habló en italiano al visitante: «He aquí, señor mío, un "
+        "milagro de Dios»; porque el niño de 7 años dejó de llorar de inmediato."
+    )
+    assert "Ecco Signior" not in translated
+    assert "7 años" in translated
+    assert len(client.prompts) == 2
+    assert "third language" in client.system_prompts[1]
+
+
 def test_all_caps_retry_normalizes_prose_but_keeps_short_titles_and_names():
     source = (
         "[id0]INTO THE DEEP[id1]“AN ADVENTURE STORY, A ROMANCE, AND AN ECOLOGICAL "

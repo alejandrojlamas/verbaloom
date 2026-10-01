@@ -1807,6 +1807,183 @@ def _normalize_all_caps_prose_for_translation(text: str) -> str:
     return _ALL_CAPS_PROSE_RUN_RE.sub(normalize_run, text or "")
 
 
+_RESIDUAL_DETAIL_SPAN_RE = re.compile(
+    r"(?:^|;\s*)(.+?)\s+\((?:0(?:\.\d+)?|1(?:\.0+)?)\)(?=;\s*|$)"
+)
+_QUOTE_OPENERS = {'"', "'", "“", "‘", "«", "‹"}
+_QUOTE_CLOSERS = {'"', "'", "”", "’", "»", "›"}
+
+
+def _quoted_residual_spans(source_text: str, candidate_text: str, issues: list) -> list[str]:
+    """Extract actionable copied quotations from structured gate details.
+
+    Full-candidate repair is intentionally conservative, but it can lose an
+    unrelated number or placeholder while changing one quoted phrase. A copied
+    multiword quotation is safe to repair as a bounded span because punctuation
+    remains outside the replacement and the complete candidate is audited again.
+    """
+    spans: list[str] = []
+    for issue in issues or []:
+        if str(getattr(issue, "code", "")) != "source_language_residual":
+            continue
+        detail = str(getattr(issue, "detail", "") or "")
+        _prefix, marker, payload = detail.partition("residuos=")
+        if not marker:
+            continue
+        for match in _RESIDUAL_DETAIL_SPAN_RE.finditer(payload.strip()):
+            normalized_span = match.group(1).strip()
+            words = re.findall(r"[^\W\d_]+", normalized_span, flags=re.UNICODE)
+            if len(words) < 3:
+                continue
+            span_pattern = re.compile(
+                r"(?<!\w)" + r"[^\w]+".join(
+                    re.escape(word) for word in words
+                ) + r"(?!\w)",
+                flags=re.IGNORECASE | re.UNICODE,
+            )
+            source_match = span_pattern.search(source_text)
+            candidate_match = span_pattern.search(candidate_text)
+            if source_match is None or candidate_match is None:
+                continue
+            before = source_text[:source_match.start()].rstrip()
+            after = source_text[source_match.end():].lstrip()
+            if (
+                not before
+                or before[-1] not in _QUOTE_OPENERS
+                or not after
+                or after[0] not in _QUOTE_CLOSERS
+            ):
+                continue
+            span = candidate_match.group(0)
+            if span not in spans:
+                spans.append(span)
+    return spans[:3]
+
+
+def _strip_wrapping_quotes(text: str) -> str:
+    value = str(text or "").strip()
+    if (
+        len(value) >= 2
+        and value[0] in _QUOTE_OPENERS
+        and value[-1] in _QUOTE_CLOSERS
+    ):
+        return value[1:-1].strip()
+    return value
+
+
+async def _repair_quoted_residual_spans(
+    source_text: str,
+    candidate_text: str,
+    gate_issues: list,
+    *,
+    source_language: str,
+    target_language: str,
+    model: str,
+    client,
+    phase: str,
+    section: str,
+    prompt_options: Optional[dict],
+    log_callback=None,
+) -> Tuple[str, Optional[LLMResponse], list]:
+    """Translate only copied quoted spans, then re-run every normal gate."""
+    spans = _quoted_residual_spans(source_text, candidate_text, gate_issues)
+    if not spans:
+        return candidate_text, None, list(gate_issues or [])
+
+    working = candidate_text
+    combined_response: Optional[LLMResponse] = None
+    repair_model = _resolve_quality_alert_model(model, prompt_options)
+    for span in spans:
+        system_prompt = f"""You are a precision literary translator.
+
+Translate the supplied quoted prose into {target_language}. The quotation may
+be written in a third language embedded inside a {source_language} source; it
+must still be translated. Preserve meaning and register. Return only the
+translated words between {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT}, without
+quotation marks, notes, JSON, or any surrounding sentence."""
+        user_prompt = f"""Quoted span to translate:
+{span}
+
+Return its complete {target_language} translation now."""
+        if log_callback:
+            log_callback(
+                "target_language_gate_span_repair_request",
+                "🔄 Traduciendo una cita residual sin reescribir el resto del fragmento.",
+                data={
+                    "type": "target_language_gate_span_repair_request",
+                    "phase": phase,
+                    "model": repair_model,
+                    "primary_model": model,
+                },
+            )
+        response = await _generate_alert_repair(
+            client,
+            user_prompt,
+            system_prompt,
+            primary_model=model,
+            alert_model=repair_model,
+            phase="repair",
+        )
+        combined_response = _merge_llm_usage(combined_response, response)
+        replacement = (
+            client.extract_translation(response.content)
+            if response is not None
+            else None
+        )
+        replacement = _strip_wrapping_quotes(replacement or "")
+        if (
+            not replacement
+            or replacement.casefold() == span.casefold()
+            or "[id" in replacement
+            or len(replacement) > max(80, len(span) * 4)
+        ):
+            continue
+        working = working.replace(span, replacement, 1)
+
+    if working == candidate_text:
+        return candidate_text, combined_response, list(gate_issues or [])
+
+    repaired, output_scores, remaining_gate_issues, repair_issues, safe = (
+        _evaluate_target_language_repair_candidate(
+            working,
+            candidate_text=candidate_text,
+            source_text=source_text,
+            source_language=source_language,
+            target_language=target_language,
+            phase=f"{phase}_quoted_span_repair",
+            section=section,
+            prompt_options=prompt_options,
+            log_callback=log_callback,
+        )
+    )
+    _record_text_candidate(
+        prompt_options,
+        text=repaired,
+        source_text=source_text,
+        phase=f"{phase}_quoted_span_repair",
+        section=section,
+        source_language=source_language,
+        target_language=target_language,
+        issues=repair_issues,
+        extra_scores=output_scores,
+        response=combined_response,
+        decision="accepted" if safe else "retry",
+        model=repair_model,
+        source="target_language_gate_quoted_span_repair",
+        log_callback=log_callback,
+    )
+    if safe:
+        if log_callback:
+            log_callback(
+                "target_language_gate_span_repair_accepted",
+                "✓ La cita residual se tradujo sin alterar el resto del fragmento.",
+            )
+        return repaired, combined_response, []
+    return candidate_text, combined_response, list(
+        remaining_gate_issues or gate_issues
+    )
+
+
 def _evaluate_target_language_repair_candidate(
     repaired: str,
     *,
@@ -1879,6 +2056,24 @@ async def _maybe_repair_target_language_gate(
     """Repair a candidate rejected for source-language residue before retrying."""
     if not candidate_text or not gate_issues:
         return candidate_text, None, list(gate_issues or [])
+
+    quoted_candidate, quoted_response, quoted_issues = (
+        await _repair_quoted_residual_spans(
+            source_text,
+            candidate_text,
+            gate_issues,
+            source_language=source_language,
+            target_language=target_language,
+            model=model,
+            client=client,
+            phase=phase,
+            section=section,
+            prompt_options=prompt_options,
+            log_callback=log_callback,
+        )
+    )
+    if quoted_candidate != candidate_text and not quoted_issues:
+        return quoted_candidate, quoted_response, []
 
     normalized_source = _normalize_all_caps_prose_for_translation(source_text)
     caps_response: Optional[LLMResponse] = None
@@ -2047,6 +2242,7 @@ Source text for fidelity comparison:
         )
     )
     response = _merge_llm_usage(response, caps_response)
+    response = _merge_llm_usage(response, quoted_response)
     _record_text_candidate(
         prompt_options,
         text=repaired,

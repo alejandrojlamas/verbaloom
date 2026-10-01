@@ -9,7 +9,8 @@ from pathlib import Path
 from flask import Blueprint, request, jsonify
 
 from src.api.safe_payloads import client_safe_config, client_safe_logs
-from src.api.resume_schedule import clear_resume_schedule
+from src.api.resume_schedule import clear_resume_schedule, resume_schedule_from_config
+from src.api.translation_state import translation_lifecycle_guard
 from src.core.job_runtime_config import configure_editorial_guard_options
 from src.core.deepseek_pricing import (
     get_deepseek_pricing_status,
@@ -117,17 +118,41 @@ def _checkpoint_has_resumable_work(checkpoint_data):
     return True
 
 
+def _blocks_resume(translation_id, candidate_id, candidate_data):
+    """Return whether an in-memory job conflicts with a resume request.
+
+    A scheduled provider wait for the same job is replaceable: the persisted
+    price gate is checked before the replacement is published, and lifecycle
+    ownership makes the old waiter exit without demoting the new intent.
+    """
+    status = str((candidate_data or {}).get('status') or '').strip().lower()
+    if status not in {'running', 'queued', 'pricing_wait', 'provider_wait'}:
+        return False
+    if str(candidate_id) != str(translation_id):
+        return True
+    if status == 'pricing_wait':
+        # The live price policy is checked again before any state is changed.
+        return False
+    if status != 'provider_wait':
+        return True
+    schedule = resume_schedule_from_config((candidate_data or {}).get('config'))
+    return bool(schedule and schedule.resume_at_epoch > time.time())
+
+
 def _persist_manual_pause_request(state_manager, translation_id):
     """Persist user intent immediately so a server restart cannot revive it."""
-    job_data = state_manager.get_translation(translation_id) or {}
-    config = copy.deepcopy(job_data.get('config') or {})
-    config['_manual_pause_requested'] = True
-    config['_manual_pause_requested_at'] = time.time()
-    state_manager.set_translation_field(translation_id, 'config', config)
-    state_manager.set_translation_field(translation_id, 'pause_reason', 'manual')
-    checkpoint_manager = state_manager.checkpoint_manager
-    checkpoint_manager.update_job_config(translation_id, config)
-    checkpoint_manager.mark_paused(translation_id)
+    with translation_lifecycle_guard(state_manager):
+        job_data = state_manager.get_translation(translation_id) or {}
+        config = copy.deepcopy(job_data.get('config') or {})
+        config['_manual_pause_requested'] = True
+        config['_manual_pause_requested_at'] = time.time()
+        state_manager.set_translation_field(translation_id, 'config', config)
+        state_manager.set_translation_field(
+            translation_id, 'pause_reason', 'manual'
+        )
+        checkpoint_manager = state_manager.checkpoint_manager
+        checkpoint_manager.update_job_config(translation_id, config)
+        checkpoint_manager.mark_paused(translation_id)
 
 
 def _provider_default_endpoint(provider):
@@ -741,53 +766,82 @@ def create_translation_blueprint(
     @bp.route('/api/translation/<translation_id>/interrupt', methods=['POST'])
     def interrupt_translation_job(translation_id):
         """Interrupt a running translation job"""
-        if not state_manager.exists(translation_id):
-            return jsonify({"error": "Translation not found"}), 404
+        with translation_lifecycle_guard(state_manager):
+            if not state_manager.exists(translation_id):
+                return jsonify({"error": "Translation not found"}), 404
 
-        job_data = state_manager.get_translation(translation_id)
-        status = job_data.get('status')
-        if (
-            status in {'running', 'queued', 'pricing_wait', 'provider_wait', 'rate_limited'}
-            and callable(cancel_translation_handoff)
-        ):
-            cancel_translation_handoff(translation_id)
-            state_manager.set_translation_field(
-                translation_id, 'recovery_scheduled', False
+            job_data = state_manager.get_translation(translation_id)
+            status = job_data.get('status')
+            recovery_was_scheduled = bool(
+                state_manager.get_translation_field(
+                    translation_id, 'recovery_scheduled'
+                )
             )
-        if status in {'pricing_wait', 'provider_wait'}:
-            _persist_manual_pause_request(state_manager, translation_id)
-            state_manager.set_interrupted(translation_id, True)
-            state_manager.set_translation_field(translation_id, 'status', 'interrupted')
-            state_manager.set_translation_field(translation_id, 'resume_at_utc', None)
-            state_manager.set_translation_field(translation_id, 'resume_at_local', None)
-            state_manager.checkpoint_manager.mark_interrupted(translation_id)
-            if socketio:
-                socketio.emit(EVENT_TRANSLATION_UPDATE, {
-                    'translation_id': translation_id,
-                    'status': 'interrupted',
-                    'reason': 'manual',
-                    'log': 'Espera programada cancelada; el checkpoint se conservó.',
-                }, namespace='/')
-            return jsonify({
-                "message": "Scheduled provider wait cancelled. The checkpoint remains resumable."
-            }), 200
+            if status in {
+                'running', 'queued', 'pricing_wait', 'provider_wait', 'rate_limited'
+            }:
+                if callable(cancel_translation_handoff):
+                    cancel_translation_handoff(translation_id)
+                # Invalidate the owning generation before a stale daemon can
+                # clear or consume a replacement recovery.
+                state_manager.set_translation_field(
+                    translation_id, 'recovery_scheduled', False
+                )
+                state_manager.set_translation_field(
+                    translation_id, '_recovery_token', None
+                )
+            if status in {'pricing_wait', 'provider_wait'}:
+                _persist_manual_pause_request(state_manager, translation_id)
+                state_manager.set_interrupted(translation_id, True)
+                state_manager.set_translation_field(
+                    translation_id, 'status', 'interrupted'
+                )
+                state_manager.set_translation_field(
+                    translation_id, 'resume_at_utc', None
+                )
+                state_manager.set_translation_field(
+                    translation_id, 'resume_at_local', None
+                )
+                state_manager.checkpoint_manager.mark_interrupted(translation_id)
+                if socketio:
+                    socketio.emit(EVENT_TRANSLATION_UPDATE, {
+                        'translation_id': translation_id,
+                        'status': 'interrupted',
+                        'reason': 'manual',
+                        'log': 'Espera programada cancelada; el checkpoint se conservó.',
+                    }, namespace='/')
+                return jsonify({
+                    "message": "Scheduled provider wait cancelled. The checkpoint remains resumable."
+                }), 200
 
-        if status in ('running', 'queued'):
-            _persist_manual_pause_request(state_manager, translation_id)
-            state_manager.set_interrupted(translation_id, True)
-            return jsonify({
-                "message": "Interruption signal sent. Translation will stop after the current segment."
-            }), 200
+            if status in ('running', 'queued'):
+                _persist_manual_pause_request(state_manager, translation_id)
+                state_manager.set_interrupted(translation_id, True)
+                if recovery_was_scheduled:
+                    # A deterministic backoff has no worker left to publish the
+                    # terminal pause. Make it resumable before returning 200.
+                    state_manager.set_translation_field(
+                        translation_id, 'status', 'interrupted'
+                    )
+                    state_manager.checkpoint_manager.mark_interrupted(
+                        translation_id
+                    )
+                return jsonify({
+                    "message": "Interruption signal sent. Translation will stop after the current segment."
+                }), 200
 
-        if status == 'rate_limited':
-            # Cancels any in-flight auto-resume sleep and stops the UI from treating
-            # the job as still-active.
-            _persist_manual_pause_request(state_manager, translation_id)
-            state_manager.set_interrupted(translation_id, True)
-            state_manager.set_translation_field(translation_id, 'status', 'interrupted')
-            return jsonify({
-                "message": "Auto-resume cancelled. Translation marked interrupted; you can resume manually later."
-            }), 200
+            if status == 'rate_limited':
+                # Cancels any in-flight auto-resume sleep and stops the UI from
+                # treating the job as still active.
+                _persist_manual_pause_request(state_manager, translation_id)
+                state_manager.set_interrupted(translation_id, True)
+                state_manager.set_translation_field(
+                    translation_id, 'status', 'interrupted'
+                )
+                state_manager.checkpoint_manager.mark_interrupted(translation_id)
+                return jsonify({
+                    "message": "Auto-resume cancelled. Translation marked interrupted; you can resume manually later."
+                }), 200
 
         return jsonify({
             "message": "The translation is not in an interruptible state (e.g., already completed or failed)."
@@ -822,7 +876,7 @@ def create_translation_blueprint(
         active_translations = []
         for tid, tdata in all_translations.items():
             status = tdata.get('status')
-            if status in ['running', 'queued', 'pricing_wait', 'provider_wait']:
+            if _blocks_resume(translation_id, tid, tdata):
                 active_translations.append({
                     'id': tid,
                     'status': status,
@@ -866,14 +920,6 @@ def create_translation_blueprint(
         pricing_block = _deepseek_pricing_block(resume_provider, resume_endpoint)
         if pricing_block:
             return jsonify(pricing_block), 423
-
-        # Restore job into state manager
-        restored = state_manager.restore_job_from_checkpoint(
-            translation_id,
-            pending_resume=True,
-        )
-        if not restored:
-            return jsonify({"error": "Failed to restore job from checkpoint"}), 500
 
         # Get job config and add resume parameters
         job = checkpoint_data['job']
@@ -943,19 +989,54 @@ def create_translation_blueprint(
         if override_error is not None:
             return override_error
 
-        # Mark as running in database
-        state_manager.set_translation_field(translation_id, 'config', config)
-        state_manager.set_translation_field(translation_id, 'pause_reason', None)
-        state_manager.checkpoint_manager.update_job_config(translation_id, config)
-        state_manager.checkpoint_manager.mark_running(translation_id)
+        with translation_lifecycle_guard(state_manager):
+            # Recheck after filesystem and credential validation: an automatic
+            # recovery may have become active while this request was preparing.
+            active_now = [
+                (tid, tdata)
+                for tid, tdata in state_manager.get_all_translations().items()
+                if _blocks_resume(translation_id, tid, tdata)
+            ]
+            if active_now:
+                return jsonify({
+                    "error": "Cannot resume: active translation in progress",
+                    "message": "A translation became active while resume was being prepared. Refresh and try again.",
+                }), 409
 
-        # Start the translation job (the wrapper will inject dependencies)
-        start_result = start_translation_job(
-            translation_id,
-            config,
-            allow_handoff=True,
-            replace_handoff=True,
-        )
+            restored = state_manager.restore_job_from_checkpoint(
+                translation_id,
+                pending_resume=True,
+            )
+            if not restored:
+                return jsonify({
+                    "error": "Failed to restore job from checkpoint"
+                }), 500
+
+            state_manager.set_translation_field(
+                translation_id, 'recovery_scheduled', False
+            )
+            state_manager.set_translation_field(
+                translation_id, '_recovery_token', None
+            )
+            state_manager.set_translation_field(
+                translation_id, 'config', config
+            )
+            state_manager.set_translation_field(
+                translation_id, 'pause_reason', None
+            )
+            state_manager.checkpoint_manager.update_job_config(
+                translation_id, config
+            )
+            state_manager.checkpoint_manager.mark_running(translation_id)
+
+            # Publish the replacement while the old timer is fenced by the
+            # same lifecycle guard. The worker claims state after this exits.
+            start_result = start_translation_job(
+                translation_id,
+                config,
+                allow_handoff=True,
+                replace_handoff=True,
+            )
 
         return jsonify({
             "translation_id": translation_id,

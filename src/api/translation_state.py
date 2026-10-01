@@ -2,6 +2,7 @@
 Thread-safe translation state management
 """
 import atexit
+from contextlib import contextmanager
 import threading
 import time
 import copy
@@ -14,6 +15,24 @@ from src.persistence.checkpoint_manager import CheckpointManager
 
 if TYPE_CHECKING:
     from src.core.glossary import GlossaryStore
+
+
+@contextmanager
+def translation_lifecycle_guard(state_manager):
+    """Serialize short lifecycle transitions against state readers/writers.
+
+    Production state uses one re-entrant lock for each in-memory transition.
+    Exposing the same lock through this helper lets pause, resume, worker claim,
+    and timer publication make a multi-field decision atomically. Lightweight
+    embedders without the lock keep their existing single-threaded behavior.
+    Never hold this guard while waiting on a provider or a wall-clock deadline.
+    """
+    lock = getattr(state_manager, "_lock", None)
+    if lock is None:
+        yield
+        return
+    with lock:
+        yield
 
 
 _TRANSFORM_LABEL_TO_MODE = {

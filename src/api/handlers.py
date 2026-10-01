@@ -7,6 +7,7 @@ import os
 import tempfile
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -23,6 +24,7 @@ from src.api.resume_schedule import (
     with_resume_schedule,
 )
 from src.api.services.path_validator import PathValidator
+from src.api.translation_state import translation_lifecycle_guard
 from src.config import (
     AUTO_PAUSE_ON_RATE_LIMIT,
     MAX_TRANSLATION_ATTEMPTS,
@@ -120,6 +122,7 @@ _DEFAULT_MAX_WORKER_RECOVERIES = 2
 _PROVIDER_WAIT_BACKOFF_SECONDS = (60, 180, 600, 1800)
 
 _TRANSLATION_WORKER_SUPERVISOR = JobSupervisor()
+_RECOVERY_TOKEN_FIELD = "_recovery_token"
 
 
 def _strip_legacy_automatic_recovery_config(
@@ -598,6 +601,21 @@ async def _interruptible_provider_wait(
     )
 
 
+def _resume_schedule_matches(
+    config: Dict[str, Any] | None,
+    expected: ResumeSchedule,
+) -> bool:
+    """Return whether config still carries the schedule owned by this actor."""
+    current = resume_schedule_from_config(config)
+    if current is None:
+        return False
+    return (
+        abs(current.resume_at_epoch - expected.resume_at_epoch) < 0.001
+        and current.reason == expected.reason
+        and current.status == expected.status
+    )
+
+
 async def _honor_persisted_resume_schedule(
     translation_id: str,
     config: Dict[str, Any],
@@ -610,12 +628,6 @@ async def _honor_persisted_resume_schedule(
         return config, True
 
     checkpoint_manager = state_manager.get_checkpoint_manager()
-    canonical_config = with_resume_schedule(config, schedule)
-    if schedule.resume_at_epoch <= time.time():
-        ready_config = clear_resume_schedule(canonical_config)
-        state_manager.set_translation_field(translation_id, "config", ready_config)
-        checkpoint_manager.update_job_config(translation_id, ready_config)
-        return ready_config, True
 
     if schedule.reason == "deepseek_peak_pricing":
         destination = schedule.resume_at_local or schedule.resume_at_utc
@@ -631,45 +643,87 @@ async def _honor_persisted_resume_schedule(
         )
         activity_event = "provider_wait_restored"
 
-    state_manager.set_translation_field(translation_id, "config", canonical_config)
-    state_manager.set_translation_field(translation_id, "status", schedule.status)
-    state_manager.set_translation_field(translation_id, "interrupted", False)
-    state_manager.set_translation_field(translation_id, "pause_reason", schedule.reason)
-    state_manager.set_translation_field(
-        translation_id,
-        "resume_at_utc",
-        schedule.resume_at_utc,
-    )
-    state_manager.set_translation_field(
-        translation_id,
-        "resume_at_local",
-        schedule.resume_at_local,
-    )
-    waiting_stats = _apply_active_timing(
-        state_manager.get_translation_field(translation_id, "stats") or {}
-    )
-    waiting_stats.update({
-        "active_elapsed_before_run": waiting_stats.get(
-            "active_elapsed_seconds",
-            0.0,
-        ),
-        "live_status": wait_message,
-        "live_status_kind": "scheduled_pause",
-        "live_activity_event": activity_event,
-        "provider_retry_at": schedule.resume_at_epoch,
-        "eta_seconds": None,
-        "eta_lower_seconds": None,
-        "eta_upper_seconds": None,
-        "eta_status": "waiting",
-        "last_activity_at": time.time(),
-    })
-    state_manager.set_translation_field(translation_id, "stats", waiting_stats)
-    checkpoint_manager.mark_running(translation_id)
-    checkpoint_manager.update_job_config(translation_id, canonical_config)
-    checkpoint_manager.update_progress(
-        translation_id,
-        eta_timing=timing_checkpoint_from_stats(waiting_stats),
-    )
+    with translation_lifecycle_guard(state_manager):
+        if not state_manager.exists(translation_id):
+            return config, False
+        stored_config = state_manager.get_translation_field(
+            translation_id, "config"
+        )
+        current_config = dict(
+            config if stored_config is None else stored_config
+        )
+        if not _resume_schedule_matches(current_config, schedule):
+            # A manual resume or a newer recovery generation replaced this
+            # schedule. The stale worker must not publish any lifecycle state.
+            return current_config, False
+        if (
+            current_config.get("_manual_pause_requested")
+            or state_manager.get_translation_field(translation_id, "interrupted")
+        ):
+            state_manager.set_translation_field(
+                translation_id, "status", "interrupted"
+            )
+            checkpoint_manager.mark_interrupted(translation_id)
+            return current_config, False
+
+        canonical_config = with_resume_schedule(current_config, schedule)
+        if schedule.resume_at_epoch <= time.time():
+            ready_config = clear_resume_schedule(canonical_config)
+            state_manager.set_translation_field(
+                translation_id, "config", ready_config
+            )
+            state_manager.set_translation_field(translation_id, "status", "running")
+            state_manager.set_translation_field(translation_id, "pause_reason", None)
+            state_manager.set_translation_field(translation_id, "resume_at_utc", None)
+            state_manager.set_translation_field(translation_id, "resume_at_local", None)
+            checkpoint_manager.mark_running(translation_id)
+            checkpoint_manager.update_job_config(translation_id, ready_config)
+            return ready_config, True
+
+        state_manager.set_translation_field(
+            translation_id, "config", canonical_config
+        )
+        state_manager.set_translation_field(
+            translation_id, "status", schedule.status
+        )
+        state_manager.set_translation_field(
+            translation_id, "pause_reason", schedule.reason
+        )
+        state_manager.set_translation_field(
+            translation_id,
+            "resume_at_utc",
+            schedule.resume_at_utc,
+        )
+        state_manager.set_translation_field(
+            translation_id,
+            "resume_at_local",
+            schedule.resume_at_local,
+        )
+        waiting_stats = _apply_active_timing(
+            state_manager.get_translation_field(translation_id, "stats") or {}
+        )
+        waiting_stats.update({
+            "active_elapsed_before_run": waiting_stats.get(
+                "active_elapsed_seconds",
+                0.0,
+            ),
+            "live_status": wait_message,
+            "live_status_kind": "scheduled_pause",
+            "live_activity_event": activity_event,
+            "provider_retry_at": schedule.resume_at_epoch,
+            "eta_seconds": None,
+            "eta_lower_seconds": None,
+            "eta_upper_seconds": None,
+            "eta_status": "waiting",
+            "last_activity_at": time.time(),
+        })
+        state_manager.set_translation_field(translation_id, "stats", waiting_stats)
+        checkpoint_manager.mark_running(translation_id)
+        checkpoint_manager.update_job_config(translation_id, canonical_config)
+        checkpoint_manager.update_progress(
+            translation_id,
+            eta_timing=timing_checkpoint_from_stats(waiting_stats),
+        )
     emit_update(socketio, translation_id, {
         "status": schedule.status,
         "reason": schedule.reason,
@@ -687,23 +741,55 @@ async def _honor_persisted_resume_schedule(
         resume_at_epoch=schedule.resume_at_epoch,
     )
     if not wait_completed:
-        if state_manager.exists(translation_id) and state_manager.get_translation_field(
-            translation_id,
-            "interrupted",
-        ):
-            state_manager.set_translation_field(translation_id, "status", "interrupted")
-            checkpoint_manager.mark_interrupted(translation_id)
-        return canonical_config, False
+        with translation_lifecycle_guard(state_manager):
+            if not state_manager.exists(translation_id):
+                return canonical_config, False
+            current_config = dict(
+                state_manager.get_translation_field(translation_id, "config") or {}
+            )
+            schedule_owned = _resume_schedule_matches(current_config, schedule)
+            manual_pause = bool(current_config.get("_manual_pause_requested"))
+            if manual_pause or (
+                schedule_owned
+                and state_manager.get_translation_field(
+                    translation_id, "interrupted"
+                )
+            ):
+                state_manager.set_translation_field(
+                    translation_id, "status", "interrupted"
+                )
+                checkpoint_manager.mark_interrupted(translation_id)
+            # If ownership changed, an explicit resume already published a new
+            # durable intent. Never demote that row from this stale waiter.
+            return current_config, False
 
-    ready_config = clear_resume_schedule(canonical_config)
-    state_manager.set_translation_field(translation_id, "config", ready_config)
-    state_manager.set_translation_field(translation_id, "status", "running")
-    state_manager.set_translation_field(translation_id, "pause_reason", None)
-    state_manager.set_translation_field(translation_id, "resume_at_utc", None)
-    state_manager.set_translation_field(translation_id, "resume_at_local", None)
-    checkpoint_manager.mark_running(translation_id)
-    checkpoint_manager.update_job_config(translation_id, ready_config)
-    return ready_config, True
+    with translation_lifecycle_guard(state_manager):
+        if not state_manager.exists(translation_id):
+            return canonical_config, False
+        current_config = dict(
+            state_manager.get_translation_field(translation_id, "config") or {}
+        )
+        if not _resume_schedule_matches(current_config, schedule):
+            return current_config, False
+        if (
+            current_config.get("_manual_pause_requested")
+            or state_manager.get_translation_field(translation_id, "interrupted")
+        ):
+            state_manager.set_translation_field(
+                translation_id, "status", "interrupted"
+            )
+            checkpoint_manager.mark_interrupted(translation_id)
+            return current_config, False
+
+        ready_config = clear_resume_schedule(current_config)
+        state_manager.set_translation_field(translation_id, "config", ready_config)
+        state_manager.set_translation_field(translation_id, "status", "running")
+        state_manager.set_translation_field(translation_id, "pause_reason", None)
+        state_manager.set_translation_field(translation_id, "resume_at_utc", None)
+        state_manager.set_translation_field(translation_id, "resume_at_local", None)
+        checkpoint_manager.mark_running(translation_id)
+        checkpoint_manager.update_job_config(translation_id, ready_config)
+        return ready_config, True
 
 
 def _failed_chunk_recovery_exhausted_stats(
@@ -735,11 +821,6 @@ def _schedule_failed_chunk_recovery(
     socketio: Any,
 ) -> bool:
     """Schedule a fresh recovery worker without growing the worker stack."""
-    if not state_manager.exists(translation_id):
-        return False
-    if state_manager.get_translation_field(translation_id, 'recovery_scheduled'):
-        return True
-
     expected_status = 'provider_wait' if plan.get('transient') else 'running'
     recovery_scope = str(plan.get('scope') or 'worker')
     schedule = build_resume_schedule(
@@ -748,11 +829,26 @@ def _schedule_failed_chunk_recovery(
         status=expected_status,
     )
     scheduled_config = with_resume_schedule(plan['config'], schedule)
-    state_manager.set_translation_field(translation_id, 'recovery_scheduled', True)
-    state_manager.set_translation_field(translation_id, 'config', scheduled_config)
+    recovery_token = uuid.uuid4().hex
     checkpoint_manager = state_manager.get_checkpoint_manager()
-    checkpoint_manager.mark_running(translation_id)
-    checkpoint_manager.update_job_config(translation_id, scheduled_config)
+    with translation_lifecycle_guard(state_manager):
+        if not state_manager.exists(translation_id):
+            return False
+        if state_manager.get_translation_field(
+            translation_id, 'recovery_scheduled'
+        ):
+            return True
+        state_manager.set_translation_field(
+            translation_id, 'recovery_scheduled', True
+        )
+        state_manager.set_translation_field(
+            translation_id, _RECOVERY_TOKEN_FIELD, recovery_token
+        )
+        state_manager.set_translation_field(
+            translation_id, 'config', scheduled_config
+        )
+        checkpoint_manager.mark_running(translation_id)
+        checkpoint_manager.update_job_config(translation_id, scheduled_config)
 
     def _restart() -> None:
         if not wait_for_resume_schedule_sync(
@@ -760,37 +856,71 @@ def _schedule_failed_chunk_recovery(
             translation_id,
             schedule,
         ):
-            if state_manager.exists(translation_id):
+            with translation_lifecycle_guard(state_manager):
+                if (
+                    state_manager.exists(translation_id)
+                    and state_manager.get_translation_field(
+                        translation_id, _RECOVERY_TOKEN_FIELD
+                    ) == recovery_token
+                ):
+                    state_manager.set_translation_field(
+                        translation_id, 'recovery_scheduled', False
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, _RECOVERY_TOKEN_FIELD, None
+                    )
+            return
+        with translation_lifecycle_guard(state_manager):
+            if not state_manager.exists(translation_id):
+                return
+            if state_manager.get_translation_field(
+                translation_id, _RECOVERY_TOKEN_FIELD
+            ) != recovery_token:
+                return
+            if not state_manager.get_translation_field(
+                translation_id, 'recovery_scheduled'
+            ):
+                return
+            current_config = dict(
+                state_manager.get_translation_field(translation_id, 'config') or {}
+            )
+            if (
+                state_manager.get_translation_field(translation_id, 'interrupted')
+                or str(
+                    state_manager.get_translation_field(translation_id, 'status') or ''
+                ) != expected_status
+                or not _resume_schedule_matches(current_config, schedule)
+            ):
                 state_manager.set_translation_field(
-                    translation_id,
-                    'recovery_scheduled',
-                    False,
+                    translation_id, 'recovery_scheduled', False
                 )
-            return
-        if not state_manager.exists(translation_id):
-            return
-        if not state_manager.get_translation_field(
-            translation_id, 'recovery_scheduled'
-        ):
-            return
-        if state_manager.get_translation_field(translation_id, 'interrupted'):
-            state_manager.set_translation_field(translation_id, 'recovery_scheduled', False)
-            return
-        if str(state_manager.get_translation_field(translation_id, 'status') or '') != expected_status:
-            state_manager.set_translation_field(translation_id, 'recovery_scheduled', False)
-            return
-        ready_config = clear_resume_schedule(scheduled_config)
-        state_manager.set_translation_field(translation_id, 'recovery_scheduled', False)
-        state_manager.set_translation_field(translation_id, 'config', ready_config)
-        checkpoint_manager.update_job_config(translation_id, ready_config)
-        start_translation_job(
-            translation_id,
-            ready_config,
-            state_manager,
-            output_dir,
-            socketio,
-            allow_handoff=True,
-        )
+                state_manager.set_translation_field(
+                    translation_id, _RECOVERY_TOKEN_FIELD, None
+                )
+                return
+            ready_config = clear_resume_schedule(current_config)
+            state_manager.set_translation_field(
+                translation_id, 'recovery_scheduled', False
+            )
+            state_manager.set_translation_field(
+                translation_id, _RECOVERY_TOKEN_FIELD, None
+            )
+            state_manager.set_translation_field(
+                translation_id, 'config', ready_config
+            )
+            checkpoint_manager.update_job_config(translation_id, ready_config)
+            # Keep publication and worker handoff inside the lifecycle guard.
+            # A pause immediately after this point either cancels the queued
+            # handoff or is observed by the claimed worker; no workerless
+            # running window remains.
+            start_translation_job(
+                translation_id,
+                ready_config,
+                state_manager,
+                output_dir,
+                socketio,
+                allow_handoff=True,
+            )
 
     recovery_thread = threading.Thread(
         target=_restart,
@@ -1400,49 +1530,66 @@ def _claim_translation_worker(
     Pause/Resume from clearing the old worker's interrupt signal before that
     worker has exited.
     """
-    if not state_manager.exists(translation_id):
-        return None
-
     claimed_config = dict(config or {})
     explicit_resume = bool(
         claimed_config.pop("_explicit_resume_requested", False)
     )
-    current_config = (
-        state_manager.get_translation_field(translation_id, "config") or {}
-    )
-    manual_pause_requested = bool(current_config.get("_manual_pause_requested"))
-    interrupted = bool(
-        state_manager.get_translation_field(translation_id, "interrupted")
-    )
-    if manual_pause_requested or (interrupted and not explicit_resume):
-        state_manager.set_translation_field(translation_id, "status", "interrupted")
-        return None
+    with translation_lifecycle_guard(state_manager):
+        if not state_manager.exists(translation_id):
+            return None
 
-    if explicit_resume:
-        checkpoint_manager = state_manager.get_checkpoint_manager()
-        try:
-            fresh_checkpoint = checkpoint_manager.load_checkpoint(translation_id)
-            if fresh_checkpoint:
-                claimed_config["resume_from_index"] = max(
-                    0,
-                    int(fresh_checkpoint.get("resume_from_index") or 0),
+        current_config = (
+            state_manager.get_translation_field(translation_id, "config") or {}
+        )
+        manual_pause_requested = bool(
+            current_config.get("_manual_pause_requested")
+        )
+        interrupted = bool(
+            state_manager.get_translation_field(translation_id, "interrupted")
+        )
+        if manual_pause_requested or (interrupted and not explicit_resume):
+            state_manager.set_translation_field(
+                translation_id, "status", "interrupted"
+            )
+            return None
+
+        if explicit_resume:
+            checkpoint_manager = state_manager.get_checkpoint_manager()
+            try:
+                fresh_checkpoint = checkpoint_manager.load_checkpoint(translation_id)
+                if fresh_checkpoint:
+                    claimed_config["resume_from_index"] = max(
+                        0,
+                        int(fresh_checkpoint.get("resume_from_index") or 0),
+                    )
+            except Exception:
+                # The captured resume index remains a safe fallback. The normal
+                # checkpoint load will expose a real persistence failure.
+                pass
+            if not checkpoint_manager.update_job_config(
+                translation_id,
+                claimed_config,
+            ):
+                raise RuntimeError(
+                    "Could not persist resumed worker configuration"
                 )
-        except Exception:
-            # The captured resume index remains a safe fallback. The normal
-            # checkpoint load will expose a real persistence failure.
-            pass
-        if not checkpoint_manager.update_job_config(
-            translation_id,
-            claimed_config,
-        ):
-            raise RuntimeError("Could not persist resumed worker configuration")
-        if not checkpoint_manager.mark_running(translation_id):
-            raise RuntimeError("Could not claim durable resumed job state")
-        # Clear the in-memory fence only after the replacement worker owns the
-        # durable row. The previous worker has already exited at this point.
-        state_manager.set_translation_field(translation_id, "interrupted", False)
-        state_manager.set_translation_field(translation_id, "pause_reason", None)
-    return claimed_config
+            if not checkpoint_manager.mark_running(translation_id):
+                raise RuntimeError("Could not claim durable resumed job state")
+            # Clear the in-memory fence only after the replacement worker owns
+            # the durable row. The previous worker has already exited.
+            state_manager.set_translation_field(
+                translation_id, "interrupted", False
+            )
+            state_manager.set_translation_field(
+                translation_id, "pause_reason", None
+            )
+
+        # Publishing the claimed config under the same guard closes the window
+        # where a pause could be persisted and then overwritten by worker setup.
+        state_manager.set_translation_field(
+            translation_id, "config", claimed_config
+        )
+        return claimed_config
 
 
 async def perform_actual_translation(translation_id, config, state_manager, output_dir, socketio):
@@ -1456,6 +1603,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         output_dir (str): Output directory path
         socketio: SocketIO instance
     """
+    config, legacy_recovery_config_removed = (
+        _strip_legacy_automatic_recovery_config(config)
+    )
     config = _claim_translation_worker(
         translation_id,
         config,
@@ -1464,10 +1614,6 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     if config is None:
         return
 
-    config, legacy_recovery_config_removed = (
-        _strip_legacy_automatic_recovery_config(config)
-    )
-    state_manager.set_translation_field(translation_id, "config", config)
     config, schedule_ready = await _honor_persisted_resume_schedule(
         translation_id,
         config,
@@ -3379,120 +3525,175 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             config = with_resume_schedule(config, resume_schedule)
             _log_message_callback(wait_event, wait_msg)
 
-            # A pricing wait is active, recoverable work rather than a terminal
-            # provider error. Keep it visible across page refreshes.
-            state_manager.set_translation_field(translation_id, 'status', waiting_status)
-            state_manager.set_translation_field(translation_id, 'interrupted', False)
-            state_manager.set_translation_field(translation_id, 'pause_reason', pause_reason)
-            waiting_stats = _apply_active_timing(
-                state_manager.get_translation_field(translation_id, 'stats') or {}
-            )
-            waiting_stats.update({
-                'active_elapsed_before_run': waiting_stats.get(
-                    'active_elapsed_seconds', 0.0
-                ),
-                'live_status': wait_msg,
-                'live_status_kind': 'scheduled_pause',
-                'live_activity_event': wait_event,
-                'provider_retry_at': resume_schedule.resume_at_epoch,
-                'eta_seconds': None,
-                'eta_lower_seconds': None,
-                'eta_upper_seconds': None,
-                'eta_status': 'waiting',
-                'last_activity_at': time.time(),
-            })
-            if pricing_pause:
-                resume_at_utc = resume_schedule.resume_at_utc
-                resume_at_local = getattr(e, 'next_available_at_local', '')
+            with translation_lifecycle_guard(state_manager):
+                current_config = dict(
+                    state_manager.get_translation_field(
+                        translation_id, 'config'
+                    ) or {}
+                )
+                if (
+                    current_config.get('_manual_pause_requested')
+                    or state_manager.get_translation_field(
+                        translation_id, 'interrupted'
+                    )
+                ):
+                    state_manager.set_translation_field(
+                        translation_id, 'status', 'interrupted'
+                    )
+                    checkpoint_manager.mark_interrupted(translation_id)
+                    return
+
+                # A pricing wait is active, recoverable work rather than a
+                # terminal provider error. Publish it atomically with its
+                # durable schedule so a concurrent pause cannot be erased.
                 state_manager.set_translation_field(
-                    translation_id, 'resume_at_utc', resume_at_utc
+                    translation_id, 'status', waiting_status
                 )
                 state_manager.set_translation_field(
-                    translation_id, 'resume_at_local', resume_at_local
+                    translation_id, 'pause_reason', pause_reason
+                )
+                waiting_stats = _apply_active_timing(
+                    state_manager.get_translation_field(
+                        translation_id, 'stats'
+                    ) or {}
                 )
                 waiting_stats.update({
-                    'pricing_resume_at_utc': resume_at_utc,
-                    'pricing_resume_at_local': resume_at_local,
+                    'active_elapsed_before_run': waiting_stats.get(
+                        'active_elapsed_seconds', 0.0
+                    ),
+                    'live_status': wait_msg,
+                    'live_status_kind': 'scheduled_pause',
+                    'live_activity_event': wait_event,
+                    'provider_retry_at': resume_schedule.resume_at_epoch,
+                    'eta_seconds': None,
+                    'eta_lower_seconds': None,
+                    'eta_upper_seconds': None,
+                    'eta_status': 'waiting',
+                    'last_activity_at': time.time(),
                 })
-            state_manager.set_translation_field(translation_id, 'config', config)
-            checkpoint_manager.update_job_config(translation_id, config)
-            state_manager.set_translation_field(
-                translation_id, 'stats', waiting_stats
-            )
-            checkpoint_manager.update_progress(
-                translation_id,
-                eta_timing=timing_checkpoint_from_stats(waiting_stats),
-            )
-            emit_update(socketio, translation_id, {
-                'status': waiting_status,
-                'log': wait_msg,
-                'reason': pause_reason,
-                'resume_at_utc': resume_schedule.resume_at_utc,
-                'resume_at_local': resume_schedule.resume_at_local,
-                'display_timezone': resume_schedule.display_timezone,
-                'stats': waiting_stats,
-            }, state_manager)
+                if pricing_pause:
+                    resume_at_utc = resume_schedule.resume_at_utc
+                    resume_at_local = getattr(e, 'next_available_at_local', '')
+                    state_manager.set_translation_field(
+                        translation_id, 'resume_at_utc', resume_at_utc
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'resume_at_local', resume_at_local
+                    )
+                    waiting_stats.update({
+                        'pricing_resume_at_utc': resume_at_utc,
+                        'pricing_resume_at_local': resume_at_local,
+                    })
+                state_manager.set_translation_field(
+                    translation_id, 'config', config
+                )
+                checkpoint_manager.update_job_config(translation_id, config)
+                state_manager.set_translation_field(
+                    translation_id, 'stats', waiting_stats
+                )
+                checkpoint_manager.update_progress(
+                    translation_id,
+                    eta_timing=timing_checkpoint_from_stats(waiting_stats),
+                )
+                emit_update(socketio, translation_id, {
+                    'status': waiting_status,
+                    'log': wait_msg,
+                    'reason': pause_reason,
+                    'resume_at_utc': resume_schedule.resume_at_utc,
+                    'resume_at_local': resume_schedule.resume_at_local,
+                    'display_timezone': resume_schedule.display_timezone,
+                    'stats': waiting_stats,
+                }, state_manager)
 
-            wait_completed = await _interruptible_provider_wait(
+            await _interruptible_provider_wait(
                 state_manager,
                 translation_id,
                 wait_seconds,
                 resume_at_epoch=resume_schedule.resume_at_epoch,
             )
-            if not wait_completed and not state_manager.exists(translation_id):
-                return
+            with translation_lifecycle_guard(state_manager):
+                if not state_manager.exists(translation_id):
+                    return
+                current_config = dict(
+                    state_manager.get_translation_field(
+                        translation_id, 'config'
+                    ) or {}
+                )
+                schedule_owned = _resume_schedule_matches(
+                    current_config, resume_schedule
+                )
+                manual_pause = bool(
+                    current_config.get('_manual_pause_requested')
+                )
 
-            # A manual interrupt wins over provider recovery and keeps its own
-            # durable reason instead of being mislabeled as a rate-limit pause.
-            if state_manager.get_translation_field(translation_id, 'interrupted'):
-                _log_message_callback("rate_limit_auto_resume_cancelled",
-                    "🛑 Auto-resume cancelled by user; checkpoint preserved.")
-                state_manager.set_translation_field(
-                    translation_id, 'status', 'interrupted'
-                )
-                state_manager.set_translation_field(
-                    translation_id, 'pause_reason', 'manual'
-                )
-                checkpoint_manager.mark_interrupted(translation_id)
-                emit_update(socketio, translation_id, {
-                    'status': 'interrupted',
-                    'reason': 'manual',
-                    'log': "🛑 Reanudación automática cancelada por el usuario.",
-                }, state_manager)
-                return
-            else:
+                # A newer explicit resume clears/replaces the schedule. The old
+                # waiter must neither demote its SQLite row nor start old config.
+                if not schedule_owned and not manual_pause:
+                    return
+                if manual_pause or (
+                    schedule_owned
+                    and state_manager.get_translation_field(
+                        translation_id, 'interrupted'
+                    )
+                ):
+                    _log_message_callback(
+                        "rate_limit_auto_resume_cancelled",
+                        "🛑 Auto-resume cancelled by user; checkpoint preserved."
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'status', 'interrupted'
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'pause_reason', 'manual'
+                    )
+                    checkpoint_manager.mark_interrupted(translation_id)
+                    emit_update(socketio, translation_id, {
+                        'status': 'interrupted',
+                        'reason': 'manual',
+                        'log': "🛑 Reanudación automática cancelada por el usuario.",
+                    }, state_manager)
+                    return
+
                 cp_data = checkpoint_manager.load_checkpoint(translation_id)
                 if cp_data:
                     # Persist the provider-wait attempt so a repeated throttle
                     # uses progressive backoff after the handoff.
                     resume_index = int(cp_data['resume_from_index'])
                     if pricing_pause:
-                        # This wait has a deterministic end and does not change
-                        # the provider-throttle counter.
                         rate_limit_plan = _build_pricing_auto_resume_plan(
-                            config,
+                            current_config,
                             resume_index=resume_index,
                         )
                     else:
                         rate_limit_plan = _build_rate_limit_auto_resume_plan(
-                            config,
+                            current_config,
                             resume_index=resume_index,
                         )
                     new_config = rate_limit_plan["config"]
                     checkpoint_manager.mark_running(translation_id)
-                    checkpoint_manager.update_job_config(translation_id, new_config)
-                    state_manager.set_translation_field(translation_id, 'config', new_config)
-                    state_manager.set_translation_field(translation_id, 'status', 'running')
-                    state_manager.set_translation_field(translation_id, 'interrupted', False)
-                    state_manager.set_translation_field(translation_id, 'pause_reason', None)
-                    state_manager.set_translation_field(translation_id, 'resume_at_utc', None)
-                    state_manager.set_translation_field(translation_id, 'resume_at_local', None)
+                    checkpoint_manager.update_job_config(
+                        translation_id, new_config
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'config', new_config
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'status', 'running'
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'pause_reason', None
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'resume_at_utc', None
+                    )
+                    state_manager.set_translation_field(
+                        translation_id, 'resume_at_local', None
+                    )
                     emit_update(socketio, translation_id, {
                         'status': 'running',
                         'log': f"▶️ Auto-resuming from chunk {resume_index}..."
                     }, state_manager)
-                    # The supervisor queues this handoff until the current
-                    # worker has fully exited, preventing two checkpoint writers.
+                    # Queue the handoff before releasing lifecycle ownership.
                     start_translation_job(
                         translation_id,
                         new_config,
@@ -3507,9 +3708,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                         "el worker anterior se cerrará limpiamente.",
                     )
                     return
-                # No checkpoint available, fall through to the pause path below.
-                _log_message_callback("rate_limit_no_checkpoint",
-                    "⚠️ Auto-resume requested but no checkpoint found, falling back to pause.")
+
+                # No checkpoint available, fall through to the pause path.
+                config = current_config
+                _log_message_callback(
+                    "rate_limit_no_checkpoint",
+                    "⚠️ Auto-resume requested but no checkpoint found, falling back to pause."
+                )
 
         config = clear_resume_schedule(config)
         if state_manager.exists(translation_id):
