@@ -23,6 +23,7 @@ from src.core.candidate_result import CandidateResult, record_candidate_result
 from src.core.document_structure import (
     DocumentBlockClassifier,
     is_comma_delimited_bibliographic_record,
+    is_locator_index_identity_block,
 )
 from src.core.language_evidence import untranslated_source_pronouns
 from src.core.llm.exceptions import ContentRiskError
@@ -2515,6 +2516,17 @@ def _looks_like_preservable_name_index_echo(
     structured_context = str(
         (prompt_options or {}).get("_document_block_context") or ""
     ).strip().casefold()
+    if (
+        source_norm == candidate_norm
+        and structured_context in {"table", "catalog", "index"}
+    ):
+        identity_parts = [
+            _clean_structural_language_text(part)
+            for part in _PLACEHOLDER_PATTERNS[0].split(source or "")
+        ]
+        identity_parts = [part for part in identity_parts if part]
+        if is_locator_index_identity_block(identity_parts):
+            return True
     tokens = _ordered_surface_tokens(cleaned_source)
     max_tokens = (
         400

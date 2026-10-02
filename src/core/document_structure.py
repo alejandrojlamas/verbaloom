@@ -152,6 +152,7 @@ _BIBLIOGRAPHIC_LEAD_CONNECTORS = {
     "di",
     "du",
     "et",
+    "la",
     "of",
     "the",
     "van",
@@ -249,8 +250,7 @@ def is_locator_index_identity_fragment(value: str) -> bool:
     line = " ".join(str(value or "").split())
     if not line or len(line) > 10000:
         return False
-    if is_locator_index_entry(line):
-        return True
+    has_locator_entry = is_locator_index_entry(line)
     if "," not in line or re.search(r"[!?;:]", line):
         return False
 
@@ -286,6 +286,15 @@ def is_locator_index_identity_fragment(value: str) -> bool:
         )
         for match in re.finditer(pattern, line)
     }
+    embedded_ocr_name_tokens = {
+        match.group(1).casefold()
+        for pattern in (
+            r"\b[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ’'-]+,\s+"
+            r"([a-záéíóúüñ]+)\.\s+\d",
+            r"\b[A-ZÁÉÍÓÚÜÑ]\^([a-záéíóúüñ]+)\s*,",
+        )
+        for match in re.finditer(pattern, line)
+    }
     ordinary_lowercase = [
         word
         for word in words
@@ -295,13 +304,20 @@ def is_locator_index_identity_fragment(value: str) -> bool:
         and word.casefold() not in apostrophe_name_suffixes
         and word.casefold() not in missing_initial_names
         and word.casefold() not in missing_leading_name_tokens
+        and word.casefold() not in embedded_ocr_name_tokens
         and len(word) > 1
+        and not any(char.isupper() for char in word[1:])
         and not re.fullmatch(r"[ivxlcdm]+", word, re.IGNORECASE)
     ]
     if ordinary_lowercase:
         return False
     return (
-        bool(missing_initial_names or missing_leading_name_tokens)
+        has_locator_entry
+        or bool(
+            missing_initial_names
+            or missing_leading_name_tokens
+            or embedded_ocr_name_tokens
+        )
         or any(word[:1].isupper() for word in words)
     )
 

@@ -253,6 +253,16 @@ def test_locator_index_identity_block_accepts_split_table_fragments():
     assert is_locator_index_identity_fragment(
         "Hugo, Victor, 328 ahangir, the Great Mogul, 168,171 ames 1,172"
     ) is True
+    assert is_locator_index_identity_fragment(
+        "Morrison, lan. 559 Morton, Sir Thomas, 173"
+    ) is True
+    assert is_locator_index_identity_fragment(
+        "N^xrleon, Bonaparte, 254,278,285"
+    ) is True
+    assert is_locator_index_identity_fragment(
+        "Munro, H.H.fSaki’), 469 Munro, Ross, 566"
+    ) is True
+    assert is_locator_index_identity_fragment("Rios, Pedro de la, 111") is True
     assert is_locator_index_identity_block(entries) is True
 
 
