@@ -188,6 +188,47 @@ async def test_structure_recovery_inherits_critical_apparatus_context(monkeypatc
     )
 
 
+@pytest.mark.asyncio
+async def test_structure_recovery_preserves_identity_only_index_without_model(
+    monkeypatch,
+):
+    source = (
+        "[id0]Bramwell, James G., 595[id1]"
+        "Bride, Harold, 435[id2]"
+        "Campbell, Sir Colin, 339,347[id3]"
+    )
+    tag_map = {
+        "[id0]": "<p>",
+        "[id1]": "</p><p>",
+        "[id2]": "</p><p>",
+        "[id3]": "</p>",
+    }
+
+    async def unexpected_request(*_args, **_kwargs):
+        raise AssertionError("identity-only index entries must not call the model")
+
+    monkeypatch.setattr(
+        xhtml_translator,
+        "generate_translation_request",
+        unexpected_request,
+    )
+
+    result = await xhtml_translator._translate_structure_safe_fallback(
+        chunk_text=source,
+        local_tag_map=tag_map,
+        source_language="English",
+        target_language="Spanish",
+        model_name="test",
+        llm_client=object(),
+        log_callback=None,
+        context_manager=None,
+        prompt_options={"_document_block_context": "index"},
+        runtime_state={},
+    )
+
+    assert result == source
+
+
 def test_document_context_detects_index_from_xhtml_class_names():
     source = (
         "[id0]Granovetter, Mark[id1]Great Society[id2]"

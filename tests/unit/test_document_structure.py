@@ -2,6 +2,7 @@ from src.core.document_structure import (
     DocumentBlockClassifier,
     DocumentIR,
     is_locator_index_block,
+    is_locator_index_entry,
     normalize_document_structure,
     repair_structural_artifacts,
 )
@@ -223,6 +224,9 @@ def test_locator_index_block_recognizes_name_and_page_runs():
     ]
 
     assert is_locator_index_block(lines) is True
+    assert is_locator_index_entry("Bramwell, James G., 595") is True
+    assert is_locator_index_entry("Campbell, Sir Colin, 339,347") is True
+    assert is_locator_index_entry("Camel!, William, 211") is True
 
 
 def test_locator_index_block_rejects_numeric_narrative_lines():
@@ -233,6 +237,7 @@ def test_locator_index_block_rejects_numeric_narrative_lines():
     ]
 
     assert is_locator_index_block(lines) is False
+    assert is_locator_index_entry(lines[0]) is False
 
 
 def test_document_ir_exposes_llm_text_blocks_and_report():

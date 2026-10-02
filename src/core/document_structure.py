@@ -201,6 +201,25 @@ def is_comma_delimited_bibliographic_record(value: str) -> bool:
     return len(metadata_words) >= 3
 
 
+def is_locator_index_entry(value: str) -> bool:
+    """Return whether one entry contains only an identity and page locators."""
+    line = " ".join(str(value or "").split())
+    locator_match = _INDEX_LOCATOR_TRAILER_RE.search(line)
+    if not locator_match:
+        return False
+    prefix = line[:locator_match.start()].rstrip(" ,")
+    words = _TITLE_WORD_RE.findall(prefix)
+    if not words or "," not in prefix:
+        return False
+    title_words = sum(
+        1
+        for word in words
+        if word[:1].isupper()
+        or word.casefold() in _BIBLIOGRAPHIC_LEAD_CONNECTORS
+    )
+    return title_words >= max(1, int(len(words) * 0.65))
+
+
 def is_locator_index_block(lines: Iterable[str]) -> bool:
     """Recognize flattened analytical-index entries by their page locators."""
     entries = [" ".join(str(line or "").split()) for line in lines]
@@ -208,28 +227,9 @@ def is_locator_index_block(lines: Iterable[str]) -> bool:
     if len(entries) < 3:
         return False
 
-    matched = 0
-    name_shaped = 0
-    for line in entries:
-        locator_match = _INDEX_LOCATOR_TRAILER_RE.search(line)
-        if not locator_match:
-            continue
-        prefix = line[:locator_match.start()].rstrip(" ,")
-        words = _TITLE_WORD_RE.findall(prefix)
-        if not words or re.search(r"[!?;:]", prefix):
-            continue
-        matched += 1
-        title_words = sum(
-            1
-            for word in words
-            if word[:1].isupper()
-            or word.casefold() in _BIBLIOGRAPHIC_LEAD_CONNECTORS
-        )
-        if "," in prefix and title_words >= max(1, int(len(words) * 0.65)):
-            name_shaped += 1
-
+    name_shaped = sum(1 for line in entries if is_locator_index_entry(line))
     required = max(3, int(len(entries) * 0.60))
-    return matched >= required and name_shaped >= required
+    return name_shaped >= required
 
 
 @dataclass

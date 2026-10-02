@@ -102,6 +102,7 @@ from src.core.editorial_quality import infer_section_title
 from src.core.document_structure import (
     DocumentBlockClassifier,
     is_locator_index_block,
+    is_locator_index_entry,
 )
 from src.core.literary_continuity import (
     build_literary_continuity_block,
@@ -516,7 +517,21 @@ async def _translate_structure_safe_fallback(
         _semantic_text_from_placeholder_stream(part.text, part.tag_map)
         for part in content_parts
     ]
-    translations: Dict[int, str] = {}
+    inherited_context = str(
+        (prompt_options or {}).get("_document_block_context") or ""
+    ).strip().casefold()
+    document_context = inherited_context or _structure_recovery_document_context(
+        local_tag_map,
+        chunk_text,
+    )
+    translations: Dict[int, str] = {
+        index: source
+        for index, source in enumerate(clean_sources)
+        if document_context == "index" and is_locator_index_entry(source)
+    }
+    pending_indices = [
+        index for index in range(len(content_parts)) if index not in translations
+    ]
     call_budget = {"used": 0}
     batch_size = max(1, int(EPUB_STRUCTURE_RECOVERY_BATCH_SIZE))
     max_source_tokens = max(128, int(EPUB_STRUCTURE_RECOVERY_MAX_SOURCE_TOKENS))
@@ -533,7 +548,7 @@ async def _translate_structure_safe_fallback(
 
     planned_batches: List[List[int]] = []
     current_batch: List[int] = []
-    for index in range(len(content_parts)):
+    for index in pending_indices:
         proposed = current_batch + [index]
         estimated_tokens = estimate_tokens_with_margin(
             batch_payload(proposed),
@@ -555,20 +570,20 @@ async def _translate_structure_safe_fallback(
     # the base plan before later batches are even attempted.
     theoretical_binary_max = max(
         len(planned_batches),
-        (2 * len(content_parts)) - len(planned_batches),
+        (2 * len(pending_indices)) - len(planned_batches),
     )
     max_calls = min(
         theoretical_binary_max,
         len(planned_batches) + configured_repair_calls,
     )
-    inherited_context = str(
-        (prompt_options or {}).get("_document_block_context") or ""
-    ).strip().casefold()
-    document_context = inherited_context or _structure_recovery_document_context(
-        local_tag_map,
-        chunk_text,
-    )
     if log_callback:
+        if translations:
+            log_callback(
+                "phase2_structure_safe_identity_preserved",
+                "Recuperación estructural conservó "
+                f"{len(translations)} entrada(s) de índice compuestas sólo por "
+                "identidades y localizadores.",
+            )
         log_callback(
             "phase2_structure_safe_plan",
             f"Recuperación estructural planificada en {len(planned_batches)} lote(s) "
