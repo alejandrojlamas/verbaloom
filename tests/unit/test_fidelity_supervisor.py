@@ -3936,6 +3936,42 @@ def test_target_language_gate_accepts_exact_index_with_missing_ocr_initials():
     assert decision.accepted is True
     assert not decision.rejections
 
+    semantic_source = source
+    for index in range(12):
+        semantic_source = semantic_source.replace(f"[id{index}]", " ")
+    semantic_source += (
+        " Morrison, lan. 559 N^xrleon, Bonaparte, 254,278,285 "
+        "Miller, Webb, xxx, 495,501"
+    )
+    assert _looks_like_preservable_name_index_echo(
+        semantic_source,
+        semantic_source,
+        prompt_options=options,
+    ) is True
+
+    multiline_source = source
+    for index in range(12):
+        multiline_source = multiline_source.replace(f"[id{index}]", "\n")
+    assert _looks_like_preservable_name_index_echo(
+        multiline_source,
+        multiline_source,
+        prompt_options=options,
+    ) is True
+
+    split_ocr_source = "\n".join(
+        [
+            "Schmeling, Max, 523",
+            "Schnirdel, Hu Ider ike, 92",
+            "Scot, Edmund, 159",
+            "Scott, Captain Robert, 431",
+        ]
+    )
+    assert _looks_like_preservable_name_index_echo(
+        split_ocr_source,
+        split_ocr_source.replace("\n", " "),
+        prompt_options=options,
+    ) is True
+
 
 def test_index_ocr_initial_exemption_does_not_hide_subject_prose():
     source = (

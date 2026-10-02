@@ -260,6 +260,9 @@ def test_locator_index_identity_block_accepts_split_table_fragments():
         "N^xrleon, Bonaparte, 254,278,285"
     ) is True
     assert is_locator_index_identity_fragment(
+        "Schnirdel, Hu Ider ike, 92"
+    ) is True
+    assert is_locator_index_identity_fragment(
         "Munro, H.H.fSaki’), 469 Munro, Ross, 566"
     ) is True
     assert is_locator_index_identity_fragment("Rios, Pedro de la, 111") is True
@@ -281,6 +284,9 @@ def test_locator_index_identity_block_rejects_translatable_subject_entry():
     ) is False
     assert is_locator_index_identity_fragment(
         "Hugo, Victor, 328 children, protection of, 83"
+    ) is False
+    assert is_locator_index_identity_fragment(
+        "History, The New age, 83"
     ) is False
     assert is_locator_index_identity_block(entries) is False
 

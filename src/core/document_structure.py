@@ -295,6 +295,20 @@ def is_locator_index_identity_fragment(value: str) -> bool:
         )
         for match in re.finditer(pattern, line)
     }
+    split_ocr_name_tokens = {
+        match.group(1).casefold()
+        for match in re.finditer(
+            # OCR can split one forename into capitalized fragments plus a
+            # short lower-case tail (for example, ``Hu Ider ike``). Requiring
+            # a short leading fragment, another capitalized fragment and a
+            # numeric locator keeps ordinary subject-index prose out.
+            r"\b[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ’'-]+,\s+"
+            r"[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]?\s+"
+            r"(?:[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ’'-]+\s+){1,4}"
+            r"([a-záéíóúüñ]{2,4})\s*,\s*\d",
+            line,
+        )
+    }
     ordinary_lowercase = [
         word
         for word in words
@@ -305,6 +319,7 @@ def is_locator_index_identity_fragment(value: str) -> bool:
         and word.casefold() not in missing_initial_names
         and word.casefold() not in missing_leading_name_tokens
         and word.casefold() not in embedded_ocr_name_tokens
+        and word.casefold() not in split_ocr_name_tokens
         and len(word) > 1
         and not any(char.isupper() for char in word[1:])
         and not re.fullmatch(r"[ivxlcdm]+", word, re.IGNORECASE)
@@ -317,6 +332,7 @@ def is_locator_index_identity_fragment(value: str) -> bool:
             missing_initial_names
             or missing_leading_name_tokens
             or embedded_ocr_name_tokens
+            or split_ocr_name_tokens
         )
         or any(word[:1].isupper() for word in words)
     )

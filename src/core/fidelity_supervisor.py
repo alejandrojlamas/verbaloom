@@ -2511,6 +2511,11 @@ def _looks_like_preservable_name_index_echo(
     if not cleaned_source or not cleaned_candidate:
         return False
 
+    structural_source = _clean_structural_language_text(
+        source,
+        strip_language_neutral_literals=False,
+    )
+
     source_norm = _normalize_text(cleaned_source)
     candidate_norm = _normalize_text(cleaned_candidate)
     structured_context = str(
@@ -2521,10 +2526,19 @@ def _looks_like_preservable_name_index_echo(
         and structured_context in {"table", "catalog", "index"}
     ):
         identity_parts = [
-            _clean_structural_language_text(part)
+            _clean_structural_language_text(
+                part,
+                strip_language_neutral_literals=False,
+            )
             for part in _PLACEHOLDER_PATTERNS[0].split(source or "")
         ]
         identity_parts = [part for part in identity_parts if part]
+        if len(identity_parts) < 3:
+            identity_parts = [
+                line.strip()
+                for line in structural_source.splitlines()
+                if line.strip()
+            ]
         if is_locator_index_identity_block(identity_parts):
             return True
     tokens = _ordered_surface_tokens(cleaned_source)
@@ -2565,6 +2579,15 @@ def _looks_like_preservable_name_index_echo(
                 r"(?:^|\d[\d,]*)\s+([a-záéíóúüñ]+)\s+"
                 r"(?:[IVXLCDM]+|\d+)\s*,\s*\d"
             ),
+        )
+        for match in re.finditer(pattern, cleaned_source)
+    }
+    embedded_ocr_name_tokens = {
+        match.group(1).casefold()
+        for pattern in (
+            r"\b[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ’'-]+,\s+"
+            r"([a-záéíóúüñ]+)\.\s+\d",
+            r"\b[A-ZÁÉÍÓÚÜÑ]\^([a-záéíóúüñ]+)\s*,",
         )
         for match in re.finditer(pattern, cleaned_source)
     }
@@ -2612,8 +2635,16 @@ def _looks_like_preservable_name_index_echo(
         if (
             structured_context in {"table", "catalog", "index"}
             and folded in (
-                missing_initial_name_tokens | missing_leading_name_tokens
+                missing_initial_name_tokens
+                | missing_leading_name_tokens
+                | embedded_ocr_name_tokens
             )
+        ):
+            title_anchors += 1
+            continue
+        if (
+            structured_context in {"table", "catalog", "index"}
+            and re.fullmatch(r"[ivxlcdm]+", token, re.IGNORECASE)
         ):
             title_anchors += 1
             continue
