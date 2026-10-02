@@ -2529,6 +2529,24 @@ def _looks_like_preservable_name_index_echo(
     structured_context = str(
         (prompt_options or {}).get("_document_block_context") or ""
     ).strip().casefold()
+    quoted_translatable_tokens: set[str] = set()
+    if structured_context in {"table", "catalog", "index"}:
+        for quoted_span in re.findall(
+            r"[\"\u201c]([^\"\u201d]{3,500})[\"\u201d]",
+            cleaned_source,
+        ):
+            quoted_tokens = _ordered_surface_tokens(quoted_span)
+            uppercase_words = [
+                token
+                for token in quoted_tokens
+                if len(token) >= 2 and token.isupper()
+            ]
+            if len(uppercase_words) >= 3:
+                quoted_translatable_tokens.update(
+                    token.casefold()
+                    for token in uppercase_words
+                    if token.casefold() not in _WORK_TITLE_CONNECTORS
+                )
     similarity = _text_similarity(source_norm, candidate_norm)
     if (
         similarity < 0.90
@@ -2553,6 +2571,9 @@ def _looks_like_preservable_name_index_echo(
     non_name_lexemes: list[str] = []
     for token in tokens:
         folded = token.casefold()
+        if folded in quoted_translatable_tokens:
+            non_name_lexemes.append(token)
+            continue
         if (
             structured_context in {"table", "catalog", "index"}
             and folded in _INDEX_TRANSLATABLE_QUALIFIERS
@@ -2645,6 +2666,7 @@ def _looks_like_preservable_name_index_echo(
         return (
             bool(missing_source_tokens)
             and set(missing_source_tokens) <= allowed_missing_tokens
+            and quoted_translatable_tokens.isdisjoint(candidate_tokens)
             and _extract_numbers(cleaned_source) == _extract_numbers(cleaned_candidate)
         )
     return bool(non_name_lexemes) and all(

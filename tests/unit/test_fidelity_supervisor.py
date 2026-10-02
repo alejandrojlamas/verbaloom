@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from src.core.fidelity_supervisor import (
     FidelityReport,
     _is_bibliographic_registry_overlap,
+    _looks_like_preservable_name_index_echo,
     _normalize_structured_index_audit_policy,
     _profile_fidelity_audit_context,
     apply_fidelity_audit_assessment,
@@ -3848,6 +3849,62 @@ def test_target_language_gate_rejects_exact_subject_index_with_ordinary_words():
         "untranslated_source",
         "target_language_missing",
     }
+
+
+def test_target_language_gate_accepts_translated_all_caps_quote_after_name_index():
+    source = (
+        "Wavrin, Jehan de, 68[id0]Wellesley, Sir Arthur, 267[id1]"
+        "Wellington, Duke of, 281,305[id2]Wendel, Else, 584[id3]"
+        "Werth, Alexander, 576,598,600[id4]Wesley, John, 223[id5]"
+        "Whitman, Walt, 371[id6]Wordsworth, Dorothy, 256[id7]"
+        "Wordsworth, William, 256[id8]Yurovsky, Commandant, 485[id9]"
+        "Zaharoff, Sir Basil, 444[id10]Zeiser, Benno, 575[id11]"
+        "“A FOUND TREASURE...MAKES READING HISTORY A WONDROUS HOBBY!” "
+        "[id12]Chicago Tribune[id13]"
+    )
+    candidate = source.replace(
+        "A FOUND TREASURE...MAKES READING HISTORY A WONDROUS HOBBY!",
+        "UN TESORO ENCONTRADO... LEER HISTORIA, UN PASATIEMPO MARAVILLOSO",
+    )
+    options = {"_document_block_context": "index"}
+
+    assert _looks_like_preservable_name_index_echo(
+        source,
+        candidate,
+        prompt_options=options,
+    ) is True
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=1,
+        phase="translation_alignment_fallback",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options=options,
+    )
+
+    assert decision.accepted is True
+    assert not decision.rejections
+
+
+def test_name_index_exemption_requires_all_caps_quote_to_be_translated():
+    source = (
+        "Wavrin, Jehan de, 68[id0]Wellesley, Sir Arthur, 267[id1]"
+        "Wellington, Duke of, 281,305[id2]Wendel, Else, 584[id3]"
+        "Werth, Alexander, 576,598,600[id4]Wesley, John, 223[id5]"
+        "Whitman, Walt, 371[id6]Wordsworth, Dorothy, 256[id7]"
+        "Wordsworth, William, 256[id8]Yurovsky, Commandant, 485[id9]"
+        "Zaharoff, Sir Basil, 444[id10]Zeiser, Benno, 575[id11]"
+        "“A FOUND TREASURE...MAKES READING HISTORY A WONDROUS HOBBY!” "
+        "[id12]Chicago Tribune[id13]"
+    )
+    partially_translated = source.replace("TREASURE", "TESORO")
+
+    assert _looks_like_preservable_name_index_echo(
+        source,
+        partially_translated,
+        prompt_options={"_document_block_context": "index"},
+    ) is False
 
 
 def test_target_language_gate_allows_metadata_localization_in_citation_only_bibliography():
