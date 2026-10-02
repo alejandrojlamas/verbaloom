@@ -90,6 +90,77 @@ def test_document_context_detects_further_reading_filename_and_reference_class()
     )
 
 
+def test_document_context_detects_legacy_comma_delimited_bibliography():
+    source = (
+        "[id0]S. A. Handford, Penguin, 1951[id1]"
+        "Cameron, James, What a Way to Run the Tribe, Macmillan, 1968[id2]"
+        "Churchill, Winston, My Early Life, Heinemann, 1930[id3]"
+    )
+    tag_map = {
+        "[id0]": "<p>",
+        "[id1]": "</p><p>",
+        "[id2]": "</p><p>",
+        "[id3]": "</p>",
+    }
+
+    assert (
+        xhtml_translator._structure_recovery_document_context(
+            tag_map,
+            source,
+            "main-13.xhtml",
+        )
+        == "critical_apparatus"
+    )
+
+
+@pytest.mark.asyncio
+async def test_structure_recovery_inherits_critical_apparatus_context(monkeypatch):
+    source = (
+        "[id0]S. A. Handford, Penguin, 1951[id1]"
+        "Cameron, James, What a Way to Run the Tribe, Macmillan, 1968[id2]"
+    )
+    tag_map = {
+        "[id0]": "<p>",
+        "[id1]": "</p><p>",
+        "[id2]": "</p>",
+    }
+    observed_options = []
+
+    async def fake_request(text, **kwargs):
+        observed_options.append(dict(kwargs.get("prompt_options") or {}))
+        return text
+
+    monkeypatch.setattr(
+        xhtml_translator,
+        "generate_translation_request",
+        fake_request,
+    )
+
+    result = await xhtml_translator._translate_structure_safe_fallback(
+        chunk_text=source,
+        local_tag_map=tag_map,
+        source_language="English",
+        target_language="Spanish",
+        model_name="test",
+        llm_client=object(),
+        log_callback=None,
+        context_manager=None,
+        prompt_options={"_document_block_context": "critical_apparatus"},
+        runtime_state={},
+    )
+
+    assert result == source
+    assert observed_options
+    assert all(
+        options.get("_document_block_context") == "critical_apparatus"
+        for options in observed_options
+    )
+    assert all(
+        "BIBLIOGRAPHY/NOTES POLICY" in options.get("custom_instructions", "")
+        for options in observed_options
+    )
+
+
 def test_document_context_detects_index_from_xhtml_class_names():
     source = (
         "[id0]Granovetter, Mark[id1]Great Society[id2]"

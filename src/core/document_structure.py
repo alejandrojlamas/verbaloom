@@ -136,10 +136,66 @@ _PUBLISHER_YEAR_CITATION_RE = re.compile(
     r":\s*[^.;\n]{2,100},\s*(?:1[5-9]\d{2}|20\d{2})\b",
     re.IGNORECASE,
 )
+_BIBLIOGRAPHIC_TERMINAL_YEAR_RE = re.compile(
+    r"(?:1[5-9]\d{2}|20\d{2})"
+    r"(?:\s*[-\u2013\u2014]\s*(?:\d{2}|1[5-9]\d{2}|20\d{2}))?"
+    r"[.)]?\s*$"
+)
+_BIBLIOGRAPHIC_LEAD_CONNECTORS = {
+    "and",
+    "de",
+    "del",
+    "der",
+    "des",
+    "di",
+    "du",
+    "et",
+    "of",
+    "the",
+    "van",
+    "von",
+    "y",
+}
 _FORMULA_ONLY_RE = re.compile(
     r"^\s*(?:[$]{1,2})?[\w\s{}()[\].,+\-*/^_=<>≤≥∑∫√πα-ωΑ-Ω·×%]+(?:[$]{1,2})?\s*$"
 )
 _TITLE_WORD_RE = re.compile(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+")
+
+
+def is_comma_delimited_bibliographic_record(value: str) -> bool:
+    """Recognize legacy author/title/publisher/year citation records.
+
+    Older EPUBs often encode bibliographies as comma-delimited paragraphs
+    rather than modern ``Place: Publisher, Year`` records. Requiring a colon
+    makes those lists look like numeric tables and leaves identity-only rows in
+    an impossible translation loop. The lead field must still look like a name
+    or published title so ordinary prose ending in a year is excluded.
+    """
+    line = " ".join(str(value or "").split())
+    if (
+        not line
+        or len(line) > 600
+        or not _BIBLIOGRAPHIC_TERMINAL_YEAR_RE.search(line)
+    ):
+        return False
+
+    fields = [field.strip() for field in line.split(",")]
+    if len(fields) < 3 or any(not field for field in fields[:2]):
+        return False
+
+    lead = re.sub(r"[’']s\b", "", fields[0], flags=re.IGNORECASE)
+    lead_words = _TITLE_WORD_RE.findall(lead)
+    if not lead_words or len(lead_words) > 18:
+        return False
+    if any(
+        word[:1].islower()
+        and word.casefold() not in _BIBLIOGRAPHIC_LEAD_CONNECTORS
+        for word in lead_words
+    ):
+        return False
+
+    metadata_words = _TITLE_WORD_RE.findall(" ".join(fields[:-1]))
+    return len(metadata_words) >= 3
 
 
 @dataclass
@@ -496,6 +552,15 @@ def _is_critical_apparatus_block(text: str, lines: list[str]) -> bool:
     backlink_count = len(_NOTE_BACKLINK_RE.findall(text))
     quoted_title_count = len(re.findall(r"[“\"]([^”\"]{8,220})[”\"]", text))
     publisher_year_count = len(_PUBLISHER_YEAR_CITATION_RE.findall(text))
+    comma_record_count = sum(
+        1 for line in lines if is_comma_delimited_bibliographic_record(line)
+    )
+    mixed_record_count = sum(
+        1
+        for line in lines
+        if _PUBLISHER_YEAR_CITATION_RE.search(line)
+        or is_comma_delimited_bibliographic_record(line)
+    )
 
     # EPUB note sections are often flattened into one placeholder-delimited
     # line before the language gate sees them. Use combined citation signals
@@ -511,7 +576,11 @@ def _is_critical_apparatus_block(text: str, lines: list[str]) -> bool:
     # Reading lists frequently contain only author/title/place/publisher/year
     # records. They may have no URLs, DOI labels, quoted titles or parenthesized
     # dates, so recognize a repeated publication-record shape directly.
-    if publisher_year_count >= 2:
+    if (
+        publisher_year_count >= 2
+        or comma_record_count >= 2
+        or mixed_record_count >= 2
+    ):
         return True
 
     citation_density = len(re.findall(r"\[[^\]]{1,40}\]|\(\d{4}[a-z]?\)", text))

@@ -3707,6 +3707,42 @@ def test_target_language_gate_allows_exact_citation_only_bibliography():
     }
 
 
+def test_target_language_gate_allows_legacy_identity_only_citation_record():
+    source = "S. A. Handford, Penguin, 1951"
+
+    decision = assess_fidelity(
+        source,
+        source,
+        chunk_index=1,
+        phase="translation_alignment_fallback",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "critical_apparatus"},
+    )
+
+    assert decision.accepted is True
+    assert not decision.rejections
+
+
+def test_target_language_gate_rejects_year_terminated_narrative_echo():
+    source = "The firm moved to Boston, expanded rapidly, 1951."
+
+    decision = assess_fidelity(
+        source,
+        source,
+        chunk_index=1,
+        phase="translation_alignment_fallback",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "critical_apparatus"},
+    )
+
+    assert decision.accepted is False
+    assert "untranslated_source" in {
+        item.code for item in decision.rejections
+    }
+
+
 def test_target_language_gate_allows_metadata_localization_in_citation_only_bibliography():
     source = (
         "Weisbord, Marvin, and Janoff, Sandra. Future Search: Getting the Whole "

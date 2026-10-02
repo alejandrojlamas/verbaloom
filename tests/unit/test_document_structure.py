@@ -175,6 +175,43 @@ def test_classifier_recognizes_plain_publisher_year_reading_list():
     assert strategy == "preserve_bibliographic_apparatus"
 
 
+def test_classifier_recognizes_legacy_comma_delimited_bibliography():
+    source = "\n".join([
+        "S. A. Handford, Penguin, 1951",
+        "Cameron, James, What a Way to Run the Tribe, Macmillan, 1968",
+        "Churchill, Winston, My Early Life, Heinemann, 1930",
+        "Coleridge, Samuel Taylor, Letters, E. L. Griggs (ed.), "
+        "Oxford University Press, 1956-71",
+    ])
+
+    block_type, policy, confidence, strategy, _notes = (
+        DocumentBlockClassifier(source_type="epub").classify_block(
+            source.splitlines()
+        )
+    )
+
+    assert block_type == "critical_apparatus"
+    assert policy == "preserve"
+    assert confidence >= 0.70
+    assert strategy == "preserve_bibliographic_apparatus"
+
+
+def test_classifier_does_not_treat_year_terminated_prose_as_bibliography():
+    source = "\n".join([
+        "The firm moved to Boston, expanded rapidly, 1951.",
+        "The family returned home, exhausted and discouraged, 1968.",
+    ])
+
+    block_type, policy, _confidence, _strategy, _notes = (
+        DocumentBlockClassifier(source_type="epub").classify_block(
+            source.splitlines()
+        )
+    )
+
+    assert block_type == "narrative"
+    assert policy == "translate"
+
+
 def test_document_ir_exposes_llm_text_blocks_and_report():
     ir = DocumentIR.from_text(
         "CAPÍTULO I\n\nTexto real.\n\n[OceanofPDF.com](https://oceanofpdf.com)",

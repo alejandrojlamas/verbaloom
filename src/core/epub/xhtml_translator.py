@@ -442,6 +442,16 @@ def _translation_options_for_document_context(
             "data, not untranslated narrative. Do not merge entries, invent "
             "definitions, or turn the glossary into running prose."
         )
+    elif context == "critical_apparatus":
+        instruction = (
+            "BIBLIOGRAPHY/NOTES POLICY: preserve authors, published work titles, "
+            "journal and publisher identities, editions, locators, dates, and "
+            "identifiers exactly. Translate explanatory prose and generic roles "
+            "or labels when they have a natural target-language equivalent. A "
+            "record containing only bibliographic identity data may remain "
+            "unchanged. Do not invent missing metadata or turn citations into "
+            "narrative prose."
+        )
     else:
         return options
 
@@ -546,7 +556,10 @@ async def _translate_structure_safe_fallback(
         theoretical_binary_max,
         len(planned_batches) + configured_repair_calls,
     )
-    document_context = _structure_recovery_document_context(
+    inherited_context = str(
+        (prompt_options or {}).get("_document_block_context") or ""
+    ).strip().casefold()
+    document_context = inherited_context or _structure_recovery_document_context(
         local_tag_map,
         chunk_text,
     )
@@ -614,6 +627,13 @@ async def _translate_structure_safe_fallback(
                 "proper names and identity-bearing titles exactly, translate only "
                 "generic subjects and descriptions, and never add an article to "
                 "a name."
+            )
+        elif document_context == "critical_apparatus":
+            marker_instruction += (
+                " This batch comes from bibliography or notes: preserve authors, "
+                "published titles, publishers, dates, locators, and identifiers; "
+                "translate only explanatory prose and generic metadata labels. "
+                "An identity-only citation may remain unchanged."
             )
         existing = str(batch_options.get("custom_instructions") or "").strip()
         batch_options["custom_instructions"] = "\n\n".join(

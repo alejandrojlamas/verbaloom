@@ -20,7 +20,10 @@ from typing import Any, Mapping, Optional
 
 from src.config import temperature_for_phase
 from src.core.candidate_result import CandidateResult, record_candidate_result
-from src.core.document_structure import DocumentBlockClassifier
+from src.core.document_structure import (
+    DocumentBlockClassifier,
+    is_comma_delimited_bibliographic_record,
+)
 from src.core.language_evidence import untranslated_source_pronouns
 from src.core.llm.exceptions import ContentRiskError
 from src.core.llm.request_deadline import await_llm_call
@@ -2417,11 +2420,13 @@ def _looks_like_preservable_bibliographic_echo(
         _BIBLIOGRAPHIC_PUBLISHER_YEAR_RE.search(cleaned_source)
         or _BIBLIOGRAPHIC_JOURNAL_LOCATOR_RE.search(cleaned_source)
         or _BIBLIOGRAPHIC_ENTRY_RE.search(cleaned_source)
+        or is_comma_delimited_bibliographic_record(cleaned_source)
     )
     candidate_has_publication_record = bool(
         _BIBLIOGRAPHIC_PUBLISHER_YEAR_RE.search(cleaned_candidate)
         or _BIBLIOGRAPHIC_JOURNAL_LOCATOR_RE.search(cleaned_candidate)
         or _BIBLIOGRAPHIC_ENTRY_RE.search(cleaned_candidate)
+        or is_comma_delimited_bibliographic_record(cleaned_candidate)
     )
     if not source_has_publication_record or not candidate_has_publication_record:
         return False
