@@ -144,6 +144,7 @@ _BIBLIOGRAPHIC_TERMINAL_YEAR_RE = re.compile(
 )
 _BIBLIOGRAPHIC_LEAD_CONNECTORS = {
     "and",
+    "d",
     "de",
     "del",
     "der",
@@ -264,6 +265,27 @@ def is_locator_index_identity_fragment(value: str) -> bool:
             line,
         )
     }
+    missing_initial_names = {
+        match.group(1).casefold()
+        for match in re.finditer(
+            r"(?:^|\s)\.\s+([a-záéíóúüñ]+)\s*,",
+            line,
+        )
+    }
+    missing_leading_name_tokens = {
+        match.group(1).casefold()
+        for pattern in (
+            (
+                r"(?:^|\d[\d,]*)\s+([a-záéíóúüñ]+)\s*,\s+"
+                r"(?=(?:the\s+)?[A-ZÁÉÍÓÚÜÑ])"
+            ),
+            (
+                r"(?:^|\d[\d,]*)\s+([a-záéíóúüñ]+)\s+"
+                r"(?:[IVXLCDM]+|\d+)\s*,\s*\d"
+            ),
+        )
+        for match in re.finditer(pattern, line)
+    }
     ordinary_lowercase = [
         word
         for word in words
@@ -271,12 +293,17 @@ def is_locator_index_identity_fragment(value: str) -> bool:
         and word.casefold() not in _BIBLIOGRAPHIC_LEAD_CONNECTORS
         and word.casefold() not in _INDEX_IDENTITY_QUALIFIERS
         and word.casefold() not in apostrophe_name_suffixes
+        and word.casefold() not in missing_initial_names
+        and word.casefold() not in missing_leading_name_tokens
         and len(word) > 1
         and not re.fullmatch(r"[ivxlcdm]+", word, re.IGNORECASE)
     ]
     if ordinary_lowercase:
         return False
-    return any(word[:1].isupper() for word in words)
+    return (
+        bool(missing_initial_names or missing_leading_name_tokens)
+        or any(word[:1].isupper() for word in words)
+    )
 
 
 def is_locator_index_identity_block(lines: Iterable[str]) -> bool:

@@ -1864,7 +1864,7 @@ _PROPER_NAME_CONNECTORS = _CAPITALIZED_CONTEXT_STOPWORDS | {
     "von", "y",
 }
 _WORK_TITLE_CONNECTORS = {
-    "a", "an", "and", "as", "at", "but", "by", "da", "das", "de", "del",
+    "a", "an", "and", "as", "at", "but", "by", "d", "da", "das", "de", "del",
     "der", "des", "di", "do", "dos", "du", "e", "el", "en", "et",
     "for", "from", "in", "into", "la", "las", "le", "les", "los", "of", "on",
     "or", "over", "para", "por", "the", "through", "to", "un", "una", "under",
@@ -2512,8 +2512,16 @@ def _looks_like_preservable_name_index_echo(
 
     source_norm = _normalize_text(cleaned_source)
     candidate_norm = _normalize_text(cleaned_candidate)
+    structured_context = str(
+        (prompt_options or {}).get("_document_block_context") or ""
+    ).strip().casefold()
     tokens = _ordered_surface_tokens(cleaned_source)
-    if not 3 <= len(tokens) <= 120:
+    max_tokens = (
+        400
+        if structured_context in {"table", "catalog", "index"}
+        else 120
+    )
+    if not 3 <= len(tokens) <= max_tokens:
         return False
 
     placeholder_count = len(_PLACEHOLDER_PATTERNS[0].findall(source or ""))
@@ -2526,10 +2534,28 @@ def _looks_like_preservable_name_index_echo(
         line for line in cleaned_source.splitlines() if line.strip()
     ])
     comma_count = cleaned_source.count(",")
-    structured_context = str(
-        (prompt_options or {}).get("_document_block_context") or ""
-    ).strip().casefold()
     quoted_translatable_tokens: set[str] = set()
+    missing_initial_name_tokens = {
+        match.group(1).casefold()
+        for match in re.finditer(
+            r"(?:^|\s)\.\s+([a-záéíóúüñ]+)\s*,",
+            cleaned_source,
+        )
+    }
+    missing_leading_name_tokens = {
+        match.group(1).casefold()
+        for pattern in (
+            (
+                r"(?:^|\d[\d,]*)\s+([a-záéíóúüñ]+)\s*,\s+"
+                r"(?=(?:the\s+)?[A-ZÁÉÍÓÚÜÑ])"
+            ),
+            (
+                r"(?:^|\d[\d,]*)\s+([a-záéíóúüñ]+)\s+"
+                r"(?:[IVXLCDM]+|\d+)\s*,\s*\d"
+            ),
+        )
+        for match in re.finditer(pattern, cleaned_source)
+    }
     if structured_context in {"table", "catalog", "index"}:
         for quoted_span in re.findall(
             r"[\"\u201c]([^\"\u201d]{3,500})[\"\u201d]",
@@ -2571,6 +2597,14 @@ def _looks_like_preservable_name_index_echo(
     non_name_lexemes: list[str] = []
     for token in tokens:
         folded = token.casefold()
+        if (
+            structured_context in {"table", "catalog", "index"}
+            and folded in (
+                missing_initial_name_tokens | missing_leading_name_tokens
+            )
+        ):
+            title_anchors += 1
+            continue
         if folded in quoted_translatable_tokens:
             non_name_lexemes.append(token)
             continue

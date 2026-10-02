@@ -3907,6 +3907,76 @@ def test_name_index_exemption_requires_all_caps_quote_to_be_translated():
     ) is False
 
 
+def test_target_language_gate_accepts_exact_index_with_missing_ocr_initials():
+    source = (
+        "Greenhalgh, John, 186[id0]Grenville, George, 231[id1]"
+        "Hamilton, Lady Emma, 263[id2]Hemingway, Ernest, 497[id3]"
+        ". ardine, Douglas, 505[id4]. enkins, David, 122[id5]"
+        ". evtic, Borijove, 441[id6]Hillary, Sir Edmund, 660[id7]"
+        "Hitler, Adolf, 507,626,641[id8]Hugo, Victor, 328[id9]"
+        "ahangir, the Great Mogul, 168,171[id10]ames 1,172[id11]"
+    )
+    options = {"_document_block_context": "index"}
+
+    assert _looks_like_preservable_name_index_echo(
+        source,
+        source,
+        prompt_options=options,
+    ) is True
+    decision = assess_fidelity(
+        source,
+        source,
+        chunk_index=1,
+        phase="final_epub_unit_audit",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options=options,
+    )
+
+    assert decision.accepted is True
+    assert not decision.rejections
+
+
+def test_index_ocr_initial_exemption_does_not_hide_subject_prose():
+    source = (
+        "Greenhalgh, John, 186[id0]Grenville, George, 231[id1]"
+        ". children, protection of, 83[id2]Hugo, Victor, 328[id3]"
+        "children, protection of, 83[id4]"
+    )
+
+    assert _looks_like_preservable_name_index_echo(
+        source,
+        source,
+        prompt_options={"_document_block_context": "index"},
+    ) is False
+
+
+def test_target_language_gate_accepts_long_identity_only_index_chunk():
+    source = "".join(
+        f"Greenhalgh, John, {100 + index}[id{index}]"
+        for index in range(70)
+    )
+    options = {"_document_block_context": "index"}
+
+    assert _looks_like_preservable_name_index_echo(
+        source,
+        source,
+        prompt_options=options,
+    ) is True
+    decision = assess_fidelity(
+        source,
+        source,
+        chunk_index=1,
+        phase="final_epub_unit_audit",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options=options,
+    )
+
+    assert decision.accepted is True
+    assert not decision.rejections
+
+
 def test_target_language_gate_allows_metadata_localization_in_citation_only_bibliography():
     source = (
         "Weisbord, Marvin, and Janoff, Sandra. Future Search: Getting the Whole "

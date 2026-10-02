@@ -248,6 +248,11 @@ def test_locator_index_identity_block_accepts_split_table_fragments():
     assert is_locator_index_identity_fragment(
         "Maud’huy, General de, 450 Méneval, Baron Claude Francois de,"
     ) is True
+    assert is_locator_index_identity_fragment(". ardine, Douglas, 505") is True
+    assert is_locator_index_identity_fragment(". osephus, 14") is True
+    assert is_locator_index_identity_fragment(
+        "Hugo, Victor, 328 ahangir, the Great Mogul, 168,171 ames 1,172"
+    ) is True
     assert is_locator_index_identity_block(entries) is True
 
 
@@ -261,6 +266,12 @@ def test_locator_index_identity_block_rejects_translatable_subject_entry():
     ]
 
     assert is_locator_index_identity_fragment(entries[2]) is False
+    assert is_locator_index_identity_fragment(
+        ". children, protection of, 83"
+    ) is False
+    assert is_locator_index_identity_fragment(
+        "Hugo, Victor, 328 children, protection of, 83"
+    ) is False
     assert is_locator_index_identity_block(entries) is False
 
 
