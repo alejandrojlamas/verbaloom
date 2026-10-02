@@ -1,6 +1,7 @@
 from src.core.document_structure import (
     DocumentBlockClassifier,
     DocumentIR,
+    is_locator_index_block,
     normalize_document_structure,
     repair_structural_artifacts,
 )
@@ -210,6 +211,28 @@ def test_classifier_does_not_treat_year_terminated_prose_as_bibliography():
 
     assert block_type == "narrative"
     assert policy == "translate"
+
+
+def test_locator_index_block_recognizes_name_and_page_runs():
+    lines = [
+        "Bramwell, James G., 595",
+        "Bride, Harold, 435",
+        "Buckingham, Duchess of (1620), 172",
+        "Byron, George Gordon, Lord, 302",
+        "Campbell, Sir Colin, 339,347",
+    ]
+
+    assert is_locator_index_block(lines) is True
+
+
+def test_locator_index_block_rejects_numeric_narrative_lines():
+    lines = [
+        "The firm moved to Boston, expanded rapidly, 1951.",
+        "The family returned home, exhausted and discouraged, 1968.",
+        "The account appeared in print, many years later, 1972.",
+    ]
+
+    assert is_locator_index_block(lines) is False
 
 
 def test_document_ir_exposes_llm_text_blocks_and_report():

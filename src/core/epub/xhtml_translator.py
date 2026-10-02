@@ -99,7 +99,10 @@ from src.prompts.prompts import (
 from src.utils.unified_logger import LogLevel, LogType
 from src.utils.text_encoding import clean_text_artifacts
 from src.core.editorial_quality import infer_section_title
-from src.core.document_structure import DocumentBlockClassifier
+from src.core.document_structure import (
+    DocumentBlockClassifier,
+    is_locator_index_block,
+)
 from src.core.literary_continuity import (
     build_literary_continuity_block,
     export_literary_continuity_state,
@@ -398,6 +401,8 @@ def _structure_recovery_document_context(
             block_type, confidence = "", 0.0
         if block_type in {"critical_apparatus", "glossary"} and confidence >= 0.70:
             return block_type
+        if is_locator_index_block(semantic_text.splitlines()):
+            return "index"
     return ""
 
 

@@ -113,6 +113,33 @@ def test_document_context_detects_legacy_comma_delimited_bibliography():
     )
 
 
+def test_document_context_detects_unlabelled_analytical_index():
+    source = (
+        "[id0]Bramwell, James G., 595[id1]"
+        "Bride, Harold, 435[id2]"
+        "Buckingham, Duchess of (1620), 172[id3]"
+        "Byron, George Gordon, Lord, 302[id4]"
+        "Campbell, Sir Colin, 339,347[id5]"
+    )
+    tag_map = {
+        "[id0]": "<p>",
+        "[id1]": "</p><p>",
+        "[id2]": "</p><p>",
+        "[id3]": "</p><p>",
+        "[id4]": "</p><p>",
+        "[id5]": "</p>",
+    }
+
+    assert (
+        xhtml_translator._structure_recovery_document_context(
+            tag_map,
+            source,
+            "main-13.xhtml",
+        )
+        == "index"
+    )
+
+
 @pytest.mark.asyncio
 async def test_structure_recovery_inherits_critical_apparatus_context(monkeypatch):
     source = (
