@@ -348,6 +348,47 @@ def test_final_source_sample_audit_exempts_citations_in_generic_frontmatter(
     )
 
 
+def test_final_source_sample_audit_exempts_legacy_bibliography_and_name_index(
+    tmp_path,
+):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    records = [
+        "Anón. («The Arrest of the Catholic Priest Edmund Campion and his "
+        "Associates»), George Elliot, en Arber, English Gamer, 1877",
+        "City of London Letter-books, de H. T. Riley (sel. y trad.), "
+        "Memorials of London Life AD 1276-1419, 1868",
+        "Oates, capitán Lawrence, 428 Oberstein, conde d’, 118 "
+        "Orleans, duque de, 76 Pack, mayor general Sir Denis, 288",
+    ]
+    _write_epub(
+        source,
+        language="en",
+        chapter_name="main-13.xhtml",
+        paragraphs=records,
+    )
+    _write_epub(
+        output,
+        language="es",
+        chapter_name="main-13.xhtml",
+        paragraphs=records,
+    )
+
+    report = audit_final_output_against_source_samples(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        write_report=False,
+    )
+
+    assert report.source_language_blocks == 0
+    assert not any(
+        issue.code == "source_language_residual_coverage"
+        for issue in report.issues
+    )
+
+
 def test_final_source_sample_audit_exempts_corporate_address_registry_in_generic_file(
     tmp_path,
 ):

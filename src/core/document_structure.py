@@ -139,9 +139,25 @@ _PUBLISHER_YEAR_CITATION_RE = re.compile(
 )
 _BIBLIOGRAPHIC_TERMINAL_YEAR_RE = re.compile(
     r"(?:1[5-9]\d{2}|20\d{2})"
-    r"(?:\s*[-\u2013\u2014]\s*(?:\d{2}|1[5-9]\d{2}|20\d{2}))?"
+    r"(?:\s*[-\u2013\u2014]\s*\d{1,4})?"
     r"[.)]?\s*$"
 )
+_BIBLIOGRAPHIC_MERGED_RECORD_RE = re.compile(
+    r",\s*(?:1[5-9]\d{2}|20\d{2})\s+"
+    r"[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ’'\-]{1,60}\s*,"
+)
+_BIBLIOGRAPHIC_DANGLING_PUBLISHER_RE = re.compile(
+    r"\b(?:books?|co|inc|ltd|press|publish(?:er|ers|ing))\.?\s*,\s*$",
+    re.IGNORECASE,
+)
+_BIBLIOGRAPHIC_QUOTED_TITLE_LEAD_RE = re.compile(
+    r"^[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ.'’ \-]{0,60}"
+    r"\s*\(\s*[«“\"]"
+)
+_BIBLIOGRAPHIC_LEAD_DISALLOWED = {
+    "about", "according", "concerning", "on", "regarding", "see",
+    "sobre", "vease", "véase",
+}
 _BIBLIOGRAPHIC_LEAD_CONNECTORS = {
     "and",
     "d",
@@ -153,6 +169,7 @@ _BIBLIOGRAPHIC_LEAD_CONNECTORS = {
     "du",
     "et",
     "la",
+    "le",
     "of",
     "the",
     "van",
@@ -161,12 +178,18 @@ _BIBLIOGRAPHIC_LEAD_CONNECTORS = {
 }
 _INDEX_IDENTITY_QUALIFIERS = {
     "abbot", "admiral", "archbishop", "archduke", "baron", "baroness",
+    "almirante", "archiduque", "archiduquesa", "barón", "baronesa",
     "bishop", "captain", "colonel", "commander", "corporal", "count",
+    "capitán", "capitana", "comandante", "conde", "condesa", "coronel",
     "countess", "dauphin", "doctor", "dr", "duchess", "duke", "earl",
+    "doctora", "duque", "duquesa",
     "emperor", "empress", "father", "field", "general", "king", "lady",
+    "emperador", "emperatriz", "mariscal", "mayor", "padre", "reina", "rey",
     "lieutenant", "lord", "major", "marshal", "midshipman", "mother",
     "mr", "mrs", "ms", "president", "prince", "princess", "professor",
+    "madre", "presidente", "príncipe", "princesa", "profesor", "profesora",
     "queen", "reverend", "saint", "sergeant", "sir", "staff", "surgeon",
+    "reverendo", "sargento", "santo", "santa",
     "tsar", "vice",
 }
 _INDEX_LOCATOR_TRAILER_RE = re.compile(
@@ -188,10 +211,15 @@ def is_comma_delimited_bibliographic_record(value: str) -> bool:
     or published title so ordinary prose ending in a year is excluded.
     """
     line = " ".join(str(value or "").split())
+    has_record_boundary = bool(
+        _BIBLIOGRAPHIC_TERMINAL_YEAR_RE.search(line)
+        or _BIBLIOGRAPHIC_MERGED_RECORD_RE.search(line)
+        or _BIBLIOGRAPHIC_DANGLING_PUBLISHER_RE.search(line)
+    )
     if (
         not line
         or len(line) > 600
-        or not _BIBLIOGRAPHIC_TERMINAL_YEAR_RE.search(line)
+        or not has_record_boundary
     ):
         return False
 
@@ -203,9 +231,21 @@ def is_comma_delimited_bibliographic_record(value: str) -> bool:
     lead_words = _TITLE_WORD_RE.findall(lead)
     if not lead_words or len(lead_words) > 18:
         return False
-    if any(
+    if lead_words[0].casefold() in _BIBLIOGRAPHIC_LEAD_DISALLOWED:
+        return False
+    hyphenated_lead_suffixes = {
+        match.group(1).casefold()
+        for match in re.finditer(
+            r"[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+-"
+            r"([a-záéíóúüñ]+)",
+            lead,
+        )
+    }
+    quoted_title_lead = bool(_BIBLIOGRAPHIC_QUOTED_TITLE_LEAD_RE.search(lead))
+    if not quoted_title_lead and any(
         word[:1].islower()
         and word.casefold() not in _BIBLIOGRAPHIC_LEAD_CONNECTORS
+        and word.casefold() not in hyphenated_lead_suffixes
         for word in lead_words
     ):
         return False
@@ -309,6 +349,14 @@ def is_locator_index_identity_fragment(value: str) -> bool:
             line,
         )
     }
+    hyphenated_name_parts = {
+        match.group(1).casefold()
+        for match in re.finditer(
+            r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]-([a-záéíóúüñ]{1,4})-"
+            r"[A-ZÁÉÍÓÚÜÑ]",
+            line,
+        )
+    }
     ordinary_lowercase = [
         word
         for word in words
@@ -320,6 +368,7 @@ def is_locator_index_identity_fragment(value: str) -> bool:
         and word.casefold() not in missing_leading_name_tokens
         and word.casefold() not in embedded_ocr_name_tokens
         and word.casefold() not in split_ocr_name_tokens
+        and word.casefold() not in hyphenated_name_parts
         and len(word) > 1
         and not any(char.isupper() for char in word[1:])
         and not re.fullmatch(r"[ivxlcdm]+", word, re.IGNORECASE)
@@ -333,6 +382,7 @@ def is_locator_index_identity_fragment(value: str) -> bool:
             or missing_leading_name_tokens
             or embedded_ocr_name_tokens
             or split_ocr_name_tokens
+            or hyphenated_name_parts
         )
         or any(word[:1].isupper() for word in words)
     )

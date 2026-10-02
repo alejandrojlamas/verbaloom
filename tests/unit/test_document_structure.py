@@ -1,6 +1,7 @@
 from src.core.document_structure import (
     DocumentBlockClassifier,
     DocumentIR,
+    is_comma_delimited_bibliographic_record,
     is_locator_index_block,
     is_locator_index_entry,
     is_locator_index_identity_block,
@@ -216,6 +217,29 @@ def test_classifier_does_not_treat_year_terminated_prose_as_bibliography():
     assert policy == "translate"
 
 
+def test_legacy_bibliography_recognizes_ocr_and_truncated_record_shapes():
+    records = [
+        "Anón. («The Arrest of the Catholic Priest Edmund Campion and his "
+        "Associates»), George Elliot, en Arber, English Gamer, 1877",
+        "City of London Letter-books, de H. T. Riley (sel. y trad.), "
+        "Memorials of London Life AD 1276-1419, 1868",
+        "Froissart, Sir John, Chronicles of England, France and Spain, "
+        "trad. Lord Berners, 1523-5",
+        "Bamford, Samuel, Passages in the Life of a Radical, H. Dunckley "
+        "(ed.), 1893 Bayerlein, general, («American Break-Out in Normandy",
+        "Victoria, reina, Journal of our Life in the Highlands, Smith, Elder Co.,",
+    ]
+
+    assert all(is_comma_delimited_bibliographic_record(item) for item in records)
+    assert is_comma_delimited_bibliographic_record(
+        "On Frank Capra, see Joseph McBride, Frank Capra: The Catastrophe "
+        "of Success, 1992"
+    ) is False
+    assert is_comma_delimited_bibliographic_record(
+        "The editor explains the evidence, its consequences, and the conclusion, 1992"
+    ) is False
+
+
 def test_locator_index_block_recognizes_name_and_page_runs():
     lines = [
         "Bramwell, James G., 595",
@@ -261,6 +285,14 @@ def test_locator_index_identity_block_accepts_split_table_fragments():
     ) is True
     assert is_locator_index_identity_fragment(
         "Schnirdel, Hu Ider ike, 92"
+    ) is True
+    assert is_locator_index_identity_fragment(
+        "Oates, capitán Lawrence, 428 Oberstein, conde d’, 118 "
+        "Orleans, duque de, 76 Pack, mayor general Sir Denis, 288"
+    ) is True
+    assert is_locator_index_identity_fragment(
+        "Stanley, H. M., 387 Suraj-ud-Dowlah, 225 "
+        "Swinbrook, Geoffrey le Baker de, 50"
     ) is True
     assert is_locator_index_identity_fragment(
         "Munro, H.H.fSaki’), 469 Munro, Ross, 566"

@@ -1540,8 +1540,14 @@ def _has_unquoted_source_phrase_leak(
         # DOM block.
         if len(_BOOLEAN_QUERY_RE.findall(phrase)) >= 2:
             continue
-        source_count = len(source_markers.findall(phrase)) if source_markers else 0
-        target_count = len(target_markers.findall(phrase)) if target_markers else 0
+        source_count = len({
+            match.group(0).casefold()
+            for match in source_markers.finditer(phrase)
+        }) if source_markers else 0
+        target_count = len({
+            match.group(0).casefold()
+            for match in target_markers.finditer(phrase)
+        }) if target_markers else 0
         lowercase_words = [
             word
             for word in re.findall(r"[^\W\d_]+", phrase, flags=re.UNICODE)

@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import re
 
+from src.core.document_structure import (
+    is_comma_delimited_bibliographic_record,
+    is_locator_index_identity_fragment,
+)
+
 
 _LANGUAGE_ALIASES = {
     "de": "german",
@@ -423,6 +428,16 @@ def looks_like_structured_language_metadata(
     words = _SURFACE_WORD_RE.findall(value)
     if not words:
         return False
+
+    # Reuse the same structural classifiers that decide whether translation
+    # should preserve bibliographic identities and analytical index entries.
+    # Without this shared contract, generation can correctly preserve a title
+    # or name while the final language gate later mislabels it as source prose.
+    if (
+        is_comma_delimited_bibliographic_record(value)
+        or is_locator_index_identity_fragment(value)
+    ):
+        return True
 
     # Whole-file publication manifests can aggregate a copyright/address page
     # into one block. Recognize that dense registry before applying the tighter

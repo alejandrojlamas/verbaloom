@@ -511,6 +511,79 @@ def test_publication_gate_preserves_embedded_third_language_dialogue(tmp_path):
     assert report.mixed_language_units == 0
 
 
+def test_publication_gate_preserves_unquoted_latin_liturgical_phrases(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    _write_epub(
+        source,
+        language="en",
+        html_language="en",
+        paragraphs=[
+            "This done, she knelt and recited In Te Domine confido non "
+            "confundar in aeternum before repeating In manus tuas Domine."
+        ],
+    )
+    _write_epub(
+        output,
+        language="es",
+        html_language="es",
+        paragraphs=[
+            "Hecho esto, se arrodilló y recitó In Te Domine confido non "
+            "confundar in aeternum antes de repetir In manus tuas Domine."
+        ],
+    )
+
+    report = audit_epub_publication(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert report.publishable is True, report.errors
+    assert report.mixed_language_units == 0
+
+
+def test_publication_gate_preserves_legacy_bibliography_and_name_index(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    records = [
+        "Anón. («The Arrest of the Catholic Priest Edmund Campion and his "
+        "Associates»), George Elliot, en Arber, English Gamer, 1877",
+        "City of London Letter-books, de H. T. Riley (sel. y trad.), "
+        "Memorials of London Life AD 1276-1419, 1868",
+        "Oates, capitán Lawrence, 428 Oberstein, conde d’, 118 "
+        "Orleans, duque de, 76 Pack, mayor general Sir Denis, 288",
+    ]
+    _write_epub(
+        source,
+        language="en",
+        html_language="en",
+        chapter_name="main-13.xhtml",
+        paragraphs=records,
+    )
+    _write_epub(
+        output,
+        language="es",
+        html_language="es",
+        chapter_name="main-13.xhtml",
+        paragraphs=records,
+    )
+
+    report = audit_epub_publication(
+        source,
+        output,
+        source_language="English",
+        target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert report.publishable is True, report.errors
+    assert report.source_language_units == 0
+    assert report.mixed_language_units == 0
+
+
 def test_publication_gate_preserves_foreign_title_and_boolean_query(tmp_path):
     source = tmp_path / "source.epub"
     output = tmp_path / "output.epub"
