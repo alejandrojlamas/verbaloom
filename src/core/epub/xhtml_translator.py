@@ -1097,6 +1097,39 @@ async def translate_chunk_with_fallback(
     # Calculate if this chunk has placeholders
     has_placeholders = len(local_tag_map) > 0
 
+    # An analytical-index chunk made exclusively of identities and page
+    # locators has no translatable content. Sending it to the model can only
+    # damage names/numbers and used to trigger an expensive language-gate loop.
+    if document_context == "index" and has_placeholders:
+        identity_entries = []
+        for part in split_structure_safe_parts(chunk_text, local_tag_map):
+            if part.kind != "content":
+                continue
+            semantic = _semantic_text_from_placeholder_stream(
+                part.text,
+                part.tag_map,
+            ).strip()
+            if semantic:
+                identity_entries.append(semantic)
+        if identity_entries and all(
+            is_locator_index_entry(entry) for entry in identity_entries
+        ):
+            if unit_record is not None:
+                mark_attempt(unit_record)
+            result = placeholder_mgr.restore_to_global(chunk_text, global_indices)
+            if unit_record is not None:
+                mark_translated(unit_record, result)
+            stats.successful_first_try += 1
+            stats.record_processed()
+            if log_callback:
+                log_callback(
+                    "index_identity_chunk_preserved",
+                    "Índice analítico conservado sin modelo: "
+                    f"{len(identity_entries)} entrada(s) contienen sólo "
+                    "identidades y localizadores.",
+                )
+            return result
+
     # ==========================================================================
     # PHASE 1: Normal translation with retries
     # ==========================================================================

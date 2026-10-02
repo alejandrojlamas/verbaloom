@@ -229,6 +229,60 @@ async def test_structure_recovery_preserves_identity_only_index_without_model(
     assert result == source
 
 
+@pytest.mark.asyncio
+async def test_identity_only_index_chunk_bypasses_translation_and_audit(monkeypatch):
+    source = (
+        "[id0]Bramwell, James G., 595[id1]"
+        "Bride, Harold, 435[id2]"
+        "Campbell, Sir Colin, 339,347[id3]"
+    )
+    tag_map = {
+        "[id0]": "<p>",
+        "[id1]": "</p><p>",
+        "[id2]": "</p><p>",
+        "[id3]": "</p>",
+    }
+
+    async def unexpected_call(*_args, **_kwargs):
+        raise AssertionError("identity-only index chunks bypass every model")
+
+    monkeypatch.setattr(
+        xhtml_translator,
+        "generate_translation_request",
+        unexpected_call,
+    )
+    monkeypatch.setattr(
+        xhtml_translator,
+        "supervise_fidelity",
+        unexpected_call,
+    )
+    stats = TranslationMetrics(total_chunks=1)
+    unit = {}
+
+    result = await xhtml_translator.translate_chunk_with_fallback(
+        chunk_text=source,
+        local_tag_map=tag_map,
+        global_indices=[100, 101, 102, 103],
+        source_language="English",
+        target_language="Spanish",
+        model_name="test",
+        llm_client=object(),
+        stats=stats,
+        max_retries=3,
+        prompt_options={"fidelity_supervisor": True},
+        runtime_state={},
+        unit_record=unit,
+    )
+
+    assert result == (
+        "[id100]Bramwell, James G., 595[id101]"
+        "Bride, Harold, 435[id102]"
+        "Campbell, Sir Colin, 339,347[id103]"
+    )
+    assert unit["translation_status"] == "COMPLETED"
+    assert stats.processed_chunks == 1
+
+
 def test_document_context_detects_index_from_xhtml_class_names():
     source = (
         "[id0]Granovetter, Mark[id1]Great Society[id2]"
