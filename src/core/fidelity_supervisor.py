@@ -1871,9 +1871,9 @@ _WORK_TITLE_CONNECTORS = {
     "une", "und", "van", "versus", "via", "von", "with", "without", "y",
 }
 _INDEX_TRANSLATABLE_QUALIFIERS = {
-    "abbot", "admiral", "archbishop", "baron", "baroness", "bishop",
+    "abbot", "admiral", "archbishop", "archduke", "baron", "baroness", "bishop",
     "captain", "colonel", "commander", "corporal", "count", "countess",
-    "doctor", "duchess", "duke", "emperor", "empress", "father", "general",
+    "doctor", "duchess", "duke", "earl", "emperor", "empress", "father", "general",
     "king", "lady", "lieutenant", "lord", "major", "marshal", "midshipman",
     "mother", "prince", "princess", "professor", "queen", "reverend",
     "saint", "sergeant", "sir", "venture", "vice",
@@ -2593,6 +2593,11 @@ def _looks_like_preservable_name_index_echo(
         return False
 
     if source_norm == candidate_norm:
+        if structured_context in {"table", "catalog", "index"}:
+            return all(
+                token.casefold() in _INDEX_TRANSLATABLE_QUALIFIERS
+                for token in non_name_lexemes
+            )
         return not non_name_lexemes
 
     # Mixed index runs may contain a few translatable subject entries among

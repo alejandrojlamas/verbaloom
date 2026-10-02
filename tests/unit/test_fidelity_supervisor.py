@@ -3800,6 +3800,56 @@ def test_target_language_gate_does_not_hide_changed_name_in_index():
     }
 
 
+def test_target_language_gate_accepts_exact_identity_index_with_roles():
+    source = (
+        "Elizabeth 1,149,156\n"
+        "Elliott, Grace, 247\n"
+        "Ellis, Lieutenant, 262\n"
+        "Emily, Princess, 219\n"
+        "Erpingham, Sir Thomas, 72\n"
+        "Ferdinand, Archduke Franz, 441\n"
+        "Flanders, Earl of, 45\n"
+        "Firmont, Henry Essex Edgeworth de,"
+    )
+
+    decision = assess_fidelity(
+        source,
+        source,
+        chunk_index=1,
+        phase="translation_alignment_fallback",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+
+    assert decision.accepted is True
+    assert not decision.rejections
+
+
+def test_target_language_gate_rejects_exact_subject_index_with_ordinary_words():
+    source = (
+        "battles, decisive, 45\n"
+        "children, protection of, 83\n"
+        "war, causes of, 107"
+    )
+
+    decision = assess_fidelity(
+        source,
+        source,
+        chunk_index=1,
+        phase="translation_alignment_fallback",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+
+    assert decision.accepted is False
+    assert {item.code for item in decision.rejections} & {
+        "untranslated_source",
+        "target_language_missing",
+    }
+
+
 def test_target_language_gate_allows_metadata_localization_in_citation_only_bibliography():
     source = (
         "Weisbord, Marvin, and Janoff, Sandra. Future Search: Getting the Whole "
