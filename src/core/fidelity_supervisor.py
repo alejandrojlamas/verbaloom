@@ -1870,6 +1870,14 @@ _WORK_TITLE_CONNECTORS = {
     "or", "over", "para", "por", "the", "through", "to", "un", "una", "under",
     "une", "und", "van", "versus", "via", "von", "with", "without", "y",
 }
+_INDEX_TRANSLATABLE_QUALIFIERS = {
+    "abbot", "admiral", "archbishop", "baron", "baroness", "bishop",
+    "captain", "colonel", "commander", "corporal", "count", "countess",
+    "doctor", "duchess", "duke", "emperor", "empress", "father", "general",
+    "king", "lady", "lieutenant", "lord", "major", "marshal", "midshipman",
+    "mother", "prince", "princess", "professor", "queen", "reverend",
+    "saint", "sergeant", "sir", "venture", "vice",
+}
 _COMMON_NOUN_DETERMINERS = {
     "a", "an", "das", "dem", "den", "der", "des", "die", "ein",
     "eine", "einem", "einen", "einer", "eines", "el", "la", "las",
@@ -2545,6 +2553,12 @@ def _looks_like_preservable_name_index_echo(
     non_name_lexemes: list[str] = []
     for token in tokens:
         folded = token.casefold()
+        if (
+            structured_context in {"table", "catalog", "index"}
+            and folded in _INDEX_TRANSLATABLE_QUALIFIERS
+        ):
+            non_name_lexemes.append(token)
+            continue
         if folded in _WORK_TITLE_CONNECTORS:
             continue
         is_short_acronym = 2 <= len(token) <= 5 and token.isupper()
@@ -2608,6 +2622,26 @@ def _looks_like_preservable_name_index_echo(
             or preserved_anchor_ratio < 0.85
         ):
             return False
+    if structured_context in {"table", "catalog", "index"}:
+        source_counter = Counter(
+            token.casefold()
+            for token in tokens
+            if token.casefold() not in _WORK_TITLE_CONNECTORS
+        )
+        candidate_counter = Counter(
+            token.casefold()
+            for token in _ordered_surface_tokens(cleaned_candidate)
+            if token.casefold() not in _WORK_TITLE_CONNECTORS
+        )
+        missing_source_tokens = source_counter - candidate_counter
+        allowed_missing_tokens = {
+            token.casefold() for token in non_name_lexemes
+        }
+        return (
+            bool(missing_source_tokens)
+            and set(missing_source_tokens) <= allowed_missing_tokens
+            and _extract_numbers(cleaned_source) == _extract_numbers(cleaned_candidate)
+        )
     return bool(non_name_lexemes) and all(
         token.casefold() not in candidate_tokens
         for token in non_name_lexemes

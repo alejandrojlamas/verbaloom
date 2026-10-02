@@ -3743,6 +3743,63 @@ def test_target_language_gate_rejects_year_terminated_narrative_echo():
     }
 
 
+def test_target_language_gate_accepts_translated_qualifier_in_name_index():
+    source = (
+        "Coleridge, Hartley, 259\n"
+        "Collingwood, Vice Admiral, 261,265\n"
+        "Cranmer, Thomas, Archbishop of\n"
+        "Canterbury, 96\n"
+        "Cromwell, Oliver, 177"
+    )
+    candidate = source.replace("Archbishop of", "arzobispo de")
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=1,
+        phase="translation_alignment_fallback",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+
+    assert decision.accepted is True
+    assert not {
+        "untranslated_source",
+        "target_language_missing",
+    } & {item.code for item in decision.rejections}
+
+
+def test_target_language_gate_does_not_hide_changed_name_in_index():
+    source = (
+        "Coleridge, Hartley, 259\n"
+        "Collingwood, Vice Admiral, 261,265\n"
+        "Cranmer, Thomas, Archbishop of\n"
+        "Canterbury, 96\n"
+        "Cromwell, Oliver, 177"
+    )
+    candidate = source.replace("Archbishop of", "arzobispo de").replace(
+        "Coleridge",
+        "Coleridgez",
+    )
+
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=1,
+        phase="translation_alignment_fallback",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+
+    assert decision.accepted is False
+    assert {item.code for item in decision.rejections} & {
+        "untranslated_source",
+        "target_language_missing",
+    }
+
+
 def test_target_language_gate_allows_metadata_localization_in_citation_only_bibliography():
     source = (
         "Weisbord, Marvin, and Janoff, Sandra. Future Search: Getting the Whole "

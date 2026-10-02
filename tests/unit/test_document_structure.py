@@ -227,6 +227,8 @@ def test_locator_index_block_recognizes_name_and_page_runs():
     assert is_locator_index_entry("Bramwell, James G., 595") is True
     assert is_locator_index_entry("Campbell, Sir Colin, 339,347") is True
     assert is_locator_index_entry("Camel!, William, 211") is True
+    assert is_locator_index_entry("Croy. Lord, 71") is True
+    assert is_locator_index_entry("Canterbury, 96") is False
 
 
 def test_locator_index_block_rejects_numeric_narrative_lines():

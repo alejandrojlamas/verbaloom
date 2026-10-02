@@ -209,7 +209,7 @@ def is_locator_index_entry(value: str) -> bool:
         return False
     prefix = line[:locator_match.start()].rstrip(" ,")
     words = _TITLE_WORD_RE.findall(prefix)
-    if not words or "," not in prefix:
+    if not words or ("," not in prefix and len(words) < 2):
         return False
     title_words = sum(
         1
