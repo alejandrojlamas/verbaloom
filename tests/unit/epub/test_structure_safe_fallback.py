@@ -140,6 +140,56 @@ def test_document_context_detects_unlabelled_analytical_index():
     )
 
 
+def test_document_context_prefers_identity_index_semantics_over_table_markup():
+    source = (
+        "Louis-Charles, Dauphin of France, 246[id0]"
+        "Lucan, Lord, 336[id1]"
+        "Montgomery, Field-Marshal Bernard,[id2]"
+        "Richard 1,35[id3]"
+        "Roosevelt, Theodore, 407"
+    )
+    tag_map = {
+        "[id0]": "</p><p>",
+        "[id1]": "</p><table><tr><td><p>",
+        "[id2]": "</p></td><td><p>",
+        "[id3]": "</p></td></tr></table><p>",
+    }
+
+    assert (
+        xhtml_translator._structure_recovery_document_context(
+            tag_map,
+            source,
+            "main-13.xhtml",
+        )
+        == "index"
+    )
+
+
+def test_document_context_detects_mixed_index_inside_table_markup():
+    source = (
+        "Louis-Charles, Dauphin of France, 246[id0]"
+        "Lucan, Lord, 336[id1]"
+        "Royale, Madame (daughter to Louis[id2]"
+        "Richard 1,35[id3]"
+        "Roosevelt, Theodore, 407"
+    )
+    tag_map = {
+        "[id0]": "</p><p>",
+        "[id1]": "</p><table><tr><td><p>",
+        "[id2]": "</p></td><td><p>",
+        "[id3]": "</p></td></tr></table><p>",
+    }
+
+    assert (
+        xhtml_translator._structure_recovery_document_context(
+            tag_map,
+            source,
+            "main-13.xhtml",
+        )
+        == "index"
+    )
+
+
 @pytest.mark.asyncio
 async def test_structure_recovery_inherits_critical_apparatus_context(monkeypatch):
     source = (
@@ -279,6 +329,60 @@ async def test_identity_only_index_chunk_bypasses_translation_and_audit(monkeypa
         "Bride, Harold, 435[id102]"
         "Campbell, Sir Colin, 339,347[id103]"
     )
+    assert unit["translation_status"] == "COMPLETED"
+    assert stats.processed_chunks == 1
+
+
+@pytest.mark.asyncio
+async def test_table_backed_identity_index_chunk_bypasses_every_model(monkeypatch):
+    source = (
+        "Louis-Charles, Dauphin of France, 246[id0]"
+        "Lucan, Lord, 336[id1]"
+        "Montgomery, Field-Marshal Bernard,[id2]"
+        "Richard 1,35[id3]"
+        "Roosevelt, Theodore, 407"
+    )
+    tag_map = {
+        "[id0]": "</p><p>",
+        "[id1]": "</p><table><tr><td><p>",
+        "[id2]": "</p></td><td><p>",
+        "[id3]": "</p></td></tr></table><p>",
+    }
+
+    async def unexpected_call(*_args, **_kwargs):
+        raise AssertionError("table-backed identity indexes bypass every model")
+
+    monkeypatch.setattr(
+        xhtml_translator,
+        "generate_translation_request",
+        unexpected_call,
+    )
+    monkeypatch.setattr(
+        xhtml_translator,
+        "supervise_fidelity",
+        unexpected_call,
+    )
+    stats = TranslationMetrics(total_chunks=1)
+    unit = {}
+
+    result = await xhtml_translator.translate_chunk_with_fallback(
+        chunk_text=source,
+        local_tag_map=tag_map,
+        global_indices=[100, 101, 102, 103],
+        source_language="English",
+        target_language="Spanish",
+        model_name="test",
+        llm_client=object(),
+        stats=stats,
+        max_retries=3,
+        prompt_options={"fidelity_supervisor": True},
+        runtime_state={},
+        unit_record=unit,
+    )
+
+    assert result == source.replace("[id0]", "[id100]").replace(
+        "[id1]", "[id101]"
+    ).replace("[id2]", "[id102]").replace("[id3]", "[id103]")
     assert unit["translation_status"] == "COMPLETED"
     assert stats.processed_chunks == 1
 

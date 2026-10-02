@@ -3,6 +3,8 @@ from src.core.document_structure import (
     DocumentIR,
     is_locator_index_block,
     is_locator_index_entry,
+    is_locator_index_identity_block,
+    is_locator_index_identity_fragment,
     normalize_document_structure,
     repair_structural_artifacts,
 )
@@ -228,7 +230,38 @@ def test_locator_index_block_recognizes_name_and_page_runs():
     assert is_locator_index_entry("Campbell, Sir Colin, 339,347") is True
     assert is_locator_index_entry("Camel!, William, 211") is True
     assert is_locator_index_entry("Croy. Lord, 71") is True
+    assert is_locator_index_entry("Elizabeth 1,149,156") is True
     assert is_locator_index_entry("Canterbury, 96") is False
+    assert is_locator_index_entry("children, protection of, 83") is False
+
+
+def test_locator_index_identity_block_accepts_split_table_fragments():
+    entries = [
+        "Louis-Charles, Dauphin of France, 246",
+        "Lucan, Lord, 336",
+        "Montgomery, Field-Marshal Bernard,",
+        "Richard 1,35",
+        "Roosevelt, Theodore, 407",
+    ]
+
+    assert is_locator_index_identity_fragment(entries[2]) is True
+    assert is_locator_index_identity_fragment(
+        "Maud’huy, General de, 450 Méneval, Baron Claude Francois de,"
+    ) is True
+    assert is_locator_index_identity_block(entries) is True
+
+
+def test_locator_index_identity_block_rejects_translatable_subject_entry():
+    entries = [
+        "Louis-Charles, Dauphin of France, 246",
+        "Lucan, Lord, 336",
+        "children, protection of, 83",
+        "Richard 1,35",
+        "Roosevelt, Theodore, 407",
+    ]
+
+    assert is_locator_index_identity_fragment(entries[2]) is False
+    assert is_locator_index_identity_block(entries) is False
 
 
 def test_locator_index_block_rejects_numeric_narrative_lines():

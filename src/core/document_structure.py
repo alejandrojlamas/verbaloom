@@ -9,6 +9,7 @@ enough for the LLM to preserve?"
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import math
 import re
 from typing import Iterable, Literal
 
@@ -156,6 +157,16 @@ _BIBLIOGRAPHIC_LEAD_CONNECTORS = {
     "von",
     "y",
 }
+_INDEX_IDENTITY_QUALIFIERS = {
+    "abbot", "admiral", "archbishop", "archduke", "baron", "baroness",
+    "bishop", "captain", "colonel", "commander", "corporal", "count",
+    "countess", "dauphin", "doctor", "dr", "duchess", "duke", "earl",
+    "emperor", "empress", "father", "field", "general", "king", "lady",
+    "lieutenant", "lord", "major", "marshal", "midshipman", "mother",
+    "mr", "mrs", "ms", "president", "prince", "princess", "professor",
+    "queen", "reverend", "saint", "sergeant", "sir", "staff", "surgeon",
+    "tsar", "vice",
+}
 _INDEX_LOCATOR_TRAILER_RE = re.compile(
     r"(?P<locators>\d{1,4}(?:\s*,\s*\d{1,4})*)[.)]?\s*$"
 )
@@ -207,17 +218,79 @@ def is_locator_index_entry(value: str) -> bool:
     locator_match = _INDEX_LOCATOR_TRAILER_RE.search(line)
     if not locator_match:
         return False
-    prefix = line[:locator_match.start()].rstrip(" ,")
+    raw_prefix = line[:locator_match.start()].rstrip()
+    prefix = raw_prefix.rstrip(" ,")
     words = _TITLE_WORD_RE.findall(prefix)
-    if not words or ("," not in prefix and len(words) < 2):
+    if not words:
         return False
+    if "," not in prefix and len(words) < 2:
+        # OCR often writes regnal entries as ``Elizabeth 1,149,156``. The
+        # first number is consumed by the locator expression, so retain the
+        # entry only when there are multiple numeric fields and no comma after
+        # the single identity word. ``Canterbury, 96`` remains too ambiguous.
+        locators = locator_match.group("locators")
+        if raw_prefix.endswith(",") or "," not in locators:
+            return False
     title_words = sum(
         1
         for word in words
         if word[:1].isupper()
         or word.casefold() in _BIBLIOGRAPHIC_LEAD_CONNECTORS
+        or word.casefold() in _INDEX_IDENTITY_QUALIFIERS
+        or len(word) == 1
+        or bool(re.fullmatch(r"[ivxlcdm]+", word, re.IGNORECASE))
     )
-    return title_words >= max(1, int(len(words) * 0.65))
+    return title_words >= max(1, math.ceil(len(words) * 0.65))
+
+
+def is_locator_index_identity_fragment(value: str) -> bool:
+    """Recognize split or flattened identity data in an analytical index."""
+    line = " ".join(str(value or "").split())
+    if not line or len(line) > 10000:
+        return False
+    if is_locator_index_entry(line):
+        return True
+    if "," not in line or re.search(r"[!?;:]", line):
+        return False
+
+    words = _TITLE_WORD_RE.findall(line)
+    if not words:
+        return False
+    apostrophe_name_suffixes = {
+        match.group(1).casefold()
+        for match in re.finditer(
+            r"[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+[’']"
+            r"([a-záéíóúüñ]+)",
+            line,
+        )
+    }
+    ordinary_lowercase = [
+        word
+        for word in words
+        if word[:1].islower()
+        and word.casefold() not in _BIBLIOGRAPHIC_LEAD_CONNECTORS
+        and word.casefold() not in _INDEX_IDENTITY_QUALIFIERS
+        and word.casefold() not in apostrophe_name_suffixes
+        and len(word) > 1
+        and not re.fullmatch(r"[ivxlcdm]+", word, re.IGNORECASE)
+    ]
+    if ordinary_lowercase:
+        return False
+    return any(word[:1].isupper() for word in words)
+
+
+def is_locator_index_identity_block(lines: Iterable[str]) -> bool:
+    """Return whether a structured block is identity-only index material."""
+    entries = [" ".join(str(line or "").split()) for line in lines]
+    entries = [line for line in entries if line]
+    if len(entries) < 3:
+        return False
+    locator_entries = sum(1 for line in entries if is_locator_index_entry(line))
+    required = max(3, math.ceil(len(entries) * 0.60))
+    return (
+        locator_entries >= required
+        and all(is_locator_index_identity_fragment(line) for line in entries)
+    )
 
 
 def is_locator_index_block(lines: Iterable[str]) -> bool:
@@ -228,7 +301,7 @@ def is_locator_index_block(lines: Iterable[str]) -> bool:
         return False
 
     name_shaped = sum(1 for line in entries if is_locator_index_entry(line))
-    required = max(3, int(len(entries) * 0.60))
+    required = max(3, math.ceil(len(entries) * 0.60))
     return name_shaped >= required
 
 

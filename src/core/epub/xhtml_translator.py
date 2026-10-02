@@ -102,7 +102,8 @@ from src.core.editorial_quality import infer_section_title
 from src.core.document_structure import (
     DocumentBlockClassifier,
     is_locator_index_block,
-    is_locator_index_entry,
+    is_locator_index_identity_block,
+    is_locator_index_identity_fragment,
 )
 from src.core.literary_continuity import (
     build_literary_continuity_block,
@@ -343,6 +344,35 @@ def _structure_recovery_document_context(
 ) -> str:
     """Infer structural context from protected XHTML and readable content."""
     markup = " ".join(str(value or "") for value in local_tag_map.values())
+    if source_text:
+        semantic_text = _semantic_text_from_placeholder_stream(
+            source_text,
+            local_tag_map,
+        )
+        try:
+            block_type, _policy, confidence, _strategy, _notes = (
+                DocumentBlockClassifier(source_type="text").classify_block(
+                    semantic_text.splitlines()
+                )
+            )
+        except Exception:
+            block_type, confidence = "", 0.0
+        if block_type in {"critical_apparatus", "glossary"} and confidence >= 0.70:
+            return block_type
+        readable_parts = [
+            _semantic_text_from_placeholder_stream(part.text, part.tag_map).strip()
+            for part in split_structure_safe_parts(source_text, local_tag_map)
+            if part.kind == "content"
+        ]
+        readable_parts = [part for part in readable_parts if part]
+        # Some legacy indexes use a table solely for page layout. Content
+        # semantics take precedence so name/locator rows never enter the
+        # translation and residual-language retry loop.
+        if (
+            is_locator_index_identity_block(readable_parts)
+            or is_locator_index_block(readable_parts)
+        ):
+            return "index"
     if re.search(r"<(?:table|thead|tbody|tfoot|tr|td|th)\b", markup, re.I):
         return "table"
     if re.search(r"<(?:ol|ul|li)\b", markup, re.I):
@@ -527,7 +557,8 @@ async def _translate_structure_safe_fallback(
     translations: Dict[int, str] = {
         index: source
         for index, source in enumerate(clean_sources)
-        if document_context == "index" and is_locator_index_entry(source)
+        if document_context == "index"
+        and is_locator_index_identity_fragment(source)
     }
     pending_indices = [
         index for index in range(len(content_parts)) if index not in translations
@@ -1111,9 +1142,7 @@ async def translate_chunk_with_fallback(
             ).strip()
             if semantic:
                 identity_entries.append(semantic)
-        if identity_entries and all(
-            is_locator_index_entry(entry) for entry in identity_entries
-        ):
+        if is_locator_index_identity_block(identity_entries):
             if unit_record is not None:
                 mark_attempt(unit_record)
             result = placeholder_mgr.restore_to_global(chunk_text, global_indices)
