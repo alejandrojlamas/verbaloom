@@ -1359,9 +1359,10 @@ def _is_intentional_foreign_quote(
 
 _REFERENCE_METADATA_RE = re.compile(
     r"(?i)(?:\bISBN\b|\bEAN\b|copyright|©|\ball rights reserved\b|"
-    r"\bpublished by\b|\bpublishing\b|\bbooks?\s+(?:ltd|inc)\b|"
-    r"\b(?:street|avenue|road|boulevard)\b|\bpress\b)"
+    r"\bpublished by\b|\bbooks?\s+(?:ltd|inc)\b|"
+    r"\b(?:street|avenue|road|boulevard)\b)"
 )
+_REFERENCE_PUBLISHER_RE = re.compile(r"\b(?:press|publishing)\b", re.IGNORECASE)
 
 _RESIDUAL_EXAMPLE_RE = re.compile(
     r"(?P<phrase>.+?)\s*\((?:0|1)\.\d{2}\)(?:;\s*|,\s*|$)"
@@ -1570,6 +1571,15 @@ def _looks_like_reference_metadata(text: str, element: str = "") -> bool:
         return False
     if _REFERENCE_METADATA_RE.search(value):
         return True
+    if _REFERENCE_PUBLISHER_RE.search(value):
+        # Publisher words also occur in narrative ("afraid of the press").
+        # Require an identity-shaped block; complete citations are recognized
+        # separately by the shared structured-language metadata classifier.
+        words = re.findall(r"[^\W\d_]+", value, flags=re.UNICODE)
+        if looks_like_preserved_title_or_citation_sequence(words) or (
+            len(words) == 2 and all(word[:1].isupper() for word in words)
+        ):
+            return True
     return bool(element in {"h1", "h2", "h3", "h4", "h5", "h6"} and len(value) <= 180)
 
 
