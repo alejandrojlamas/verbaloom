@@ -3754,10 +3754,26 @@ def _should_run_llm_audit(
         return False
     if mode in {"always", "strict", "strict_full"}:
         return True
+    options = prompt_options or {}
+    if (
+        mode == "alerted"
+        and options.get("defer_intermediate_fidelity_to_final_audit") is True
+        and not str(decision.phase or "").startswith("final_")
+    ):
+        # A strict EPUB audit will judge every final candidate with the remote
+        # auditor. Before then, deterministic warnings do not justify paying
+        # for duplicate reviews. A rejected translation still gets an
+        # independent judgement so a false-positive local check cannot stall
+        # the book; a rejected refinement safely falls back to its accepted
+        # first-pass translation.
+        if decision.rejections:
+            return not str(decision.phase or "").startswith(
+                ("refinement", "inline_refinement")
+            )
+        return False
     if decision.rejections or decision.warnings:
         return True
     if mode == "sampled":
-        options = prompt_options or {}
         rate = int(options.get("fidelity_supervisor_sample_rate") or 20)
         rate = max(1, rate)
         return decision.chunk_index == 1 or decision.chunk_index % rate == 0

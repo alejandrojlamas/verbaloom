@@ -38,11 +38,32 @@ def usage_process_type(config: Dict[str, Any]) -> str:
 def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
     """Set guard defaults without requiring extra UI controls."""
     prompt_options = config.setdefault('prompt_options', {})
+    file_type = str(config.get('file_type') or '').strip().lower()
+    transform_mode = str(
+        config.get('text_transform_mode')
+        or prompt_options.get('text_transform_mode')
+        or ''
+    ).strip()
+    is_epub_translation = (
+        file_type == 'epub'
+        and not config.get('refine_only')
+        and str(config.get('operation') or 'translate').strip().lower() != 'transform'
+        and not transform_mode
+    )
+    has_strict_final_audit = bool(
+        is_epub_translation
+        and prompt_options.get('refine')
+        and (
+            prompt_options.get('audit_entire_book')
+            or prompt_options.get('strict_stage_contract')
+            or prompt_options.get('permit_unaudited_segments') is False
+        )
+    )
     # The legacy EPUB engine performs review and final source-aware audit per
     # XHTML before assembly. Mark that as inline so the Flask job layer does
     # not launch a second full-book refinement over the already reviewed EPUB.
     if (
-        str(config.get('file_type') or '').strip().lower() == 'epub'
+        file_type == 'epub'
         and not config.get('refine_only')
         and prompt_options.get('refine')
     ):
@@ -71,7 +92,36 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
                 and strength != 'strict'
             ):
                 prompt_options['profile_audit_enabled'] = False
-        prompt_options.setdefault('quality_alert_model', 'deepseek-v4-pro')
+        primary_model = str(config.get('model') or '').strip()
+        if has_strict_final_audit:
+            # Strict EPUB jobs already run a source-aware Pro audit over every
+            # final candidate. Keep deterministic checks at every earlier
+            # stage, but do not pay for the same remote judgement two more
+            # times while translating and refining. Hard translation rejects
+            # can still escalate; questionable refinements simply keep the
+            # already accepted draft until the final audit.
+            prompt_options.setdefault(
+                'defer_intermediate_fidelity_to_final_audit',
+                True,
+            )
+            if not uses_profile:
+                prompt_options.setdefault(
+                    'defer_intermediate_editorial_guard_to_final_audit',
+                    True,
+                )
+
+            # Locale and residue repairs are accepted only after deterministic
+            # validation and the final Pro audit. Running them on the selected
+            # Flash model avoids using Pro for simple bounded rewrites.
+            if primary_model and 'flash' in primary_model.lower():
+                prompt_options['quality_alert_model'] = primary_model
+                prompt_options['_quality_alert_model_policy'] = (
+                    'primary_then_strict_final_audit'
+                )
+            else:
+                prompt_options.setdefault('quality_alert_model', 'deepseek-v4-pro')
+        else:
+            prompt_options.setdefault('quality_alert_model', 'deepseek-v4-pro')
         prompt_options.setdefault('source_aware_editorial_guard_model', 'deepseek-v4-pro')
         if uses_transform_profile:
             prompt_options['transform_auditor_model'] = 'deepseek-v4-pro'

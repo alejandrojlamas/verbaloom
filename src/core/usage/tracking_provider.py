@@ -150,13 +150,29 @@ def _infer_phase(prompt: str, system_prompt: str = "") -> str:
         return "llm_call"
 
     if (
+        "<combined_quality_audit_json>" in text
+        or "independent bilingual quality auditor" in text
+    ):
+        return "combined_quality_audit"
+
+    if (
         "fidelity supervisor" in text
+        or "independent bilingual fidelity auditor" in text
+        or "<fidelity_audit_json>" in text
         or "audita esta modernización" in text
         or "audita esta traducción" in text
         or '"overall_decision"' in text
         or '"content_fidelity"' in text
+        or '"censored_or_softened"' in text
     ):
         return "fidelity_audit"
+
+    if (
+        "<editorial_guard_json>" in text
+        or "source-aware editorial guard" in text
+        or "juez fuente-aware" in text
+    ):
+        return "editorial_audit"
 
     if (
         "corrige la modernización usando la auditoría" in text
@@ -166,6 +182,16 @@ def _infer_phase(prompt: str, system_prompt: str = "") -> str:
         or "quality alert repair" in text
     ):
         return "repair"
+
+    if (
+        "technical placeholder correction specialist" in text
+        or "placeholders were corrupted" in text
+        or "correction request" in text
+        or "corrige los marcadores" in text
+        or "repair the placeholder" in text
+        or "restore every placeholder" in text
+    ):
+        return "format_repair"
 
     if (
         "descubrimiento léxico" in text
@@ -197,18 +223,13 @@ def _infer_phase(prompt: str, system_prompt: str = "") -> str:
         "revisión editorial" in text
         or "revision editorial" in text
         or "refinamiento editorial" in text
+        or "editorial refinement" in text
+        or "# draft to refine" in text
+        or "final editorial review" in text
         or "refina el texto" in text
         or "corrige estilo" in text
     ):
         return "editorial_refinement"
-
-    if (
-        "placeholder" in text
-        or "marcadores de formato" in text
-        or "correction request" in text
-        or "corrige los marcadores" in text
-    ):
-        return "format_repair"
 
     if (
         "traduce" in text

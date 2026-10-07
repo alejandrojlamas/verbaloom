@@ -14,6 +14,7 @@ from src.core.fidelity_supervisor import (
     fidelity_supervisor_enabled,
     fidelity_report_path,
     parse_fidelity_audit_response,
+    _should_run_llm_audit,
     supervise_fidelity,
 )
 from src.core.llm.base import LLMResponse
@@ -27,6 +28,58 @@ def test_supervisor_requires_explicit_runtime_opt_in():
         "fidelity_supervisor": True,
         "fidelity_supervisor_mode": "off",
     }) is False
+
+
+def test_strict_epub_cascade_defers_only_redundant_intermediate_judges():
+    clean = assess_fidelity(
+        "The complete passage has no changed facts.",
+        "El pasaje completo no tiene hechos alterados.",
+        chunk_index=1,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+    warned = assess_fidelity(
+        "The source mentions Mr Charles Darwin in a sensitive war account.",
+        "La fuente menciona a Charles Darwin en un relato bélico sensible.",
+        chunk_index=2,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+    rejected_translation = assess_fidelity(
+        "The expedition began in 1596 with 17 survivors.",
+        "La expedición comenzó con sobrevivientes.",
+        chunk_index=3,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+    rejected_refinement = assess_fidelity(
+        "The expedition began in 1596 with 17 survivors.",
+        "La expedición comenzó con sobrevivientes.",
+        chunk_index=3,
+        phase="refinement",
+        source_language="English",
+        target_language="Spanish",
+    )
+    options = {
+        "fidelity_supervisor_mode": "alerted",
+        "defer_intermediate_fidelity_to_final_audit": True,
+    }
+
+    assert not _should_run_llm_audit(clean, options)
+    assert warned.warnings
+    assert not _should_run_llm_audit(warned, options)
+    assert rejected_translation.rejections
+    assert _should_run_llm_audit(rejected_translation, options)
+    assert not _should_run_llm_audit(rejected_refinement, options)
+
+    final_options = {
+        **options,
+        "fidelity_supervisor_mode": "strict_full",
+    }
+    assert _should_run_llm_audit(clean, final_options)
 
 
 @pytest.mark.asyncio

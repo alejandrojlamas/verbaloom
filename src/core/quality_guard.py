@@ -134,15 +134,22 @@ def _should_run_source_aware_editorial_guard(
     source_text: str,
     prompt_options: Optional[dict],
 ) -> bool:
+    options = prompt_options or {}
     if not source_text.strip():
         return False
-    if not _source_aware_editorial_guard_enabled(prompt_options):
+    if not _source_aware_editorial_guard_enabled(options):
         return False
-    mode = _source_aware_editorial_guard_mode(prompt_options)
+    mode = _source_aware_editorial_guard_mode(options)
     if mode == "off":
         return False
     if mode == "always":
         return True
+    if options.get("defer_intermediate_editorial_guard_to_final_audit") is True:
+        # The final strict EPUB audit compares the selected candidate with its
+        # source. Until then the local editorial guard is authoritative: it
+        # keeps clean refinements and falls back to the accepted draft for any
+        # rejection, avoiding a redundant remote judge per chunk.
+        return False
     return (not decision.accepted) or bool(decision.warnings)
 
 

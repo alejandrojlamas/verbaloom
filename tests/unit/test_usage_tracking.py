@@ -4,8 +4,14 @@ from datetime import datetime, timezone
 
 from src.api.blueprints.usage_routes import _build_live_jobs
 from src.core.llm.base import LLMResponse
+from src.prompts.prompts import (
+    generate_placeholder_correction_prompt,
+    generate_refinement_prompt,
+    generate_translation_prompt,
+)
 from src.core.usage.store import TokenUsageStore
 from src.core.usage.tracking_provider import UsageTrackingProvider
+from src.core.usage.tracking_provider import _infer_phase
 
 
 OFF_PEAK_TIMESTAMP = datetime(2026, 9, 12, 12, tzinfo=timezone.utc).timestamp()
@@ -217,6 +223,60 @@ async def test_usage_tracking_provider_infers_phase_and_propagates_model(tmp_pat
     assert wrapped.context_window == 8192
     assert event["model"] == "deepseek-v4-pro"
     assert event["phase"] == "fidelity_audit"
+
+
+def test_usage_phase_inference_does_not_call_normal_placeholder_prompts_repairs():
+    translation_system = (
+        "Translate the complete passage. Preserve every placeholder such as [id0]. "
+        "Return it between <translation> tags."
+    )
+    refinement_system = (
+        "Perform an editorial refinement. Preserve every placeholder exactly."
+    )
+    fidelity_system = (
+        "You are an independent bilingual fidelity auditor. "
+        "Return <FIDELITY_AUDIT_JSON> with censored_or_softened."
+    )
+    repair_system = "Correction request: restore every placeholder that was lost."
+
+    assert _infer_phase("Text", translation_system) == "translation"
+    assert _infer_phase("Text", refinement_system) == "editorial_refinement"
+    assert _infer_phase("Text", fidelity_system) == "fidelity_audit"
+    assert _infer_phase("Text", repair_system) == "format_repair"
+
+
+def test_usage_phase_inference_matches_real_translation_and_refinement_prompts():
+    translation = generate_translation_prompt(
+        "The year was 1596 [id0].",
+        "",
+        "",
+        "",
+        "English",
+        "Spanish",
+        has_placeholders=True,
+        prompt_options={},
+        placeholder_format=("[id", "]"),
+    )
+    refinement = generate_refinement_prompt(
+        draft_translation="El año era 1596 [id0].",
+        target_language="Spanish",
+        has_placeholders=True,
+        prompt_options={},
+        placeholder_format=("[id", "]"),
+    )
+    repair = generate_placeholder_correction_prompt(
+        original_text="The year was [id0]1596[id1].",
+        translated_text="El año era 1596 [id0][id1].",
+        specific_errors="[id0] is out of position.",
+        source_language="English",
+        target_language="Spanish",
+        expected_count=2,
+        placeholder_format=("[id", "]"),
+    )
+
+    assert _infer_phase(translation.user, translation.system) == "translation"
+    assert _infer_phase(refinement.user, refinement.system) == "editorial_refinement"
+    assert _infer_phase(repair.user, repair.system) == "format_repair"
 
 
 def test_live_usage_projection_uses_jobs_and_simulated_events(tmp_path):

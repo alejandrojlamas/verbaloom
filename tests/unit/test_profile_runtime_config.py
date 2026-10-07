@@ -122,6 +122,53 @@ def test_epub_translation_declares_its_existing_review_as_inline():
     assert options["inline_refinement"] is True
 
 
+def test_strict_flash_epub_defers_duplicate_remote_audits_to_final_stage():
+    config = {
+        "file_type": "epub",
+        "source_language": "English",
+        "target_language": "Spanish",
+        "llm_provider": "deepseek",
+        "model": "deepseek-flash",
+        "operation": "translate",
+        "refine_only": False,
+        "prompt_options": {
+            "refine": True,
+            "strict_stage_contract": True,
+            "audit_entire_book": True,
+        },
+    }
+
+    options = configure_editorial_guard_options(config)
+
+    assert options["defer_intermediate_fidelity_to_final_audit"] is True
+    assert options["defer_intermediate_editorial_guard_to_final_audit"] is True
+    assert options["quality_alert_model"] == "deepseek-flash"
+    assert options["fidelity_supervisor_model"] == "deepseek-v4-pro"
+
+
+def test_transform_profile_does_not_defer_its_distinct_quality_contract():
+    config = {
+        "file_type": "epub",
+        "source_language": "Spanish",
+        "target_language": "Spanish",
+        "llm_provider": "deepseek",
+        "model": "deepseek-flash",
+        "operation": "transform",
+        "prompt_options": {
+            "refine": True,
+            "text_transform_mode": "modernize",
+            "strict_stage_contract": True,
+            "audit_entire_book": True,
+        },
+    }
+
+    options = configure_editorial_guard_options(config)
+
+    assert "defer_intermediate_fidelity_to_final_audit" not in options
+    assert "defer_intermediate_editorial_guard_to_final_audit" not in options
+    assert options["quality_alert_model"] == "deepseek-v4-pro"
+
+
 def test_refine_only_epub_does_not_claim_translation_inline_refinement():
     config = {
         "file_type": "epub",

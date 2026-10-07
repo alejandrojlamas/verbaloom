@@ -53,6 +53,28 @@ def test_source_aware_guard_policy_respects_modes_and_local_decision():
         source_text="source",
         prompt_options={"source_aware_editorial_guard": False},
     )
+    assert not _should_run_source_aware_editorial_guard(
+        warned,
+        source_text="source",
+        prompt_options={
+            "defer_intermediate_editorial_guard_to_final_audit": True,
+        },
+    )
+    assert not _should_run_source_aware_editorial_guard(
+        rejected,
+        source_text="source",
+        prompt_options={
+            "defer_intermediate_editorial_guard_to_final_audit": True,
+        },
+    )
+    assert _should_run_source_aware_editorial_guard(
+        clean,
+        source_text="source",
+        prompt_options={
+            "source_aware_editorial_guard_mode": "always",
+            "defer_intermediate_editorial_guard_to_final_audit": True,
+        },
+    )
 
 
 def test_quality_alerts_and_repair_prompt_live_in_extracted_module():
