@@ -69,7 +69,7 @@ jobs:
 
       - name: Post replay report as PR comment
         if: always() && steps.files.outputs.count != '0'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: benchmark-replay
           path: replay_report.md
