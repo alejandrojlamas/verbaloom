@@ -100,8 +100,53 @@ async def test_worsening_repair_keeps_best_candidate_and_stops_after_reload(
     with pytest.raises(ChunkTranslationFailedError):
         await run(saved, list(candidates))
     assert calls == before
-    assert len([c for c in calls if c[0] == "repair"]) == 1
+    assert len([c for c in calls if c[0] == "repair"]) == 2
     assert not validate_publishable_units(saved)[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_stop", [False, True])
+async def test_remaining_round_uses_failed_repair_evidence_without_rejudging(
+    monkeypatch, legacy_stop
+):
+    chunks, candidates = fixture()
+    corrected = "El viajero miraba el mar en calma y evocaba su infancia."
+    audits, repairs = [], []
+
+    async def audit(source, candidate, **kwargs):
+        audits.append(candidate)
+        if candidate == ORIGINAL:
+            return verdict(source, candidate, False, ["Wrong tense"])
+        if candidate == REPAIRED:
+            return verdict(source, candidate, False, ["Different reported defect"])
+        return verdict(source, candidate, candidate == corrected)
+
+    async def repair(**kwargs):
+        assert kwargs["candidate_text"] == ORIGINAL
+        repairs.append(kwargs)
+        return REPAIRED if len(repairs) == 1 else corrected
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+    monkeypatch.setattr(subject, "_repair_audited_candidate", repair)
+    if legacy_stop:
+        # Recreate the old durable stop with one round left under current limits.
+        with pytest.raises(ChunkTranslationFailedError):
+            await run(chunks, candidates, options={**OPTIONS, "max_repair_rounds": 1})
+        journal = chunks[0]["unit"]["audit_repair"]
+        journal["stop_reason"] = "repair_no_improvement"
+        chunks = json.loads(json.dumps(chunks))
+        assert candidates == [ORIGINAL]
+        assert len(audits) == 2
+
+    assert await run(chunks, candidates) == [corrected]
+    assert audits == [ORIGINAL, REPAIRED, corrected]
+    assert len(repairs) == 2
+    assert not repairs[0].get("repair_feedback")
+    assert repairs[1]["repair_feedback"]["judge_changed_facts"] == [
+        "Different reported defect"
+    ]
+    assert chunks[0]["unit"]["audit_repair_attempts"] == 2
+    assert validate_publishable_units(chunks)[0]
 
 
 @pytest.mark.asyncio
@@ -303,7 +348,7 @@ async def test_never_approving_auditor_repeated_findings_stop_without_style_rank
         chunks = json.loads(json.dumps(chunks))
     assert calls == [ORIGINAL, REPAIRED]
     assert candidates == [ORIGINAL]
-    assert chunks[0]["unit"]["audit_repair"]["stop_reason"] == "repair_no_improvement"
+    assert chunks[0]["unit"]["audit_repair"]["stop_reason"] == "repair_repeated_candidate"
 
 
 @pytest.mark.asyncio

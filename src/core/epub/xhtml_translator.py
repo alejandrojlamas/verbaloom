@@ -3003,6 +3003,7 @@ async def _repair_audited_candidate(
     log_callback: Optional[Callable] = None,
     patch_callback: Optional[Callable] = None,
     saved_patch: Optional[Dict] = None,
+    repair_feedback: Optional[Dict] = None,
 ) -> Optional[str]:
     """Repair only audited defects in an otherwise usable EPUB candidate.
 
@@ -3124,6 +3125,18 @@ Return only the complete repaired candidate between {TRANSLATE_TAG_IN} and
 Repair only the objective defects supported by SOURCE, then return the complete
 candidate with every placeholder preserved."""
 
+    if saved_patch is not None:
+        repair_feedback = saved_patch.get("contract", {}).get("context", {}).get("previous_repair")
+    if repair_feedback:
+        system_prompt = system_prompt.replace(
+            "Requirements:",
+            "A previous repair was rejected. Its audit is a diagnostic lead, not authority. "
+            "Verify any still-present defect against SOURCE and the current candidate. "
+            "Preserve all successful choices in the current candidate.\n\nRequirements:",
+            1,
+        )
+        user_prompt += "\n\n# PREVIOUS REPAIR AUDIT\n" + json.dumps(repair_feedback, ensure_ascii=False)
+
     patch_contract = None
     if localized:
         from src.core.localized_repair import (
@@ -3143,6 +3156,7 @@ candidate with every placeholder preserved."""
                     "document_context": str(options.get("_document_block_context") or ""),
                     "stage_fingerprints": (chunk.get("unit") or {}).get("stage_fingerprints") or {},
                     "profile_content_hash": options.get("_profile_content_hash") or "",
+                    **({"previous_repair": repair_feedback} if repair_feedback else {}),
                 },
             )
         except InvalidRepairPatch as exc:
@@ -3505,7 +3519,9 @@ async def _audit_epub_unit(
             "Saved provider refusal requires review; the request was not repeated.",
             reason="provider_refusal", provider=getattr(llm_client, "provider_type", ""),
         )
-    if (journal.get("stop_reason") == "repair_attempts_exhausted"
+    # Older checkpoints stopped at the first non-improving repair even when
+    # another round was already permitted. Keep all saved candidates/counters.
+    if (journal.get("stop_reason") in {"repair_attempts_exhausted", "repair_no_improvement"}
             and bounded_count(record.get("audit_repair_attempts", 0)) < repair_rounds):
         journal["stop_reason"] = ""
     if journal.get("stop_reason") == "audit_attempts_exhausted":
@@ -3541,7 +3557,9 @@ async def _audit_epub_unit(
                 mark_reviewed(record, best["text"], review=review)
                 save("repaired", accepted=decision.accepted)
             else:
-                fail("repair_no_improvement", stop=True)
+                if bounded_count(record.get("audit_repair_attempts", 0)) >= repair_rounds:
+                    fail("repair_no_improvement", stop=True)
+                save("repair_rejected", candidate_hash=pending["hash"])
 
         if best_decision.accepted:
             journal["pending"] = None
@@ -3564,6 +3582,19 @@ async def _audit_epub_unit(
         current_attempt = attempts if saved_patch is not None else attempts + 1
         if saved_patch is None and attempts >= repair_rounds:
             fail("repair_attempts_exhausted", stop=True)
+
+        repair_feedback = None
+        for previous in reversed(entries):
+            if previous.get("base_hash") != best["hash"]:
+                continue
+            local_text(previous)  # Verify the evidence still refers to the saved candidate.
+            previous_decision = restore_decision(previous, "audit")
+            if previous_decision is not None and not previous_decision.accepted:
+                repair_feedback = {
+                    key: value for key, value in previous_decision.to_dict().items()
+                    if key.startswith("judge_") and key not in {"judge_model", "judge_provider", "judge_confidence"}
+                }
+                break
 
         repair_options = build_fidelity_retry_prompt_options(audit_options, best_decision)
         repair_options["repair_until_pass"] = False
@@ -3594,6 +3625,7 @@ async def _audit_epub_unit(
                 placeholder_format=placeholder_format, log_callback=log_callback,
                 patch_callback=save_patch,
                 saved_patch=saved_patch,
+                repair_feedback=repair_feedback,
             )
         except Exception as exc:
             request_failed(exc)
