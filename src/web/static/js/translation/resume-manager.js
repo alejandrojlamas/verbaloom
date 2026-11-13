@@ -39,11 +39,14 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
     const fileType = (job.file_type || 'txt').toUpperCase();
     const isPartial = job.status === 'partial';
     const isError = job.status === 'error';
+    const finalizationPending = job.finalization_pending === true;
 
     const failedBadgeLabel = t('translation:job_card_failed_badge', { count: failedChunks });
     const warningBadgeStyle = 'display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: #92400e; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px;';
     const errorBadgeStyle = 'display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: #991b1b; background: #fee2e2; border: 1px solid #ef4444; border-radius: 4px;';
-    const statusBadge = isError
+    const statusBadge = finalizationPending
+        ? `<span style="${warningBadgeStyle}">${t('translation:job_card_finalization_pending')}</span>`
+        : isError
         ? `<span style="${errorBadgeStyle}" title="${t('translation:job_card_error_title')}">${t('translation:job_card_error_badge')}</span>`
         : (isPartial
             ? `<span style="${warningBadgeStyle}" title="${t('translation:job_card_partial_title', { count: failedChunks })}">${failedBadgeLabel}</span>`
@@ -56,7 +59,7 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
     const createdDate = job.created_at ? new Date(job.created_at).toLocaleString(dateLocale) : naText;
     const pausedDate = job.paused_at ? new Date(job.paused_at).toLocaleString(dateLocale) :
                        job.updated_at ? new Date(job.updated_at).toLocaleString(dateLocale) : naText;
-    const stoppedOrPausedLine = isError
+    const stoppedOrPausedLine = isError || finalizationPending
         ? t('translation:job_card_stopped', { date: pausedDate })
         : t('translation:job_card_paused', { date: pausedDate });
 
@@ -90,12 +93,12 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
 
     return `
         <div class="resumable-job-card" style="border: 1px solid #e5e7eb; padding: 20px; margin-bottom: 15px; border-radius: 8px; background: #f9fafb;">
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; gap: 15px;">
+            <div class="resumable-job-header">
                 <div style="flex: 1; min-width: 0;">
-                    <div style="font-size: 18px; font-weight: 600; color: #1f2937; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${DomHelpers.escapeHtml(displayNameFormatted)}">
+                    <div class="resumable-job-title" title="${DomHelpers.escapeHtml(displayNameFormatted)}">
                         ${DomHelpers.escapeHtml(displayNameFormatted)}
                     </div>
-                    <div style="font-size: 14px; color: #6b7280; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="→ ${DomHelpers.escapeHtml(outputFilename)}">
+                    <div class="resumable-job-filename" title="→ ${DomHelpers.escapeHtml(outputFilename)}">
                         → ${DomHelpers.escapeHtml(outputFilename)}
                     </div>
                     <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
@@ -103,11 +106,11 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
                     </div>
                 </div>
 
-                <div style="display: flex; gap: 10px; flex-shrink: 0;">
+                <div class="resumable-job-actions">
                     <button class="btn btn-primary" onclick="resumeJob('${job.translation_id}')"
                             title="${resumeTitle}"
                             ${hasActiveTranslation ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-                        ${t('translation:job_card_resume_btn')}
+                        ${t(finalizationPending ? 'translation:job_card_retry_finalization' : 'translation:job_card_resume_btn')}
                     </button>
                     <button class="btn btn-danger" onclick="deleteCheckpoint('${job.translation_id}')" title="${t('translation:job_card_delete_title')}">
                         ${t('translation:job_card_delete_btn')}
@@ -117,15 +120,15 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
 
             <div style="margin-bottom: 10px;">
                 <div style="display: flex; justify-content: space-between; font-size: 13px; color: #6b7280; margin-bottom: 5px;">
-                    <span>${t('translation:job_card_progress', { completed: completedChunks, total: totalChunks, percent: progressPercent })}</span>
+                    <span>${t(finalizationPending ? 'translation:job_card_text_progress' : 'translation:job_card_progress', { completed: completedChunks, total: totalChunks, percent: progressPercent })}</span>
                 </div>
                 <div style="width: 100%; background: #e5e7eb; border-radius: 4px; height: 8px; overflow: hidden;">
                     <div style="width: ${progressPercent}%; background: #3b82f6; height: 100%; transition: width 0.3s;"></div>
                 </div>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; font-size: 12px; color: #9ca3af;">
-                <div style="display: flex; gap: 20px;">
+            <div class="resumable-job-footer">
+                <div class="resumable-job-dates">
                     <span>${t('translation:job_card_created', { date: createdDate })}</span>
                     <span>${stoppedOrPausedLine}</span>
                 </div>
@@ -407,7 +410,7 @@ export const ResumeManager = {
             const resumedPercent = (typeof jobData.stats?.percent === 'number')
                 ? jobData.stats.percent
                 : (jobData.progress || 0);
-            ProgressManager.updateProgress(resumedPercent);
+            ProgressManager.updateProgress(Math.min(99, resumedPercent));
 
             // Emit event for translation started
             const event = new CustomEvent('translationResumed', { detail: { translationId, jobData } });

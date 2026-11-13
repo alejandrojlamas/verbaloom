@@ -4035,6 +4035,7 @@ async def _audit_epub_chunks(
     log_callback: Optional[Callable] = None,
     check_interruption_callback: Optional[Callable] = None,
     checkpoint_callback: Optional[Callable[[int, str, Dict[str, Any]], None]] = None,
+    progress_callback: Optional[Callable[[int], None]] = None,
 ) -> List[str]:
     """Audit independent reviewed units, retaining all progress before blocking publication."""
     if len(candidate_chunks) != len(chunks):
@@ -4085,6 +4086,8 @@ async def _audit_epub_chunks(
                     f"Unit {idx + 1}: {exc.reason}; kept for review while the "
                     "remaining units are audited.",
                 )
+        if progress_callback:
+            progress_callback(idx + 1)
     if failures:
         error = failures[0]
         error.failed_unit_indices = [exc.chunk_index for exc in failures]
@@ -4548,6 +4551,21 @@ async def translate_xhtml_simplified(
         return False, stats  # success=False because incomplete
 
     # 4.5. Refinement (optional - only if not interrupted)
+    def report_quality_progress(stage, done, *, unit=None, metrics=None):
+        if stats_callback:
+            stage_progress = {
+                "stage": stage,
+                "done": done,
+                "total": len(chunks),
+            }
+            if unit is not None:
+                stage_progress["unit"] = unit
+            stats_callback({
+                **(metrics if metrics is not None else stats.to_dict()),
+                "completed_chunks": len(chunks),
+                "stage_progress": stage_progress,
+            })
+
     if deferred_review and translated_chunks:
         for chunk, candidate in zip(chunks, translated_chunks):
             if chunk["unit"].get("review_status") != "COMPLETED":
@@ -4562,6 +4580,7 @@ async def translate_xhtml_simplified(
         # Switch stats to refinement phase
         stats.refinement_phase = True
         stats.refinement_chunks_completed = 0
+        report_quality_progress("review", 0)
 
         if log_callback:
             log_callback("epub_refinement_start",
@@ -4592,7 +4611,9 @@ async def translate_xhtml_simplified(
             placeholder_format=placeholder_format,
             log_callback=log_callback,  # Pass through to parent's token tracker
             prompt_options=prompt_options,
-            stats_callback=stats_callback,  # Pass stats callback for progress updates
+            stats_callback=lambda metrics: report_quality_progress(
+                "review", metrics["refinement_chunks_completed"], metrics=metrics,
+            ),
             stats=stats,  # Pass stats object to update during refinement
             runtime_state=runtime_state,
             source_language=source_language,
@@ -4645,6 +4666,16 @@ async def translate_xhtml_simplified(
 
     if translated_chunks and (enable_refinement or final_unit_audit):
         audit_checkpoint_candidates = list(translated_chunks)
+        audit_done = 0
+        audit_stage = "audit"
+
+        def report_audit_progress(done, stage="audit", *, unit=None):
+            nonlocal audit_done, audit_stage
+            if (audit_done, audit_stage) != (done, stage):
+                audit_done, audit_stage = done, stage
+                report_quality_progress(stage, done, unit=unit)
+
+        report_quality_progress("audit", 0)
 
         def save_audit_checkpoint(
             chunk_index: int,
@@ -4658,6 +4689,11 @@ async def translate_xhtml_simplified(
                     stage=f"audit_{metadata.get('status') or 'progress'}",
                     failed_chunks=sum(c["unit"].get("audit_status") == "FAILED" for c in chunks),
                 )
+                status = metadata.get("status")
+                if status == "repair_pending":
+                    report_audit_progress(audit_done, "repair", unit=chunk_index + 1)
+                elif status == "audit_pending" and audit_stage == "repair":
+                    report_audit_progress(audit_done)
 
         try:
             translated_chunks = await _audit_epub_chunks(
@@ -4672,6 +4708,7 @@ async def translate_xhtml_simplified(
                 log_callback=log_callback,
                 check_interruption_callback=check_interruption_callback,
                 checkpoint_callback=save_audit_checkpoint,
+                progress_callback=report_audit_progress,
             )
         except ChunkTranslationFailedError as exc:
             failed_count = len(getattr(exc, "failed_unit_indices", [exc.chunk_index]))

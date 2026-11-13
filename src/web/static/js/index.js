@@ -359,6 +359,7 @@ function wireModuleEvents() {
     WebSocketManager.on('checkpoint_created', (data) => {
         ResumeManager.loadResumableJobs();
     });
+    window.addEventListener('checkpointListChanged', () => ResumeManager.loadResumableJobs());
 
     // TTS update events
     WebSocketManager.on('tts_update', (data) => {

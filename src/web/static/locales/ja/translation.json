@@ -1,4 +1,7 @@
 {
+  "job_card_finalization_pending": "公開待ち",
+  "job_card_retry_finalization": "検証して公開",
+  "job_card_text_progress": "保存済み: {{completed}} / {{total}} チャンク",
   "source_language": "翻訳元の言語",
   "target_language": "翻訳先の言語",
   "auto_detect_placeholder": "ファイルから自動検出...",
@@ -172,6 +175,10 @@
   "stat_est_remaining": "残り時間 (推定)",
   "eta_calculating": "計算中…",
   "eta_finalizing": "最終処理中…",
+  "progress_stage_review": "編集レビュー：{{done}}/{{total}}",
+  "progress_stage_audit": "忠実性チェック：{{done}}/{{total}} 件確認済み",
+  "progress_stage_repair": "断片 {{unit}} を修正中 · {{done}}/{{total}} 件確認済み",
+  "progress_stage_section": "セクション {{section}}/{{sections}}",
   "eta_waiting": "待機中",
   "stat_total_cost": "合計コスト (USD)",
   "stat_total_tokens": "合計トークン数",

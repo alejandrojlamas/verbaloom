@@ -556,6 +556,7 @@ export const TranslationTracker = {
                 data
             );
             this.updateActiveTranslationsState();
+            window.dispatchEvent(new Event('checkpointListChanged'));
         } else if (data.status === 'interrupted') {
             MessageLogger.resetProgressTracking();
             this.finishCurrentFileTranslation(
@@ -616,6 +617,15 @@ export const TranslationTracker = {
                 'info'
             );
             this.updateActiveTranslationsState();
+        } else if (data.status === 'partial') {
+            MessageLogger.resetProgressTracking();
+            this.finishCurrentFileTranslation(
+                data.stats?.live_status || t('translation:job_card_partial_title', { count: data.stats?.failed_chunks || 0 }),
+                'warning',
+                data
+            );
+            this.updateActiveTranslationsState();
+            window.dispatchEvent(new Event('checkpointListChanged'));
         } else if (data.status === 'error') {
             MessageLogger.resetProgressTracking();
             this.finishCurrentFileTranslation(
@@ -697,6 +707,10 @@ export const TranslationTracker = {
             }
 
             const job = jobs.find(item => item.translation_id === currentJob.translationId);
+            if (job && ['completed', 'partial'].includes(job.status)) {
+                this.handleTranslationUpdate({ ...job, stats: this._statsFromActiveJob(job) });
+                return;
+            }
             if (!job || !ACTIVE_STATUSES.has(job.status)) {
                 this.stopLiveProgressPolling();
                 return;
@@ -760,6 +774,8 @@ export const TranslationTracker = {
             progress_percent: job.progress_percent,
             percent: job.percent,
             phase: job.phase,
+            stage_progress: job.stage_progress,
+            inline_refinement: job.inline_refinement || false,
             current_phase: job.current_phase,
             enable_refinement: job.enable_refinement || false,
             refinement_enabled: job.refinement_enabled || false,
@@ -970,10 +986,12 @@ export const TranslationTracker = {
             currentFile.name,
             resultData.status === 'completed' ? 'Completed' :
             resultData.status === 'interrupted' ? 'Interrupted' :
-            resultData.status === 'rate_limited' ? 'Rate Limited' : 'Error'
+            resultData.status === 'rate_limited' ? 'Rate Limited' :
+            resultData.status === 'partial' ? t('translation:job_card_finalization_pending') : 'Error'
         );
 
         if (resultData.status === 'completed') {
+            ProgressManager.complete();
             this.renderCompletionCard(currentFile, resultData);
         }
 

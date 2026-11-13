@@ -33,7 +33,7 @@ from src.core.language_evidence import (
 from src.utils.language_detector import LanguageDetector
 
 from .lang_support import get_language_code
-from .dom_boundaries import audit_epub_dom_boundaries
+from .dom_boundaries import _BLOCK_XPATH, audit_epub_dom_boundaries
 from .professionalize import count_invalid_blockquote_inline_runs
 from .publication_structure import (
     GENERATED_COVER_IMAGE,
@@ -44,12 +44,6 @@ from .publication_structure import (
 from .unit_contract import EPUB_PIPELINE_VERSION, EPUB_PROMPT_VERSION, stable_unit_id, text_sha256
 
 
-_BLOCK_XPATH = (
-    "//*[local-name()='p' or local-name()='h1' or local-name()='h2' or "
-    "local-name()='h3' or local-name()='h4' or local-name()='h5' or "
-    "local-name()='h6' or local-name()='li' or local-name()='blockquote' or "
-    "local-name()='figcaption' or local-name()='td' or local-name()='th']"
-)
 _PLACEHOLDER_RE = re.compile(
     r"\[id\d+\]|\[\[\d+\]\]|<\s*/?\s*(?:translation(?:ation)*|source|target|input|output)\b",
     re.IGNORECASE,
@@ -60,6 +54,9 @@ _BAD_SPACING_RE = re.compile(
     r"\s+[.,;:!?](?=[A-Za-zÁÉÍÓÚÜÑáéíóúüñ])"
 )
 _TEXT_SUFFIXES = {".xhtml", ".html", ".htm"}
+_NUMBERED_LINK_LABEL = re.compile(
+    r"(?:\d+|(?=[IVXLCDM]+$)M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3}))"
+)
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".avif"}
 _FONT_SUFFIXES = {".otf", ".ttf", ".woff", ".woff2"}
 _EXTERNAL_SCHEMES = {"http", "https", "mailto", "tel", "data"}
@@ -134,6 +131,7 @@ class EpubSnapshot:
     cover_page: str = ""
     obvious_cover_image: str = ""
     sanitized_artifact_paths: dict[str, set[str]] = field(default_factory=dict)
+    numbered_link_documents: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass
@@ -275,7 +273,7 @@ def _read_toc_entries(
 def _resolve_toc_href(base_dir: str, href: str) -> str:
     parsed = urlsplit(href)
     path = posixpath.normpath(posixpath.join(base_dir, unquote(parsed.path))) if parsed.path else ""
-    return f"{path}#{parsed.fragment}" if parsed.fragment else path
+    return f"{path}#{unquote(parsed.fragment)}" if parsed.fragment else path
 
 
 def _broken_toc_targets(snapshot: EpubSnapshot) -> list[str]:
@@ -288,6 +286,22 @@ def _broken_toc_targets(snapshot: EpubSnapshot) -> list[str]:
         elif fragment and fragment not in snapshot.ids.get(path, set()):
             broken.append(target)
     return broken
+
+
+def _numbered_link_targets(root: etree._Element) -> tuple[str, ...]:
+    anchors = root.xpath(".//*[local-name()='a' and @href]")
+    if len(anchors) < 2:
+        return ()
+    labels = [_normalized_text(" ".join(anchor.itertext())) for anchor in anchors]
+    targets = tuple(anchor.get("href") for anchor in anchors)
+    if (
+        all(_NUMBERED_LINK_LABEL.fullmatch(label) for label in labels)
+        and all(not (target.scheme or target.netloc) and (target.path or target.fragment)
+                for target in map(urlsplit, targets))
+        and _normalized_text(" ".join(root.itertext())) == " ".join(labels)
+    ):
+        return targets
+    return ()
 
 
 def _is_allowed_publication_asset(snapshot: EpubSnapshot, name: str) -> bool:
@@ -436,6 +450,7 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
         duplicate_id_count = 0
         parse_errors: list[str] = []
         sanitized_artifact_paths: dict[str, set[str]] = {}
+        numbered_link_documents: dict[str, tuple[str, ...]] = {}
         source_index = 0
 
         for spine_index, file_href in enumerate(spine):
@@ -468,6 +483,8 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
             body_nodes = root.xpath("//*[local-name()='body']")
             visible_root = body_nodes[0] if body_nodes else root
             file_texts[file_href] = _normalized_text(" ".join(visible_root.itertext()))
+            if targets := _numbered_link_targets(visible_root):
+                numbered_link_documents[file_href] = targets
             sanitized_artifact_paths[file_href] = {
                 element.getroottree().getpath(element)
                 for element in root.xpath(
@@ -551,6 +568,7 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
         cover_page=cover_page,
         obvious_cover_image=obvious_cover_image,
         sanitized_artifact_paths=sanitized_artifact_paths,
+        numbered_link_documents=numbered_link_documents,
     )
 
 
@@ -579,7 +597,8 @@ def audit_epub_publication(
     report.spacing_findings += report.dom_boundary_findings
     if boundary_report.structural_mismatches:
         report.errors.append(
-            f"{len(boundary_report.structural_mismatches)} DOM text-slot structure mismatch(es)"
+            f"{len(boundary_report.structural_mismatches)} DOM text-slot structure mismatch(es): "
+            + "; ".join(boundary_report.structural_mismatches[:3])
         )
 
     report.source_units = len(source.units)
@@ -655,6 +674,15 @@ def audit_epub_publication(
             f"{report.inherited_broken_toc_targets} invalid table-of-contents target(s) "
             "were inherited unchanged from the source EPUB"
         )
+    # Valid fragment links identify sections, even when the anchor is a div or span.
+    source_valid_fragments = {
+        target for _label, target in source.toc_entries
+        if "#" in target and target not in source_broken_toc
+    }
+    output_targets = {target for _label, target in output.toc_entries}
+    lost_fragments = sorted(source_valid_fragments - output_targets)
+    if lost_fragments:
+        report.errors.append(f"valid source table-of-contents anchors lost: {lost_fragments[:5]}")
     generated_navigation = any(
         Path(name).name in {Path(GENERATED_NAVIGATION).name, Path(GENERATED_NCX).name}
         for name in [*output.nav_files, *output.ncx_files]
@@ -800,7 +828,13 @@ def audit_epub_publication(
             report.spacing_findings += file_spacing_findings
             issues.append("invalid_punctuation_spacing")
 
-        intentional_foreign_quote = _is_intentional_foreign_quote(
+        source_numbered_links = source.numbered_link_documents.get(file_href)
+        preserved_numbered_links = bool(
+            source_numbered_links
+            and source_numbered_links == output.numbered_link_documents.get(file_href)
+            and source_text == output_text
+        )
+        intentional_foreign_quote = preserved_numbered_links or _is_intentional_foreign_quote(
             source_text,
             output_text,
             source_language=source_language,
@@ -1065,7 +1099,7 @@ def audit_epub_publication(
         status = "AUDITED" if not issues else "FAILED"
         if status == "AUDITED":
             report.audited_units += len(source_units)
-        report.units.append(_unit_report_payload(
+        unit_payload = _unit_report_payload(
             source_units=source_units,
             output_unit=representative,
             status=status,
@@ -1082,7 +1116,10 @@ def audit_epub_publication(
                 if unit.dom_path
                 in output.sanitized_artifact_paths.get(file_href, set())
             ],
-        ))
+        )
+        if preserved_numbered_links and status == "AUDITED":
+            unit_payload["preserved_numbered_navigation"] = True
+        report.units.append(unit_payload)
 
     if report.source_language_units:
         report.errors.append(f"{report.source_language_units} unit(s) remain in the source language")

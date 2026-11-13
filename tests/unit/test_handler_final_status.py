@@ -331,6 +331,7 @@ def test_finalization_recovery_is_bounded_and_never_handles_failed_chunks():
     assert second["cycle"] == 2
     assert second["delay_seconds"] == 10
     assert exhausted is None
+    assert _build_finalization_recovery_plan({}, complete, validation_rejected=True) is None
 
     failed_chunk_checkpoint = {
         **complete,

@@ -9,7 +9,57 @@ import zipfile
 from lxml import etree
 from PIL import Image
 
-from src.core.epub.publication_structure import finish_epub_publication
+from src.core.epub.publication_structure import finish_epub_publication, normalize_package_ids
+
+
+def test_normalize_invalid_manifest_ids_and_all_package_references():
+    root = etree.fromstring(b"""<package unique-identifier="book">
+      <metadata><identifier id="book">urn:example</identifier>
+        <meta name="cover" content="1"/><meta refines="#1"/>
+      </metadata>
+      <manifest><item id="1" href="c.xhtml"/><item id="verbaloom-id-1" fallback="1"/></manifest>
+      <spine toc="1"><itemref idref="1"/></spine>
+    </package>""")
+    normalize_package_ids(root)
+    before = etree.tostring(root)
+    normalize_package_ids(root)
+    assert etree.tostring(root) == before
+    assert root.xpath("//item/@id") == ["verbaloom-id-1-2", "verbaloom-id-1"]
+    for xpath in ("//itemref/@idref", "//spine/@toc", "//meta/@content", "//item/@fallback"):
+        assert root.xpath(xpath) == ["verbaloom-id-1-2"]
+    assert root.xpath("//meta/@refines") == ["#verbaloom-id-1-2"]
+
+
+def test_finisher_preserves_nested_index_and_distinct_non_heading_anchors(tmp_path):
+    opf = _package()
+    manifest = opf.xpath("//*[local-name()='manifest']")[0]
+    etree.SubElement(manifest, "{http://www.idpf.org/2007/opf}item",
+                     id="nav", href="nav.xhtml", properties="nav", **{"media-type": "application/xhtml+xml"})
+    nav = tmp_path / "nav.xhtml"
+    nav.write_text(
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+        '<body><nav epub:type="toc"><ol><li><a href="chapter-1.xhtml">I</a><ol>'
+        '<li><a href="chapter-1.xhtml#second"><em>II</em></a></li>'
+        '<li><a href="chapter-1.xhtml#third">III</a></li>'
+        '</ol></li></ol></nav></body></html>',
+        encoding="utf-8",
+    )
+    chapter = etree.fromstring(
+        b'<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Libro</h1>'
+        b'<div id="second">Dos</div><span id="third">Tres</span></body></html>'
+    )
+    report = finish_epub_publication(
+        opf_tree=opf, opf_dir=tmp_path, content_files=["chapter-1.xhtml"],
+        parsed_xhtml_docs={str(tmp_path / "chapter-1.xhtml"): chapter},
+        target_language="Spanish",
+    )
+    index = etree.parse(str(nav)).xpath("//*[local-name()='nav' and @*[local-name()='type']='toc']")[0]
+    assert index.xpath(".//*[local-name()='a']/@href") == [
+        "chapter-1.xhtml", "chapter-1.xhtml#second", "chapter-1.xhtml#third",
+    ]
+    assert index.xpath(".//*[local-name()='em']/text()") == ["II"]
+    assert len(index.xpath(".//*[local-name()='ol']")) == 2
+    assert report.navigation_entries == 3
 
 
 def _package(*, with_cover: bool = False) -> etree._ElementTree:

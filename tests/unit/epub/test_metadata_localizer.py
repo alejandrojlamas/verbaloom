@@ -11,12 +11,38 @@ from src.core.epub.metadata_localizer import (
     localize_epub_metadata,
 )
 from src.core.epub.publication_structure import render_typographic_cover_bytes
+from src.core.epub.translator import _update_epub_metadata
+from src.utils.branding import GENERATOR_NAME
 
 
 CONTAINER = b'''<?xml version="1.0"?>
 <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
   <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
 </container>'''
+
+
+def test_localization_preserves_translator_and_role_reference(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.core.epub.translator.ATTRIBUTION_ENABLED", True)
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    _write_epub3(source)
+    opf = tmp_path / "content.opf"
+    with zipfile.ZipFile(source) as original, zipfile.ZipFile(output, "w") as candidate:
+        for info in original.infolist():
+            payload = original.read(info)
+            if info.filename.endswith(".opf"):
+                tree = etree.ElementTree(etree.fromstring(payload))
+                _update_epub_metadata(tree, str(opf), "Spanish")
+                payload = opf.read_bytes()
+            candidate.writestr(info, payload)
+
+    localize_epub_metadata(source, output, target_language="Spanish", title="Libro")
+    with zipfile.ZipFile(output) as result:
+        root = etree.fromstring(result.read("OEBPS/content.opf"))
+    translator = root.xpath("//*[local-name()='contributor' and text()=$name]", name=GENERATOR_NAME)
+    assert len(translator) == 1
+    assert root.xpath("//*[local-name()='meta' and @property='role' and @refines=$ref]/text()",
+                      ref=f"#{translator[0].get('id')}") == ["trl"]
 
 
 def _chapter(label: str = "Kapitel") -> bytes:

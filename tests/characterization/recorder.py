@@ -61,6 +61,8 @@ def _project(stats: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(value, float):
             value = round(value, 2)
         out[key] = value
+    if stats.get("stage_progress") is not None:
+        out["stage_progress"] = dict(stats["stage_progress"])
     return out
 
 

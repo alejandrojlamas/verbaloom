@@ -15,7 +15,7 @@
       "OEBPS/glossary.xhtml": "4d410b4f6381fe68f442babad8a73266c334adfd885392afd8d661c08a1bac8c",
       "OEBPS/images/cover.png": "59781d3b16ca0614e9943ac519fb078f21f6a5f4fc91be0305e16bf07acc68bf",
       "OEBPS/images/illustration.png": "c6e7af79250bb55144619f2b7896ddc20cedfac1a656b613c01eef7adb7b16cf",
-      "OEBPS/nav.xhtml": "291ab5ac35c6b707dcaf03128ed07ebdbcd5c3cd0d95b05b0391ae8275b49808",
+      "OEBPS/nav.xhtml": "7fbf1c156bae193f99005f19d2833095de7b3cdc5117cecb0ffd23849a072538",
       "OEBPS/styles/main.css": "071772d127e65d75e657f5ca2daba7ec2be51891c17f8788f9343828870947ed",
       "OEBPS/title.xhtml": "53e23ee3f4dfc604a360e60755b6c83652b655be977084291532f8d3728076bb",
       "OEBPS/toc.ncx": "3e99d406057c1626d95699c960df61e26d5f40c89ebef13bf0282e83d3d0fe52",
@@ -52,6 +52,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 1,
+      "stage_progress": {
+        "done": 0,
+        "section": 1,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 1,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 1,
+      "stage_progress": {
+        "done": 1,
+        "section": 1,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 1,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 1,
+      "stage_progress": {
+        "done": 0,
+        "section": 1,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 1,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 1,
+      "stage_progress": {
+        "done": 1,
+        "section": 1,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -96,6 +157,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 2,
+      "stage_progress": {
+        "done": 0,
+        "section": 2,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 2,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 2,
+      "stage_progress": {
+        "done": 1,
+        "section": 2,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 2,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 2,
+      "stage_progress": {
+        "done": 0,
+        "section": 2,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 2,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 2,
+      "stage_progress": {
+        "done": 1,
+        "section": 2,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -140,6 +262,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 3,
+      "stage_progress": {
+        "done": 0,
+        "section": 3,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 3,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 3,
+      "stage_progress": {
+        "done": 1,
+        "section": 3,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 3,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 3,
+      "stage_progress": {
+        "done": 0,
+        "section": 3,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 3,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 3,
+      "stage_progress": {
+        "done": 1,
+        "section": 3,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -184,6 +367,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 4,
+      "stage_progress": {
+        "done": 0,
+        "section": 4,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 4,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 4,
+      "stage_progress": {
+        "done": 1,
+        "section": 4,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 4,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 4,
+      "stage_progress": {
+        "done": 0,
+        "section": 4,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 4,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 4,
+      "stage_progress": {
+        "done": 1,
+        "section": 4,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -239,6 +483,13 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 6,
+      "stage_progress": {
+        "done": 0,
+        "section": 5,
+        "sections": 10,
+        "stage": "review",
+        "total": 2
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -250,6 +501,85 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 6,
+      "stage_progress": {
+        "done": 1,
+        "section": 5,
+        "sections": 10,
+        "stage": "review",
+        "total": 2
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 6,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 6,
+      "stage_progress": {
+        "done": 2,
+        "section": 5,
+        "sections": 10,
+        "stage": "review",
+        "total": 2
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 6,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 6,
+      "stage_progress": {
+        "done": 0,
+        "section": 5,
+        "sections": 10,
+        "stage": "audit",
+        "total": 2
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 6,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 6,
+      "stage_progress": {
+        "done": 1,
+        "section": 5,
+        "sections": 10,
+        "stage": "audit",
+        "total": 2
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 6,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 6,
+      "stage_progress": {
+        "done": 2,
+        "section": 5,
+        "sections": 10,
+        "stage": "audit",
+        "total": 2
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -294,6 +624,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 7,
+      "stage_progress": {
+        "done": 0,
+        "section": 6,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 7,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 7,
+      "stage_progress": {
+        "done": 1,
+        "section": 6,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 7,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 7,
+      "stage_progress": {
+        "done": 0,
+        "section": 6,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 7,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 7,
+      "stage_progress": {
+        "done": 1,
+        "section": 6,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -338,6 +729,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 8,
+      "stage_progress": {
+        "done": 0,
+        "section": 7,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 8,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 8,
+      "stage_progress": {
+        "done": 1,
+        "section": 7,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 8,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 8,
+      "stage_progress": {
+        "done": 0,
+        "section": 7,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 8,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 8,
+      "stage_progress": {
+        "done": 1,
+        "section": 7,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -382,6 +834,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 9,
+      "stage_progress": {
+        "done": 0,
+        "section": 8,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 9,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 9,
+      "stage_progress": {
+        "done": 1,
+        "section": 8,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 9,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 9,
+      "stage_progress": {
+        "done": 0,
+        "section": 8,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 9,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 9,
+      "stage_progress": {
+        "done": 1,
+        "section": 8,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -426,6 +939,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 10,
+      "stage_progress": {
+        "done": 0,
+        "section": 9,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 10,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 10,
+      "stage_progress": {
+        "done": 1,
+        "section": 9,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 10,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 10,
+      "stage_progress": {
+        "done": 0,
+        "section": 9,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 10,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 10,
+      "stage_progress": {
+        "done": 1,
+        "section": 9,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,
@@ -470,6 +1044,67 @@
       "fallback_used": 0,
       "placeholder_errors": 0,
       "processed_chunks": 11,
+      "stage_progress": {
+        "done": 0,
+        "section": 10,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 11,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 11,
+      "stage_progress": {
+        "done": 1,
+        "section": 10,
+        "sections": 10,
+        "stage": "review",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 11,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 11,
+      "stage_progress": {
+        "done": 0,
+        "section": 10,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 11,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 11,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 11,
+      "stage_progress": {
+        "done": 1,
+        "section": 10,
+        "sections": 10,
+        "stage": "audit",
+        "total": 1
+      },
       "successful_after_retry": 0,
       "token_alignment_used": 0,
       "total_chunks": 11,

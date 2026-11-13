@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict, dataclass
 import hashlib
 import html
@@ -76,6 +77,7 @@ class PublicationStructureReport:
 class _NavigationEntry:
     label: str
     target: str
+    source_target: str = ""
 
 
 def _qname(namespace: str, local: str) -> str:
@@ -172,6 +174,48 @@ def _metadata(root: etree._Element) -> etree._Element:
 
 def _manifest_items(root: etree._Element) -> list[etree._Element]:
     return root.xpath("//*[local-name()='manifest']/*[local-name()='item']")
+
+
+def normalize_package_ids(root: etree._Element) -> None:
+    """Repair invalid OPF XML IDs without changing their resource targets."""
+    counts = Counter(root.xpath("//@id"))
+    occupied = set(counts)
+    replacements = {}
+    for node in _manifest_items(root):
+        value = node.get("id")
+        if not value:
+            continue
+        try:
+            valid = etree.QName(value).localname == value
+        except ValueError:
+            valid = False
+        if valid or counts[value] != 1:
+            continue
+        base = "verbaloom-id-" + re.sub(r"[^a-zA-Z0-9_.-]+", "-", value)
+        candidate = base
+        suffix = 2
+        while candidate in occupied:
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+        occupied.add(candidate)
+        replacements[value] = candidate
+        node.set("id", candidate)
+    if not replacements:
+        return
+    for node in root.iter():
+        if not isinstance(node.tag, str):
+            continue
+        refs = ["idref", "fallback", "fallback-style", "media-overlay", "toc", "unique-identifier"]
+        if _local_name(node) == "meta" and str(node.get("name") or "").lower() == "cover":
+            refs.append("content")
+        for attr in refs:
+            value = node.get(attr)
+            if value in replacements:
+                node.set(attr, replacements[value])
+        for attr in ("refines", "href"):
+            value = node.get(attr) or ""
+            if value.startswith("#") and value[1:] in replacements:
+                node.set(attr, "#" + replacements[value[1:]])
 
 
 def _manifest_item_by_id(root: etree._Element, item_id: str) -> Optional[etree._Element]:
@@ -614,7 +658,7 @@ def _resolve_navigation_target(document_href: str, href: str) -> str:
         return ""
     base_dir = posixpath.dirname(document_href) or "."
     path = posixpath.normpath(posixpath.join(base_dir, unquote(parsed.path)))
-    return f"{path}#{parsed.fragment}" if parsed.fragment else path
+    return f"{path}#{unquote(parsed.fragment)}" if parsed.fragment else path
 
 
 def _existing_navigation_entries(
@@ -691,26 +735,32 @@ def _navigation_entries(
     section_label = "Sección" if get_language_code(target_language) == "es" else "Section"
     for ordinal, href in enumerate(content_files, start=1):
         normalized_href = posixpath.normpath(str(href or ""))
-        if not normalized_href or normalized_href == posixpath.normpath(cover_page_href):
+        if not normalized_href:
             continue
         root = docs.get(_path_identity(opf_dir / normalized_href))
         if root is None:
             continue
+        if normalized_href == posixpath.normpath(cover_page_href):
+            entries.extend(existing_entries.get(normalized_href, []))
+            continue
         represented_ids: set[str] = set()
         document_headings = _heading_candidates(root)
-        for existing in existing_entries.get(normalized_href, []):
+        document_entries = existing_entries.get(normalized_href, [])
+        for existing in document_entries:
             _target_path, _separator, fragment = existing.target.partition("#")
             target_node = next(
                 iter(root.xpath("//*[@id=$fragment]", fragment=fragment)),
                 None,
             ) if fragment else None
-            if target_node is not None and _local_name(target_node) in {"h1", "h2", "h3"}:
+            if target_node is not None:
                 target_id = str(target_node.get("id") or fragment)
-                label = _element_text(target_node) or existing.label
-                _add_class(target_node, _CHAPTER_TITLE_CLASS)
-                _mark_chapter_container(target_node, epub3=epub3)
-                marked_headings += 1
-            elif len(document_headings) == 1:
+                label = existing.label
+                if _local_name(target_node) in {"h1", "h2", "h3"}:
+                    label = _element_text(target_node) or label
+                    _add_class(target_node, _CHAPTER_TITLE_CLASS)
+                    _mark_chapter_container(target_node, epub3=epub3)
+                    marked_headings += 1
+            elif not fragment and len(document_headings) == 1 and len(document_entries) == 1:
                 target_node = document_headings[0]
                 target_id = _ensure_unique_id(
                     root,
@@ -726,14 +776,16 @@ def _navigation_entries(
                 if body is None:
                     continue
                 target_id = _ensure_unique_id(
-                    root,
-                    body,
-                    f"verbaloom-section-{len(entries) + 1:03d}",
-                )
+                    root, body, f"verbaloom-section-{len(entries) + 1:03d}",
+                ) if fragment else ""
                 label = existing.label
             represented_ids.add(target_id)
             entries.append(
-                _NavigationEntry(label=label, target=f"{normalized_href}#{target_id}")
+                _NavigationEntry(
+                    label=label,
+                    target=f"{normalized_href}#{target_id}" if target_id else normalized_href,
+                    source_target=existing.target,
+                )
             )
 
         for heading in document_headings:
@@ -825,37 +877,48 @@ def _write_navigation(
     entries: list[_NavigationEntry],
     cover_page_href: str,
     language_code: str,
-) -> None:
-    if path.exists():
+    root: etree._Element | None = None,
+) -> int:
+    if root is None and path.exists():
         try:
             root = etree.parse(str(path), etree.XMLParser(recover=False, huge_tree=True)).getroot()
         except (OSError, etree.XMLSyntaxError):
             root = _new_xhtml_document(language_code, title)
-    else:
+    elif root is None:
         root = _new_xhtml_document(language_code, title)
     root.set("lang", language_code)
     root.set(_qname(XML_NS, "lang"), language_code)
     body = next(iter(root.xpath("//*[local-name()='body']")), None)
     if body is None:
         body = etree.SubElement(root, _qname(XHTML_NS, "body"))
-    for node in list(body.xpath(".//*[local-name()='nav']")):
-        if "toc" in _nav_type(node).split():
-            parent = node.getparent()
-            if parent is not None:
-                parent.remove(node)
-
-    toc = etree.Element(_qname(XHTML_NS, "nav"))
-    toc.set(_qname(EPUB_NS, "type"), "toc")
-    toc.set("id", "toc")
-    heading = etree.SubElement(toc, _qname(XHTML_NS, "h1"))
-    heading.text = "Índice" if language_code == "es" else "Contents"
-    ordered = etree.SubElement(toc, _qname(XHTML_NS, "ol"))
-    for entry in entries:
-        item = etree.SubElement(ordered, _qname(XHTML_NS, "li"))
-        anchor = etree.SubElement(item, _qname(XHTML_NS, "a"))
-        anchor.set("href", _relative_target(href, entry.target))
-        anchor.text = entry.label
-    body.insert(0, toc)
+    tocs = [node for node in body.xpath(".//*[local-name()='nav']") if "toc" in _nav_type(node).split()]
+    anchors = tocs[0].xpath(".//*[local-name()='a'][@href]") if len(tocs) == 1 else []
+    by_source = {entry.source_target: entry for entry in entries if entry.source_target}
+    if anchors:
+        # A publisher's TOC already carries hierarchy and precise chapter anchors.
+        for anchor in anchors:
+            entry = by_source.get(_resolve_navigation_target(href, anchor.get("href")))
+            if entry:
+                anchor.set("href", _relative_target(href, entry.target))
+                if len(anchor) == 0 and entry.label:
+                    anchor.text = entry.label
+        count = len(anchors)
+    else:
+        for node in tocs:
+            node.getparent().remove(node)
+        toc = etree.Element(_qname(XHTML_NS, "nav"))
+        toc.set(_qname(EPUB_NS, "type"), "toc")
+        _ensure_unique_id(root, toc, "toc")
+        heading = etree.SubElement(toc, _qname(XHTML_NS, "h1"))
+        heading.text = "Índice" if language_code == "es" else "Contents"
+        ordered = etree.SubElement(toc, _qname(XHTML_NS, "ol"))
+        for entry in entries:
+            item = etree.SubElement(ordered, _qname(XHTML_NS, "li"))
+            anchor = etree.SubElement(item, _qname(XHTML_NS, "a"))
+            anchor.set("href", _relative_target(href, entry.target))
+            anchor.text = entry.label
+        body.insert(0, toc)
+        count = len(entries)
 
     landmarks = next(
         (
@@ -879,6 +942,7 @@ def _write_navigation(
             pretty_print=True,
         )
     )
+    return count
 
 
 def _write_ncx(
@@ -1126,13 +1190,18 @@ def finish_epub_publication(
             properties.add("nav")
             nav_item.set("properties", " ".join(sorted(properties)))
             report.navigation_created = not nav_path.exists()
-        _write_navigation(
+        report.navigation_entries = _write_navigation(
             nav_path,
             href=nav_href,
             title=title,
             entries=entries,
             cover_page_href=cover_page_href,
             language_code=language_code,
+            root=next(
+                (doc for path, doc in parsed_xhtml_docs.items()
+                 if _path_identity(path) == _path_identity(nav_path)),
+                None,
+            ),
         )
         report.navigation_href = nav_href
     else:

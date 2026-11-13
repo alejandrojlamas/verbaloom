@@ -372,10 +372,13 @@ def _build_failed_chunk_recovery_plan(
 def _build_finalization_recovery_plan(
     config: Dict[str, Any],
     checkpoint_data: Dict[str, Any] | None,
+    *,
+    validation_rejected: bool = False,
 ) -> Dict[str, Any] | None:
     """Retry assembly and whole-book gates without retranslating completed chunks."""
     if (
         not checkpoint_data
+        or validation_rejected
         or not checkpoint_data.get("checkpoint_complete")
         or not _config_flag(config.get("auto_recover_finalization"), True)
         or config.get("_manual_pause_requested")
@@ -1894,6 +1897,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             'job_phase_status': event.status.value,
             'job_phase_event': event.to_dict(),
         }
+        if event.status.value == 'started':
+            phase_stats['stage_progress'] = None
         if (
             event.status.value == 'started'
             and event.phase in {
@@ -2054,6 +2059,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             f"Avance guardado: {completed}/{total} fragmentos"
             if total > 0 else "Avance guardado; continuando"
         )
+        stage = (new_stats_dict.get('stage_progress') or {}).get('stage')
+        if stage == 'review':
+            live_status = "Aplicando revisión editorial"
+        elif stage == 'audit':
+            live_status = "Auditando fidelidad contra la fuente"
+        elif stage == 'repair':
+            live_status = "Reparando un fragmento observado por la auditoría"
         current_stats = _store_and_emit_stats({
             **new_stats_dict,
             **phase_meta,
@@ -3070,15 +3082,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 if not publication_report.publishable:
                     operation_success = False
                     audit_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
-                    failed_count = max(
-                        1,
-                        int(audit_stats.get('failed_chunks') or 0),
-                        int(publication_report.source_units - publication_report.audited_units),
-                    )
                     state_manager.update_stats(translation_id, {
                         **audit_stats,
-                        'failed_chunks': failed_count,
-                        'checkpoint_failed_chunks': failed_count,
                         'quality_degraded': True,
                     })
                     state_manager.set_translation_field(translation_id, 'status', 'partial')
@@ -3422,6 +3427,10 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 failed_chunks=failed,
             )
             if unresolved:
+                validation_rejected = (
+                    (publication_report is not None and not publication_report.publishable)
+                    or (quality_run is not None and not quality_run.publishable)
+                )
                 automatic_recovery_plan = _build_failed_chunk_recovery_plan(
                     config,
                     checkpoint_data,
@@ -3431,6 +3440,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     automatic_recovery_plan = _build_finalization_recovery_plan(
                         config,
                         checkpoint_data,
+                        validation_rejected=validation_rejected,
                     )
                 recovery_scope = (
                     automatic_recovery_plan.get('scope')
@@ -3530,8 +3540,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     if finalization_only:
                         final_stats = _finalization_recovery_exhausted_stats(final_stats)
                         partial_message = (
-                            "⚠️ El texto está completo, pero la validación final no "
-                            "pudo demostrarse tras dos intentos; checkpoint conservado"
+                            "⚠️ El texto está completo, pero la validación final "
+                            "bloqueó la publicación; checkpoint conservado"
                         )
                     else:
                         final_stats = _failed_chunk_recovery_exhausted_stats(

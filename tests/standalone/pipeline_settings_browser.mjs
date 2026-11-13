@@ -177,10 +177,24 @@ try {
   assert.equal(saved.stats.completed_chunks, 1);
   assert.equal(saved.status, 'running');
   report.checks.push('UI upload/start/pause/resume preserves role snapshot and accepted chunk despite global edits');
+  await page.locator('#progressStageLabel').filter({ hasText: /3\/8.*2\/4/ }).waitFor();
+  assert.equal(await page.locator('#progressStageBar').evaluate(node => node.value), 3);
+  assert.match(await page.locator('#progressBar').innerText(), /50%/);
+  assert.equal(await page.locator('#estimatedTimeRemaining').innerText(), '--');
   await page.screenshot({ path: `${output}/resumed-desktop.png` });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#progressSection').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${output}/resumed-mobile.png` });
+  assert.ok(await page.locator('#progressStage').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+  let implicitPauseRequests = 0;
+  page.on('request', request => {
+    if (request.url().endsWith(`/api/translation/${runId}/interrupt`)) implicitPauseRequests++;
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#progressStageLabel').filter({ hasText: /3\/8.*2\/4/ }).waitFor();
+  assert.equal(implicitPauseRequests, 0);
+  assert.equal((await (await page.request.get(`${base}/api/translation/${runId}`)).json()).status, 'running');
+  report.checks.push('Mobile audit counter survives refresh without pausing the server-side job');
   await page.locator('#interruptBtn').click();
   await waitForJobStatus(runId, 'interrupted');
   await page.setViewportSize({ width: 1365, height: 900 });

@@ -95,14 +95,14 @@ def _fake_translate(calls, failing):
 
 async def _run(tmp_path, monkeypatch, *, failing, checkpoint=None,
                resume_from_index=0, restored=(), completed=None,
-               restore_attempted=False, files=FILES):
+               restore_attempted=False, files=FILES, translate=None, stats_callback=None):
     monkeypatch.setattr(
         subject, "_precount_chunks",
         AsyncMock(return_value=(len(files) * 2, [2] * len(files))),
     )
     calls = []
     monkeypatch.setattr(
-        subject, "_translate_single_xhtml_file", _fake_translate(calls, set(failing)),
+        subject, "_translate_single_xhtml_file", translate or _fake_translate(calls, set(failing)),
     )
     restored_docs = {
         os.path.normpath(os.path.join(str(tmp_path), href)): etree.Element("html")
@@ -126,8 +126,35 @@ async def _run(tmp_path, monkeypatch, *, failing, checkpoint=None,
         restored_docs=restored_docs or None,
         completed_file_indices=completed,
         restore_attempted=restore_attempted,
+        stats_callback=stats_callback,
     )
     return result, calls
+
+
+@pytest.mark.asyncio
+async def test_nested_progress_survives_deferred_file_and_clears_between_files(tmp_path, monkeypatch):
+    ticks = []
+
+    async def translate(**kwargs):
+        if kwargs["content_href"] == FILES[0]:
+            kwargs["stats_callback"]({"completed_chunks": 1})
+            return None, False, None
+        for done in (0, 1, 2):
+            kwargs["stats_callback"]({
+                "completed_chunks": 2,
+                "stage_progress": {"stage": "audit", "done": done, "total": 2},
+            })
+        return etree.Element("html"), True, TranslationMetrics()
+
+    await _run(tmp_path, monkeypatch, failing=(), files=FILES[:2],
+               translate=translate, stats_callback=ticks.append)
+    assert [tick["completed_chunks"] for tick in ticks] == [1, 1, 3, 3, 3, 3]
+    assert [tick["stage_progress"] for tick in ticks] == [
+        None, None,
+        *[{"stage": "audit", "done": done, "total": 2, "section": 2, "sections": 2}
+          for done in (0, 1, 2)],
+        None,
+    ]
 
 
 @pytest.mark.asyncio

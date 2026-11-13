@@ -1,4 +1,7 @@
 {
+  "job_card_finalization_pending": "게시 대기",
+  "job_card_retry_finalization": "검증 및 게시",
+  "job_card_text_progress": "저장된 텍스트: {{completed}} / {{total}} 청크",
   "source_language": "원본 언어",
   "target_language": "대상 언어",
   "auto_detect_placeholder": "파일에서 자동 감지...",
@@ -172,6 +175,10 @@
   "stat_est_remaining": "예상 남은 시간",
   "eta_calculating": "계산 중…",
   "eta_finalizing": "마무리 중…",
+  "progress_stage_review": "편집 검토: {{done}}/{{total}}",
+  "progress_stage_audit": "충실도 감사: {{done}}/{{total}}개 확인",
+  "progress_stage_repair": "조각 {{unit}} 수정 중 · {{done}}/{{total}}개 확인",
+  "progress_stage_section": "섹션 {{section}}/{{sections}}",
   "eta_waiting": "대기 중",
   "stat_total_cost": "총 비용 (USD)",
   "stat_total_tokens": "총 토큰",

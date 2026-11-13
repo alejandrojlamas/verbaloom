@@ -237,6 +237,7 @@ class TestTranslationStateManager:
             'live_status': 'Auditando fidelidad contra la fuente',
             'live_status_kind': 'active',
             'last_activity_at': 123.0,
+            'stage_progress': {'stage': 'audit', 'done': 3, 'total': 8, 'section': 2, 'sections': 5},
         })
 
         summaries = state_manager.get_translation_summaries()
@@ -253,6 +254,7 @@ class TestTranslationStateManager:
         assert summary['live_status'] == 'Auditando fidelidad contra la fuente'
         assert summary['live_status_kind'] == 'active'
         assert summary['last_activity_at'] == 123.0
+        assert summary['stage_progress'] == {'stage': 'audit', 'done': 3, 'total': 8, 'section': 2, 'sections': 5}
 
     def test_get_translation_summaries_derives_progress_for_paused_restored_jobs(self, state_manager):
         """Paused jobs should show progress when counters survived but percent did not."""

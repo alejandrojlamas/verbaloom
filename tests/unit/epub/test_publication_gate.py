@@ -182,6 +182,42 @@ def test_publication_gate_accepts_bounded_professional_cover_and_navigation_asse
     assert any("professional publication assets added" in warning for warning in report.warnings)
 
 
+def test_numbered_internal_navigation_passes_both_publication_gates(tmp_path):
+    from src.core.quality_assurance import run_quality_assurance
+
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    for path, language in ((source, "en"), (output, "es")):
+        _write_epub(path, language=language, html_language=language, paragraphs=[])
+        replacement = path.with_suffix(".zip")
+        with zipfile.ZipFile(path) as original, zipfile.ZipFile(replacement, "w") as result:
+            for info in original.infolist():
+                payload = original.read(info)
+                if info.filename == "chapter.xhtml":
+                    labels = "".join(
+                        f'<div id="n{idx}"><a href="#n{idx}">{label}</a></div>'
+                        for idx, label in enumerate("I II III IV V VI VII VIII IX X XI XII XIII".split())
+                    )
+                    payload = (
+                        f'<html xmlns="http://www.w3.org/1999/xhtml" lang="{language}" xml:lang="{language}">'
+                        f'<body>{labels}</body></html>'
+                    ).encode()
+                result.writestr(info, payload)
+        replacement.replace(path)
+    report = audit_epub_publication(
+        source, output, source_language="English", target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+    assert report.publishable, report.errors
+    assert report.source_units == report.audited_units == 13
+    assert report.units[0]["preserved_numbered_navigation"] is True
+    result = run_quality_assurance(
+        source_path=source, output_path=output, source_language="English", target_language="Spanish",
+        run_id="numeric-index", report_root=tmp_path, publication_report=report,
+    )
+    assert result.publishable
+    assert not result.report.repair_units
+
+
 def test_publication_gate_accepts_bounded_blockquote_flow_repair(tmp_path):
     source = tmp_path / "source-blockquote.epub"
     output = tmp_path / "output-blockquote.epub"

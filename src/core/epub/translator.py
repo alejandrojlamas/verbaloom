@@ -990,6 +990,7 @@ def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None):
         'quality_warning_fired': acc.quality_warning_fired or fs.get('quality_warning_fired', False),
         'total_tokens': (acc.total_tokens_processed + acc.total_tokens_generated
                          + fs.get('total_tokens_processed', 0) + fs.get('total_tokens_generated', 0)),
+        'stage_progress': fs.get('stage_progress'),
     }
 
 
@@ -1188,7 +1189,8 @@ async def _process_all_content_files(
         # Skip if already processed (resume)
         if file_idx < resume_from_index:
             if _prefix_file_available(file_idx):
-                completed_files += 1
+                if _content_path(file_idx) not in parsed_xhtml_docs:
+                    completed_files += 1
                 continue
             # The checkpoint says this file is done but its translated
             # document could not be restored. Skipping it would package the
@@ -1204,6 +1206,9 @@ async def _process_all_content_files(
 
         current_file_completed_latest = (
             partial_completed_current if file_idx == resume_from_index else 0
+        )
+        completed_before_file = completed_chunks_global + sum(
+            count for index, count in pending_file_progress.items() if index != file_idx
         )
 
         file_path = os.path.normpath(os.path.join(opf_dir, content_href))
@@ -1229,7 +1234,15 @@ async def _process_all_content_files(
             if not stats_callback:
                 return
 
-            global_completed = completed_chunks_global + current_file_completed
+            global_completed = completed_before_file + current_file_completed
+            stage_progress = file_stats_dict.get('stage_progress')
+            if stage_progress:
+                file_stats_dict = {
+                    **file_stats_dict,
+                    'stage_progress': {
+                        **stage_progress, 'section': file_idx + 1, 'sections': total_files,
+                    },
+                }
 
             # Report combined stats (accumulated + current file). The fallback
             # counters are included so the Fallbacks stat card updates live.
@@ -1834,8 +1847,10 @@ def _update_epub_metadata(
 ) -> None:
     """Update EPUB metadata with target language and translation signature."""
     from .lang_support import get_language_code
+    from .publication_structure import normalize_package_ids
 
     opf_root = opf_tree.getroot()
+    normalize_package_ids(opf_root)
     metadata = opf_root.find('.//opf:metadata', namespaces=NAMESPACES)
     if metadata is not None:
         # Update language

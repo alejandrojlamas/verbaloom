@@ -437,6 +437,9 @@ class CheckpointManager:
             output_filename = config.get('output_filename', 'unknown')
             job['output_filename'] = output_filename if output_filename != 'unknown' else 'unknown'
             job['resume_from_index'] = checkpoint.get('resume_from_index', 0)
+            job['finalization_pending'] = bool(
+                checkpoint.get('checkpoint_complete') and not progress['failed_chunks']
+            )
             resumable_jobs.append(job)
 
         return resumable_jobs

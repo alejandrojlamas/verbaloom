@@ -1,4 +1,7 @@
 {
+  "job_card_finalization_pending": "等待发布",
+  "job_card_retry_finalization": "验证并发布",
+  "job_card_text_progress": "已保存文本：{{completed}} / {{total}} 段",
   "source_language": "源语言",
   "target_language": "目标语言",
   "auto_detect_placeholder": "从文件自动检测...",
@@ -172,6 +175,10 @@
   "stat_est_remaining": "预计剩余",
   "eta_calculating": "计算中…",
   "eta_finalizing": "正在完成…",
+  "progress_stage_review": "编辑审校：{{done}}/{{total}}",
+  "progress_stage_audit": "忠实度审核：已核查 {{done}}/{{total}}",
+  "progress_stage_repair": "正在修复片段 {{unit}} · 已核查 {{done}}/{{total}}",
+  "progress_stage_section": "章节 {{section}}/{{sections}}",
   "eta_waiting": "等待中",
   "stat_total_cost": "总成本（USD）",
   "stat_total_tokens": "总令牌数",

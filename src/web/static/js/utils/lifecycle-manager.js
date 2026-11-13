@@ -24,8 +24,6 @@ export const LifecycleManager = {
         this.cleanupOldStorageVersions();
 
         this.setupPageLoadHandler();
-        this.setupBeforeUnloadHandler();
-        this.setupPageHideHandler();
         this.setupVisibilityChangeHandler();
         this.startStateConsistencyCheck();
     },
@@ -161,34 +159,6 @@ export const LifecycleManager = {
             MessageLogger.addLog(t('common:server_session_check_failed'));
             return false;
         }
-    },
-
-    setupBeforeUnloadHandler() {
-    },
-
-    setupPageHideHandler() {
-        window.addEventListener('pagehide', (e) => {
-            const isBatchActive = StateManager.getState('translation.isBatchActive');
-            const currentJob = StateManager.getState('translation.currentJob');
-
-            if (isBatchActive && currentJob && currentJob.translationId) {
-                const interruptUrl = `${ApiClient.API_BASE_URL}/api/translation/${currentJob.translationId}/interrupt`;
-
-                if (navigator.sendBeacon) {
-                    const blob = new Blob(['{}'], { type: 'application/json' });
-                    navigator.sendBeacon(interruptUrl, blob);
-                } else {
-                    try {
-                        const xhr = new XMLHttpRequest();
-                        xhr.open('POST', interruptUrl, false);
-                        xhr.setRequestHeader('Content-Type', 'application/json');
-                        xhr.send('{}');
-                    } catch (error) {
-                        console.error('Error interrupting translation on page close:', error);
-                    }
-                }
-            }
-        });
     },
 
     setupVisibilityChangeHandler() {

@@ -372,6 +372,8 @@ class TranslationStateManager:
                         else percent_value
                     ),
                     "phase": summary_stats.get('phase'),
+                    "inline_refinement": summary_stats.get('inline_refinement', False),
+                    "stage_progress": summary_stats.get('stage_progress'),
                     "live_status": summary_stats.get('live_status'),
                     "live_status_kind": summary_stats.get('live_status_kind'),
                     "live_activity_event": summary_stats.get('live_activity_event'),
@@ -448,12 +450,18 @@ class TranslationStateManager:
         if pause_reason and not pending_resume:
             restored_stats['live_activity_event'] = pause_reason
             restored_stats['live_status_kind'] = 'recoverable'
+        finalization_blocked = bool(
+            job['status'] == 'partial' and checkpoint_data.get('checkpoint_complete')
+        )
+        if finalization_blocked and not pending_resume:
+            restored_stats['live_status'] = "Texto completo guardado; falta validar y publicar el archivo"
+            restored_stats['live_status_kind'] = 'recoverable'
         restored_progress, _ = _summary_progress_values(None, restored_stats)
         with self._lock:
             # Restore job into in-memory state
             # Use deepcopy for config to prevent mutation of stored config
             self._translations[translation_id] = {
-                'status': 'queued' if pending_resume else 'paused',
+                'status': 'queued' if pending_resume else ('partial' if finalization_blocked else 'paused'),
                 'progress': restored_progress,
                 'stats': restored_stats,
                 'logs': [f"[{datetime.now().strftime('%H:%M:%S')}] Job restored from checkpoint."],

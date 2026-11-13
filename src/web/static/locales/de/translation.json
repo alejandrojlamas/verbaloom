@@ -1,4 +1,7 @@
 {
+  "job_card_finalization_pending": "Veröffentlichung ausstehend",
+  "job_card_retry_finalization": "Prüfen und veröffentlichen",
+  "job_card_text_progress": "Text gespeichert: {{completed}} / {{total}} Segmente",
   "source_language": "Quellsprache",
   "target_language": "Zielsprache",
   "auto_detect_placeholder": "Aus Datei automatisch erkennen...",
@@ -172,6 +175,10 @@
   "stat_est_remaining": "Geschätzt verbleibend",
   "eta_calculating": "Wird berechnet…",
   "eta_finalizing": "Wird abgeschlossen…",
+  "progress_stage_review": "Redaktionelle Prüfung: {{done}}/{{total}}",
+  "progress_stage_audit": "Treueprüfung: {{done}}/{{total}} geprüft",
+  "progress_stage_repair": "Abschnittseinheit {{unit}} wird korrigiert · {{done}}/{{total}} geprüft",
+  "progress_stage_section": "Abschnitt {{section}}/{{sections}}",
   "eta_waiting": "Wartet",
   "stat_total_cost": "Gesamtkosten (USD)",
   "stat_total_tokens": "Gesamte Tokens",

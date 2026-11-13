@@ -1,4 +1,7 @@
 {
+  "job_card_finalization_pending": "Pendiente de publicación",
+  "job_card_retry_finalization": "Validar y publicar",
+  "job_card_text_progress": "Texto guardado: {{completed}} / {{total}} fragmentos",
   "source_language": "Idioma de origen",
   "target_language": "Idioma de destino",
   "auto_detect_placeholder": "Detectar automáticamente desde el archivo...",
@@ -178,6 +181,10 @@
   "stat_est_remaining": "Restante estimado",
   "eta_calculating": "Calculando…",
   "eta_finalizing": "Finalizando…",
+  "progress_stage_review": "Revisión editorial: {{done}}/{{total}}",
+  "progress_stage_audit": "Auditoría de fidelidad: {{done}}/{{total}} comprobados",
+  "progress_stage_repair": "Reparando fragmento {{unit}} · {{done}}/{{total}} comprobados",
+  "progress_stage_section": "Sección {{section}}/{{sections}}",
   "eta_waiting": "En espera",
   "stat_total_cost": "Coste total (USD)",
   "stat_total_tokens": "Tokens totales",

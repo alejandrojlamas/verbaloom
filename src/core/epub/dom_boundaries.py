@@ -16,11 +16,16 @@ from lxml import etree
 
 
 _TEXT_SUFFIXES = {".xhtml", ".html", ".htm"}
-_BLOCK_XPATH = (
-    "//*[local-name()='p' or local-name()='h1' or local-name()='h2' or "
+_BLOCK_TAGS = (
+    "local-name()='p' or local-name()='h1' or local-name()='h2' or "
     "local-name()='h3' or local-name()='h4' or local-name()='h5' or "
     "local-name()='h6' or local-name()='li' or local-name()='blockquote' or "
-    "local-name()='figcaption' or local-name()='td' or local-name()='th']"
+    "local-name()='figcaption' or local-name()='td' or local-name()='th'"
+)
+_BLOCK_XPATH = (
+    f"//*[{_BLOCK_TAGS}] | "
+    f"//*[local-name()='body']//*[local-name()='div' and "
+    f"not(descendant::*[{_BLOCK_TAGS} or local-name()='div']) and not(ancestor::*[{_BLOCK_TAGS}])]"
 )
 _NAMED_ENTITY_RE = re.compile(rb"&([A-Za-z][A-Za-z0-9]+);")
 _XML_BUILTINS = {b"amp", b"lt", b"gt", b"quot", b"apos"}
@@ -216,7 +221,9 @@ def _block_content_mismatch(
         if len(output_text) > max(180, len(source_text) * 6):
             return "heading absorbed body text"
 
-    if len(source_text) >= 40:
+    # Generic layout divs are often presentation rows, not one-to-one
+    # paragraphs. Their coverage is checked across the containing spine file.
+    if source_name != "div" and len(source_text) >= 40:
         ratio = len(output_text) / len(source_text)
         if ratio < 0.28:
             return f"block content collapsed (length ratio {ratio:.2f})"

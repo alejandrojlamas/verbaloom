@@ -14,6 +14,8 @@ import zipfile
 
 from lxml import etree
 
+from src.utils.branding import GENERATOR_NAME
+
 from .lang_support import get_language_code
 
 
@@ -243,6 +245,14 @@ def _restore_protected_metadata(
     for name in _PROTECTED_METADATA:
         source_nodes = [node for node in source_metadata if isinstance(node.tag, str) and _local_name(node) == name]
         output_nodes = [node for node in output_metadata if isinstance(node.tag, str) and _local_name(node) == name]
+        if name == "contributor" and not any(
+            "".join(node.itertext()).strip() == GENERATOR_NAME for node in source_nodes
+        ):
+            output_nodes = [
+                node for node in output_nodes
+                if not (etree.QName(node).namespace == "http://purl.org/dc/elements/1.1/"
+                        and "".join(node.itertext()).strip() == GENERATOR_NAME)
+            ]
         source_xml = [etree.tostring(node) for node in source_nodes]
         output_xml = [etree.tostring(node) for node in output_nodes]
         if source_xml == output_xml:
@@ -369,19 +379,15 @@ def _localize_nav(
 ) -> tuple[bytes, dict[str, str]]:
     root = _parse(payload)
     href_labels: dict[str, str] = {}
-    navs = root.xpath(
-        "//*[local-name()='nav' and "
-        "(@*[local-name()='type']='toc' or contains(concat(' ', normalize-space(@*[local-name()='type']), ' '), ' toc '))]"
-    )
+    navs = root.xpath("//*[local-name()='nav']")
     for anchor in [a for nav in navs for a in nav.xpath(".//*[local-name()='a'][@href]")]:
         current = " ".join(anchor.itertext()).strip()
         localized = _localized_label(current, labels)
-        if current != localized:
-            for child in list(anchor):
-                anchor.remove(child)
+        if current != localized and len(anchor) == 0:
             anchor.text = localized
             report.navigation_label_changes += 1
-        href_labels[str(anchor.get("href") or "")] = localized
+        if "toc" in str(anchor.xpath("string(ancestor::*[local-name()='nav'][1]/@*[local-name()='type'])")).split():
+            href_labels[str(anchor.get("href") or "")] = localized
     return _serialize(root, payload), href_labels
 
 

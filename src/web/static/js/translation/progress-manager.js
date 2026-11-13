@@ -38,6 +38,7 @@ export function formatElapsedTime(seconds) {
  * long LLM jobs do not have, especially while auditing or retrying a chunk.
  */
 export function formatEstimatedDuration(seconds) {
+    if (seconds == null) return null;
     const value = Number(seconds);
     if (!Number.isFinite(value) || value < 0) return null;
     if (value < 60) return '<1m';
@@ -54,6 +55,7 @@ export function formatEstimatedDuration(seconds) {
 export function estimatedTimeLabel(stats = {}) {
     if (stats.eta_status === 'waiting') return t('translation:eta_waiting');
     if (stats.eta_status === 'finalizing') return t('translation:eta_finalizing');
+    if (stats.eta_status === 'stage_in_progress') return '--';
     if (stats.eta_status === 'complete') return '0s';
 
     const estimate = formatEstimatedDuration(stats.eta_seconds);
@@ -184,6 +186,30 @@ function updateLiveStatus(stats) {
     statusEl.style.color = stats && stats.live_status_kind === 'stale'
         ? '#f59e0b'
         : 'var(--text-muted-light)';
+}
+
+function updateStageProgress(stats) {
+    const panel = DomHelpers.getElement('progressStage');
+    if (!panel) return;
+    const stage = stats.stage_progress;
+    const labels = {
+        review: 'progress_stage_review', audit: 'progress_stage_audit', repair: 'progress_stage_repair',
+    };
+    panel.hidden = !stage || !Object.hasOwn(labels, stage.stage) || !(stage.total > 0)
+        || ['waiting', 'paused', 'complete'].includes(stats.eta_status);
+    if (panel.hidden) return;
+
+    const label = DomHelpers.getElement('progressStageLabel');
+    const bar = DomHelpers.getElement('progressStageBar');
+    const done = Math.min(stage.total, Math.max(0, stage.done));
+    const section = stage.sections > 0
+        ? ` · ${t('translation:progress_stage_section', { section: stage.section, sections: stage.sections })}`
+        : '';
+    const activity = t(`translation:${labels[stage.stage]}`, { done, total: stage.total, unit: stage.unit ?? done + 1 });
+    const text = activity + section;
+    if (label.textContent !== text) label.textContent = text;
+    bar.max = stage.total;
+    bar.value = done;
 }
 
 // The Fallbacks card has a single active state — "critical" (red). Any
@@ -528,6 +554,7 @@ export const ProgressManager = {
 
     updateLiveStatus(stats) {
         updateLiveStatus(stats);
+        if (stats?.live_status_kind === 'scheduled_pause') updateStageProgress({});
     },
 
     /**
@@ -551,10 +578,11 @@ export const ProgressManager = {
         const globalPercent = typeof stats.percent === 'number'
             ? Math.max(stats.percent, chunkPercent)
             : chunkPercent;
-        updateProgressBar(globalPercent);
+        updateProgressBar(stats.job_status === 'completed' ? globalPercent : Math.min(99, globalPercent));
 
         updateOperationLabel(stats);
         updateLiveStatus(stats);
+        updateStageProgress(stats);
         updateStatistics(stats, fileType);
     },
 
@@ -572,6 +600,7 @@ export const ProgressManager = {
         DomHelpers.setText('elapsedTime', '0s');
         DomHelpers.setText('estimatedTimeRemaining', '--');
         updateLiveStatus({ live_status: '' });
+        updateStageProgress({});
         renderPromptContextSummary(null);
         DomHelpers.hide('statsGrid');
     },
@@ -595,6 +624,7 @@ export const ProgressManager = {
      */
     complete() {
         updateProgressBar(100);
+        updateStageProgress({});
     },
 
     /**

@@ -129,3 +129,18 @@ def test_frontend_uses_server_eta_instead_of_poll_intervals():
     assert "stats.eta_lower_seconds" in source
     assert "chunkCompletionTimes" not in source
     assert "lastElapsedTime" not in source
+
+
+def test_eta_distinguishes_inline_audit_from_translation_and_provider_wait():
+    stats = begin_active_timing({"completed_chunks": 0, "total_chunks": 149}, now=100.0)
+    stats["completed_chunks"] = 44
+    stats = apply_active_timing(stats, now=600.0, status="running")
+    assert stats["eta_status"] == "estimated"
+    stats["stage_progress"] = {"stage": "audit", "done": 12, "total": 37}
+    audit = apply_active_timing(stats, now=650.0, status="running")
+    assert audit["eta_status"] == "stage_in_progress"
+    assert audit["eta_seconds"] is None
+    waiting = apply_active_timing(audit, now=651.0, status="provider_wait", advance=False)
+    assert waiting["eta_status"] == "waiting"
+    stats.update(stage_progress=None, completed_chunks=45)
+    assert apply_active_timing(stats, now=700.0, status="running")["eta_status"] == "estimated"

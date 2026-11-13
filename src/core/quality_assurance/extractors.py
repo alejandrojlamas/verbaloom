@@ -261,6 +261,12 @@ def _units_from_epub_publication_report(
             explicit_type=str(item.get("element") or ""),
         )
         report_status = str(item.get("status") or "").upper()
+        if (
+            report_status == "AUDITED" and source_text and source_text == target_text
+            and item.get("preserved_numbered_navigation") is True
+        ):
+            content_type, policy = "table_of_contents", "preserve"
+            exclusion = "Source-verified numeric navigation labels and links were preserved."
         status = UnitStatus.AUDITED if report_status == "AUDITED" else UnitStatus.AUDIT_FAILED
         unit = TranslationUnit.create(
             document_id=document_id,

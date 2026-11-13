@@ -99,6 +99,7 @@ def begin_active_timing(
         "eta_lower_seconds": None,
         "eta_upper_seconds": None,
         "eta_status": "calculating",
+        "stage_progress": None,
         # A request can hang before its first provider callback.  Give the
         # watchdog and the UI a fresh activity baseline immediately.
         "last_activity_at": started_at,
@@ -157,6 +158,17 @@ def apply_active_timing(
             "eta_lower_seconds": 0.0 if completed_status else None,
             "eta_upper_seconds": 0.0 if completed_status else None,
             "eta_status": "complete" if completed_status else "paused",
+        })
+        return current
+
+    if current.get("stage_progress"):
+        # Inline review/audit advances a different counter. Translation
+        # throughput cannot predict the remaining model calls or repairs.
+        current.update({
+            "eta_seconds": None,
+            "eta_lower_seconds": None,
+            "eta_upper_seconds": None,
+            "eta_status": "stage_in_progress",
         })
         return current
 

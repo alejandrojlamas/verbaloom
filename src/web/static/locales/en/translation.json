@@ -1,4 +1,7 @@
 {
+  "job_card_finalization_pending": "Publication pending",
+  "job_card_retry_finalization": "Validate and publish",
+  "job_card_text_progress": "Saved text: {{completed}} / {{total}} chunks",
   "source_language": "Source Language",
   "target_language": "Target Language",
   "auto_detect_placeholder": "Auto-detect from file...",
@@ -178,6 +181,10 @@
   "stat_est_remaining": "Est. Remaining",
   "eta_calculating": "Calculating…",
   "eta_finalizing": "Finalizing…",
+  "progress_stage_review": "Editorial review: {{done}}/{{total}}",
+  "progress_stage_audit": "Fidelity audit: {{done}}/{{total}} checked",
+  "progress_stage_repair": "Repairing unit {{unit}} · {{done}}/{{total}} checked",
+  "progress_stage_section": "Section {{section}}/{{sections}}",
   "eta_waiting": "Waiting",
   "stat_total_cost": "Total Cost (USD)",
   "stat_total_tokens": "Total Tokens",

@@ -91,7 +91,10 @@ def main():
             manager.mark_running(run_id)
             state.set_interrupted(run_id, False)
             state.set_translation_field(run_id, "status", "running")
-            state.update_stats(run_id, {"total_chunks": 2, "completed_chunks": 1, "failed_chunks": 0})
+            state.update_stats(run_id, {
+                "total_chunks": 2, "completed_chunks": 1, "failed_chunks": 0,
+                "stage_progress": {"stage": "audit", "done": 3, "total": 8, "section": 2, "sections": 4},
+            })
 
             def monitor():
                 while not stop.wait(.1):

@@ -938,7 +938,7 @@ async def test_runtime_counts_every_unresolved_audit_unit(monkeypatch):
     from lxml import etree
 
     chunks, _ = fixture(3)
-    saved = []
+    saved, progress = [], []
     monkeypatch.setattr(subject, "_create_chunks", lambda *args: chunks)
 
     async def translate(**kwargs):
@@ -969,11 +969,59 @@ async def test_runtime_counts_every_unresolved_audit_unit(monkeypatch):
             file_href="Text/chapter.xhtml",
             global_total_chunks=3,
             global_completed_chunks=0,
+            stats_callback=progress.append,
         )
     assert caught.value.failed_unit_indices == [0, 2]
     assert caught.value.stats.failed_chunks == 2
     assert saved[-1]["global_stats"]["failed_chunks"] == 2
     assert root.find("body/p").text == SOURCE
+    audit_ticks = [p for p in progress if p.get("stage_progress", {}).get("stage") == "audit"]
+    assert [p["stage_progress"]["done"] for p in audit_ticks] == [0, 1, 2, 3]
+    assert all(p["stage_progress"]["total"] == 3 for p in audit_ticks)
+    assert all(p["completed_chunks"] == 3 for p in audit_ticks)
+
+
+@pytest.mark.asyncio
+async def test_inline_review_and_audit_progress_keeps_translation_count(monkeypatch):
+    from lxml import etree
+
+    chunks, _ = fixture(2)
+    monkeypatch.setattr(subject, "_create_chunks", lambda *args: chunks)
+
+    async def translate(**kwargs):
+        return [ORIGINAL] * 2, kwargs["stats"], False
+
+    async def refine(**kwargs):
+        for i, chunk in enumerate(kwargs["chunks"]):
+            mark_reviewed(chunk["unit"], ORIGINAL, review={"status": "pass"})
+            kwargs["stats"].refinement_chunks_completed = i + 1
+            kwargs["stats_callback"](kwargs["stats"].to_dict())
+        return kwargs["translated_chunks"]
+
+    async def audit(source, candidate, **kwargs):
+        return verdict(source, candidate, candidate == REPAIRED, ["tense"])
+
+    async def repair(**kwargs):
+        return REPAIRED
+
+    monkeypatch.setattr(subject, "_translate_all_chunks_with_checkpoint", translate)
+    monkeypatch.setattr(subject, "_refine_epub_chunks", refine)
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+    monkeypatch.setattr(subject, "_repair_audited_candidate", repair)
+    progress = []
+    root = etree.fromstring(f"<html><body><p>{SOURCE}</p></body></html>")
+    success, _ = await subject.translate_xhtml_simplified(
+        root, "English", "Spanish", "deepseek-v4-pro", SimpleNamespace(provider_type="deepseek"),
+        prompt_options={**OPTIONS, "refine": True}, stats_callback=progress.append,
+    )
+    assert success
+    assert [(p["stage_progress"]["stage"], p["stage_progress"]["done"]) for p in progress] == [
+        ("review", 0), ("review", 1), ("review", 2),
+        ("audit", 0), ("repair", 0), ("audit", 0), ("audit", 1),
+        ("repair", 1), ("audit", 1), ("audit", 2),
+    ]
+    assert all(p["completed_chunks"] == 2 for p in progress)
+    assert [p["stage_progress"]["unit"] for p in progress if p["stage_progress"]["stage"] == "repair"] == [1, 2]
 
 
 @pytest.mark.asyncio
