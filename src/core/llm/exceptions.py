@@ -76,6 +76,46 @@ class ProviderActionRequiredError(RateLimitError):
         self.response = response
 
 
+# Provider stops that concern one passage, not the account or the job
+# configuration. The passage stays blocked for review; the rest of the book
+# does not depend on it.
+UNIT_SCOPED_PROVIDER_STOPS = frozenset({
+    "provider_refusal",
+    "audit_invalid_response",
+})
+
+
+def is_unit_scoped_provider_stop(error: BaseException) -> bool:
+    """Whether a provider stop blocks one unit instead of the whole job."""
+    return (
+        isinstance(error, ProviderActionRequiredError)
+        and getattr(error, "reason", "") in UNIT_SCOPED_PROVIDER_STOPS
+    )
+
+
+class ProviderUnavailableError(RateLimitError):
+    """The provider could not be reached after its own bounded retries.
+
+    Timeouts, connection resets, HTTP 5xx and an open circuit breaker say
+    nothing about the unit being translated. Subclassing
+    :class:`RateLimitError` makes every pipeline layer propagate the outage to
+    the job boundary instead of recording a failed candidate; ``retryable``
+    stays true, so the job waits with a bounded backoff and resumes from its
+    checkpoint.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str = "transport_failure",
+        provider: str = None,
+        retry_after: int = None,
+    ):
+        super().__init__(message, retry_after=retry_after, provider=provider)
+        self.reason = reason
+
+
 class ContentRiskError(ProviderActionRequiredError):
     """Legacy refusal signal, preserved as a non-retryable review requirement.
 

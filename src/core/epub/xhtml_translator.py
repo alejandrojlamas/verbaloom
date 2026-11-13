@@ -38,7 +38,7 @@ LEVEL 3 - Translation (PlaceholderManager):
 import json
 import re
 from collections import Counter
-from typing import List, Dict, Any, Optional, Callable, Tuple
+from typing import Awaitable, List, Dict, Any, Optional, Callable, Tuple
 from lxml import etree
 from src.core.llm.exceptions import ProviderActionRequiredError, RateLimitError
 from src.core.pipeline_runtime import active_pipeline
@@ -1068,6 +1068,170 @@ async def attempt_placeholder_correction(
     return translated_text, False
 
 
+def _restore_proven_placeholders(
+    reference_text: str,
+    candidate_text: str,
+    local_tag_map: Dict[str, str],
+) -> Optional[str]:
+    """Repair a rewritten unit's placeholders when no guess is involved.
+
+    Refinement and audit repair rewrite a unit that already has a valid
+    placeholder stream (``reference_text``). When the rewrite only dropped a
+    block boundary whose position the reference proves, or left a stray or
+    misspelled token, the paid rewrite is kept. Anything that would need a
+    guess returns ``None`` and the caller keeps its previous candidate.
+    """
+    if not local_tag_map or _placeholder_salvage_mode() == "off":
+        return None
+    from .placeholder_salvage import salvage_placeholder_candidate
+
+    try:
+        return salvage_placeholder_candidate(
+            reference_text,
+            candidate_text,
+            local_tag_map,
+        )
+    except Exception:
+        # Salvage is an optimization; a defect in it must never be worse than
+        # the previous behavior of discarding the rewrite.
+        return None
+
+
+def _placeholder_salvage_mode() -> str:
+    from src.config import EPUB_PLACEHOLDER_SALVAGE
+
+    mode = str(EPUB_PLACEHOLDER_SALVAGE or "").strip().lower()
+    return mode if mode in {"first_failure", "after_retries"} else "off"
+
+
+async def _salvage_placeholder_candidate(
+    *,
+    chunk_text: str,
+    candidate: str,
+    local_tag_map: Dict[str, str],
+    translate_region: Callable[[str, Dict[str, str]], Awaitable[Optional[str]]],
+    log_callback: Optional[Callable] = None,
+) -> Optional[str]:
+    """Reuse a candidate that failed strict placeholder validation.
+
+    Blocks whose placeholders are provably intact are kept byte for byte and
+    block boundaries are restored only where the source proves their position.
+    Every other block is sent back through ``translate_region`` on its own, so
+    a damaged italic span costs one paragraph instead of the whole unit.
+
+    Returns a strictly valid placeholder stream, or ``None`` when the legacy
+    retry must run. The caller still applies every fidelity and language gate.
+    """
+    try:
+        return await _salvage_placeholder_candidate_unchecked(
+            chunk_text=chunk_text,
+            candidate=candidate,
+            local_tag_map=local_tag_map,
+            translate_region=translate_region,
+            log_callback=log_callback,
+        )
+    except RateLimitError:
+        raise
+    except Exception as exc:
+        # Salvage is an optimization; a defect in it must never be worse than
+        # the whole-unit retry it replaces.
+        _log_error(
+            log_callback,
+            "placeholder_salvage_error",
+            f"Placeholder salvage skipped ({type(exc).__name__}: {exc}); "
+            "retrying the whole unit.",
+        )
+        return None
+
+
+async def _salvage_placeholder_candidate_unchecked(
+    *,
+    chunk_text: str,
+    candidate: str,
+    local_tag_map: Dict[str, str],
+    translate_region: Callable[[str, Dict[str, str]], Awaitable[Optional[str]]],
+    log_callback: Optional[Callable] = None,
+) -> Optional[str]:
+    from src.common.placeholder_format import PlaceholderFormat
+    from src.config import EPUB_PLACEHOLDER_SALVAGE_MAX_DAMAGED_SHARE
+    from .placeholder_salvage import (
+        normalize_placeholder_variants,
+        plan_placeholder_salvage,
+        salvage_placeholder_candidate,
+        verify_salvaged_stream,
+    )
+
+    plan = plan_placeholder_salvage(
+        chunk_text,
+        normalize_placeholder_variants(candidate, local_tag_map),
+        local_tag_map,
+    )
+    if not plan.usable:
+        return None
+    if plan.damaged and plan.damaged_share > EPUB_PLACEHOLDER_SALVAGE_MAX_DAMAGED_SHARE:
+        return None
+
+    fmt = PlaceholderFormat.from_config()
+    replacements: Dict[int, str] = {}
+    interpolated = 0
+    for region in plan.damaged:
+        region_map = {
+            placeholder: local_tag_map[placeholder]
+            for _start, _end, placeholder, _index in fmt.find_all(region.source_text)
+            if placeholder in local_tag_map
+        }
+        request_text, request_map, original_order = _renumber_inline_part(
+            region.source_text,
+            region_map,
+        )
+        regional = await translate_region(request_text, request_map)
+        repaired = None
+        if regional:
+            repaired = salvage_placeholder_candidate(
+                request_text,
+                regional,
+                request_map,
+            )
+            if repaired is not None:
+                repaired = _restore_inline_part_placeholders(
+                    repaired,
+                    original_order,
+                )
+        if repaired is None and region.interpolated is not None:
+            # Same last resort the structural recovery uses for every block,
+            # restricted to this block and pinned by its surviving tags.
+            repaired = region.interpolated
+            interpolated += 1
+        if repaired is None:
+            return None
+        replacements[region.candidate_region] = repaired
+
+    result = verify_salvaged_stream(
+        chunk_text,
+        plan.assemble(replacements),
+        local_tag_map,
+    )
+    if result is not None and log_callback:
+        details = []
+        if plan.restored_boundaries:
+            details.append(f"{plan.restored_boundaries} límite(s) de bloque restaurado(s)")
+        if plan.repaired_blocks:
+            details.append(f"{plan.repaired_blocks} bloque(s) limpiado(s)")
+        if plan.damaged:
+            details.append(
+                f"{len(plan.damaged)} de {plan.readable_blocks} bloque(s) retraducido(s)"
+            )
+        if interpolated:
+            details.append(f"{interpolated} bloque(s) alineado(s) por anclas")
+        log_callback(
+            "placeholder_salvage_success",
+            "♻️ Candidato reutilizado sin repetir la unidad completa: "
+            + ("; ".join(details) or "marcadores normalizados")
+            + ".",
+        )
+    return result
+
+
 async def translate_chunk_with_fallback(
     chunk_text: str,
     local_tag_map: Dict[str, str],
@@ -1172,6 +1336,7 @@ async def translate_chunk_with_fallback(
     # ==========================================================================
     translated = None
     fidelity_retry_decisions = []
+    salvage_mode = _placeholder_salvage_mode()
 
     for attempt in range(max_retries):
         if unit_record is not None:
@@ -1225,6 +1390,53 @@ async def translate_chunk_with_fallback(
 
         # Validate placeholders
         validation_result = validate_placeholders(translated, local_tag_map)
+        salvaged_candidate = False
+
+        if not validation_result and has_placeholders and (
+            salvage_mode == "first_failure"
+            or (salvage_mode == "after_retries" and attempt == max_retries - 1)
+        ):
+            # The prose is already paid for. Keep the blocks whose placeholders
+            # are intact and request only the damaged ones again.
+            stats.correction_attempts += 1
+
+            async def _translate_damaged_region(
+                request_text: str,
+                request_map: Dict[str, str],
+            ) -> Optional[str]:
+                return await generate_translation_request(
+                    request_text,
+                    context_before="",
+                    context_after="",
+                    previous_translation_context="",
+                    source_language=source_language,
+                    target_language=target_language,
+                    model=model_name,
+                    llm_client=llm_client,
+                    log_callback=log_callback,
+                    has_placeholders=bool(request_map),
+                    context_manager=context_manager,
+                    placeholder_format=placeholder_format,
+                    # A regional rejection must not become the unit's reason.
+                    prompt_options=dict(active_prompt_options or {}),
+                    # Same glossary and continuity memory as the unit request,
+                    # so the re-sent block keeps the book's names and terms.
+                    runtime_state=runtime_state,
+                )
+
+            salvaged = await _salvage_placeholder_candidate(
+                chunk_text=chunk_text,
+                candidate=translated,
+                local_tag_map=local_tag_map,
+                translate_region=_translate_damaged_region,
+                log_callback=log_callback,
+            )
+            if salvaged is not None and validate_placeholders(salvaged, local_tag_map):
+                translated = salvaged
+                validation_result = True
+                salvaged_candidate = True
+                stats.placeholder_errors += 1
+                stats.correction_success += 1
 
         if validation_result:
             if fidelity_supervisor_enabled(prompt_options):
@@ -1320,16 +1532,18 @@ async def translate_chunk_with_fallback(
                     continue
 
             # Success - restore to global indices
-            if attempt == 0:
+            if attempt == 0 and not salvaged_candidate:
                 stats.successful_first_try += 1
             else:
                 stats.successful_after_retry += 1
-                if log_callback:
+                if log_callback and attempt > 0:
                     log_callback("retry_success", f"✓ Translation succeeded after {attempt + 1} attempt(s)")
 
             result = placeholder_mgr.restore_to_global(translated, global_indices)
             if unit_record is not None:
                 mark_translated(unit_record, result)
+                if salvaged_candidate:
+                    unit_record["translation_method"] = "placeholder_salvage"
             stats.record_processed()  # Mark chunk as fully processed
             return result
         else:
@@ -1815,7 +2029,10 @@ async def _translate_all_chunks_with_checkpoint(
     """
     from datetime import datetime, timezone
 
-    CHECKPOINT_FREQUENCY = 5  # Save every 5 chunks
+    # Persist every unit by default: an exception that interrupts this loop
+    # (provider wait, peak-pricing boundary, worker restart) would otherwise
+    # make resume pay again for each unit translated since the last save.
+    from src.config import EPUB_CHECKPOINT_FREQUENCY as CHECKPOINT_FREQUENCY
 
     # Initialize if first time
     if stats is None:
@@ -1891,6 +2108,20 @@ async def _translate_all_chunks_with_checkpoint(
             return translated_chunks, stats, True  # was_interrupted=True
 
         # === TRANSLATE CHUNK ===
+        chunk_unit = chunk.get("unit")
+        if (
+            isinstance(chunk_unit, dict)
+            and chunk_unit.get("status") == "FAILED"
+            and chunk_unit.get("failure_reason") == "provider_refusal"
+        ):
+            # A refusal is not an invitation to try again on resume. The unit
+            # stays blocked until the stage configuration changes (another
+            # model or provider invalidates the stage and clears the record).
+            raise ProviderActionRequiredError(
+                "Saved provider refusal requires review; the request was not repeated.",
+                reason="provider_refusal",
+                provider=getattr(llm_client, "provider_type", ""),
+            )
         try:
             translated = await translate_chunk_with_fallback(
                 chunk_text=chunk['text'],
@@ -1911,7 +2142,16 @@ async def _translate_all_chunks_with_checkpoint(
                 section=file_href or "EPUB",
                 unit_record=chunk.get("unit"),
             )
-        except ChunkTranslationFailedError:
+        except (ChunkTranslationFailedError, ProviderActionRequiredError) as unit_error:
+            if isinstance(unit_error, ProviderActionRequiredError):
+                from src.core.llm.exceptions import is_unit_scoped_provider_stop
+
+                if not is_unit_scoped_provider_stop(unit_error):
+                    raise
+                # Record the refusal durably so no later pass repeats, splits
+                # or rephrases the request on its own.
+                if isinstance(chunk_unit, dict):
+                    mark_failed(chunk_unit, unit_error.reason)
             if checkpoint_manager and translation_id and file_href:
                 from datetime import datetime, timezone
                 from .xhtml_translation_state import XHTMLTranslationState
@@ -2017,7 +2257,8 @@ async def _translate_all_chunks_with_checkpoint(
 
             checkpoint_manager.save_xhtml_partial_state(translation_id, file_href, state)
 
-            if log_callback:
+            # Every unit is persisted; the log line keeps its old cadence.
+            if log_callback and ((i + 1) % 5 == 0 or (i + 1) == len(chunks)):
                 log_callback("xhtml_checkpoint_saved",
                     f"💾 Checkpoint saved: chunk {i + 1}/{len(chunks)}")
 
@@ -2532,6 +2773,22 @@ async def _refine_epub_chunks(
                     ).text
                     quality_rejected = False
                     source_text = chunk_dict.get('text', '') or text_for_refinement
+                    if local_tag_map and not validate_placeholders(refined_text, local_tag_map):
+                        # Repair before the paid quality guards run, and only
+                        # where the draft proves every placeholder position.
+                        restored_refinement = _restore_proven_placeholders(
+                            text_for_refinement,
+                            refined_text,
+                            local_tag_map,
+                        )
+                        if restored_refinement is not None:
+                            refined_text = restored_refinement
+                            if log_callback:
+                                log_callback(
+                                    "epub_refinement_placeholders_restored",
+                                    f"Chunk {idx + 1}/{total_chunks}: refinement kept after "
+                                    "restoring source-proven placeholders",
+                                )
                     if editorial_quality_guard:
                         decision, _guard_response = await _assess_refinement_with_editorial_guard(
                             draft_text=text_for_refinement,
@@ -3280,16 +3537,26 @@ candidate with every placeholder preserved."""
             repaired_local,
             decision,
         )
-    if not validate_placeholders(
-        repaired_local,
-        dict(chunk.get("local_tag_map") or {}),
-    ):
+    repair_tag_map = dict(chunk.get("local_tag_map") or {})
+    if not validate_placeholders(repaired_local, repair_tag_map):
+        restored_repair = _restore_proven_placeholders(
+            source_text,
+            repaired_local,
+            repair_tag_map,
+        )
+        if restored_repair is None:
+            if log_callback:
+                log_callback(
+                    "epub_audit_local_repair_placeholders_rejected",
+                    "Issue-local repair changed structural placeholders; candidate discarded",
+                )
+            return None
+        repaired_local = restored_repair
         if log_callback:
             log_callback(
-                "epub_audit_local_repair_placeholders_rejected",
-                "Issue-local repair changed structural placeholders; candidate discarded",
+                "epub_audit_local_repair_placeholders_restored",
+                "Issue-local repair kept after restoring source-proven placeholders",
             )
-        return None
 
     gate_rejections = _target_language_gate_rejections(
         source_text,
@@ -3501,6 +3768,14 @@ async def _audit_epub_unit(
                 client=llm_client, prompt_options=request_options, log_callback=log_callback,
             )
         except Exception as exc:
+            if isinstance(exc, RateLimitError) and getattr(exc, "retryable", False):
+                # A provider wait (rate limit, pricing window, outage) is not a
+                # judgment. Return the attempt so three waits on one unit
+                # cannot exhaust its audit allowance and block the book.
+                entry["audit_calls"][phase] = calls
+                record["audit_attempts"] = max(
+                    0, bounded_count(record.get("audit_attempts", 0)) - 1,
+                )
             request_failed(exc)
         check_version()
         structural_only = not (source_semantic.strip() or semantic(entry).strip())
@@ -3776,7 +4051,7 @@ async def _audit_epub_chunks(
         options["fidelity_supervisor"] = True
         options["fidelity_supervisor_mode"] = "strict_full"
         options.setdefault("fidelity_supervisor_model", model_name)
-    audited, failures = [], []
+    audited, failures, provider_stops = [], [], []
     for idx, chunk in enumerate(chunks):
         if check_interruption_callback and check_interruption_callback():
             return audited
@@ -3794,10 +4069,28 @@ async def _audit_epub_chunks(
             audited.append(candidate)
         except ChunkTranslationFailedError as exc:
             failures.append(exc)
+        except ProviderActionRequiredError as exc:
+            from src.config import EPUB_DEFER_FAILED_FILES
+            from src.core.llm.exceptions import is_unit_scoped_provider_stop
+
+            if not (EPUB_DEFER_FAILED_FILES and is_unit_scoped_provider_stop(exc)):
+                raise
+            # The unit journal already records why this unit needs review.
+            # Its neighbors are independent: keep auditing them so the file
+            # is not audited one blocked unit at a time across resumes.
+            provider_stops.append(exc)
+            if log_callback:
+                log_callback(
+                    "epub_audit_unit_requires_review",
+                    f"Unit {idx + 1}: {exc.reason}; kept for review while the "
+                    "remaining units are audited.",
+                )
     if failures:
         error = failures[0]
         error.failed_unit_indices = [exc.chunk_index for exc in failures]
         raise error
+    if provider_stops:
+        raise provider_stops[0]
     return audited
 
 

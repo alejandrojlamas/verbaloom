@@ -355,7 +355,13 @@ async def test_never_approving_auditor_repeated_findings_stop_without_style_rank
 
 
 @pytest.mark.asyncio
-async def test_transient_audit_failures_have_durable_per_candidate_limit(monkeypatch):
+async def test_provider_waits_do_not_consume_the_audit_allowance(monkeypatch):
+    """A rate limit, pricing window or outage is not a judgment.
+
+    The job boundary already bounds provider waits. Charging each wait to the
+    unit used to exhaust its three audit requests during one long outage and
+    left the unit permanently FAILED, which blocked the whole book.
+    """
     chunks, candidates = fixture()
     calls = []
 
@@ -364,13 +370,28 @@ async def test_transient_audit_failures_have_durable_per_candidate_limit(monkeyp
         raise RateLimitError("temporary")
 
     monkeypatch.setattr(subject, "supervise_fidelity", audit)
-    for _ in range(3):
+    for _ in range(5):
         with pytest.raises(RateLimitError):
             await run(chunks, candidates)
         chunks = json.loads(json.dumps(chunks))
-    for _ in range(2):
+    assert len(calls) == 5
+    assert chunks[0]["unit"]["audit_attempts"] == 0
+
+
+@pytest.mark.asyncio
+async def test_failed_audit_requests_have_durable_per_candidate_limit(monkeypatch):
+    chunks, candidates = fixture()
+    calls = []
+
+    async def audit(*args, **kwargs):
+        calls.append(kwargs)
+        raise RuntimeError("malformed audit response")
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+    for _ in range(5):
         with pytest.raises(ChunkTranslationFailedError):
             await run(chunks, candidates)
+        chunks = json.loads(json.dumps(chunks))
     assert len(calls) == 3
     assert chunks[0]["unit"]["audit_attempts"] == 3
 
@@ -953,3 +974,67 @@ async def test_runtime_counts_every_unresolved_audit_unit(monkeypatch):
     assert caught.value.stats.failed_chunks == 2
     assert saved[-1]["global_stats"]["failed_chunks"] == 2
     assert root.find("body/p").text == SOURCE
+
+
+@pytest.mark.asyncio
+async def test_blocked_unit_does_not_stop_the_audit_of_its_neighbors(monkeypatch):
+    """A refusal or unusable audit answer concerns one unit of the file."""
+    chunks, candidates = fixture(3)
+    audited = []
+
+    async def audit(source, candidate, **kwargs):
+        audited.append(kwargs["chunk_index"])
+        if kwargs["chunk_index"] == 1:
+            raise ProviderActionRequiredError(
+                "no valid judgment", reason="audit_invalid_response", provider="deepseek",
+            )
+        return verdict(source, candidate, True)
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+
+    with pytest.raises(ProviderActionRequiredError) as caught:
+        await run(chunks, candidates)
+
+    assert caught.value.reason == "audit_invalid_response"
+    assert audited == [1, 2, 3]
+    assert chunks[0]["unit"]["audit_status"] == "FAILED"
+    assert [chunk["unit"]["audit_status"] for chunk in chunks[1:]] == ["COMPLETED"] * 2
+
+
+@pytest.mark.asyncio
+async def test_blocked_unit_stops_the_audit_when_deferral_is_disabled(monkeypatch):
+    monkeypatch.setattr("src.config.EPUB_DEFER_FAILED_FILES", False)
+    chunks, candidates = fixture(3)
+    audited = []
+
+    async def audit(source, candidate, **kwargs):
+        audited.append(kwargs["chunk_index"])
+        raise ProviderActionRequiredError(
+            "refused", reason="provider_refusal", provider="deepseek",
+        )
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+
+    with pytest.raises(ProviderActionRequiredError):
+        await run(chunks, candidates)
+
+    assert audited == [1]
+
+
+@pytest.mark.asyncio
+async def test_job_scoped_provider_stop_is_never_collected(monkeypatch):
+    chunks, candidates = fixture(3)
+    audited = []
+
+    async def audit(source, candidate, **kwargs):
+        audited.append(kwargs["chunk_index"])
+        raise ProviderActionRequiredError(
+            "bad key", reason="authentication_error", provider="deepseek",
+        )
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+
+    with pytest.raises(ProviderActionRequiredError):
+        await run(chunks, candidates)
+
+    assert audited == [1]

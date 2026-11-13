@@ -329,6 +329,134 @@ class TestPeriodicCheckpoint:
         # Check that saves happened at expected intervals
         # Note: exact indices depend on implementation (could be 5, 10, 12 or 4, 9, 12 if 0-indexed)
         assert 12 in checkpoint_saves, "Should save on last chunk"
+        # Every translated unit is durable: a provider interruption between
+        # two saves used to pay for up to four units a second time.
+        assert checkpoint_saves == list(range(1, 13))
+
+    @pytest.mark.asyncio
+    async def test_provider_interruption_loses_no_paid_unit(self, temp_checkpoint_manager):
+        """A rate-limit stop after N units must leave N units in the checkpoint."""
+        from src.core.llm.exceptions import RateLimitError
+
+        chunks = [
+            {'text': f'Chunk {i}', 'local_tag_map': {}, 'global_indices': []}
+            for i in range(4)
+        ]
+        saved_states = []
+        original_save = temp_checkpoint_manager.save_xhtml_partial_state
+
+        def track_save(translation_id, file_href, state):
+            saved_states.append(
+                (state.current_chunk_index, list(state.translated_chunks))
+            )
+            return original_save(translation_id, file_href, state)
+
+        temp_checkpoint_manager.save_xhtml_partial_state = track_save
+
+        calls = [0]
+        mock_client = MagicMock()
+
+        async def interrupted_translate(*args, **kwargs):
+            calls[0] += 1
+            if calls[0] == 4:
+                raise RateLimitError("provider asked to wait")
+            return create_mock_llm_response(f"Translated {calls[0]}")
+
+        mock_client.generate = interrupted_translate
+        mock_client.extract_translation = lambda response: response
+
+        with pytest.raises(RateLimitError):
+            await _translate_all_chunks_with_checkpoint(
+                chunks=chunks,
+                source_language="English",
+                target_language="French",
+                model_name="test-model",
+                llm_client=mock_client,
+                max_retries=1,
+                context_manager=None,
+                placeholder_format=('[[', ']]'),
+                checkpoint_manager=temp_checkpoint_manager,
+                translation_id="test_interrupted",
+                file_href="OEBPS/test.xhtml",
+                file_path="OEBPS/test.xhtml",
+                start_chunk_index=0,
+                translated_chunks=None,
+                global_tag_map={},
+                stats=None,
+            )
+
+        assert saved_states, "translated units must be persisted before the stop"
+        next_index, translated = saved_states[-1]
+        assert next_index == 3
+        assert len(translated) == 3
+
+    @pytest.mark.asyncio
+    async def test_refused_unit_is_recorded_and_never_sent_again(self, temp_checkpoint_manager):
+        """A provider refusal is saved on the unit; resume repeats no request."""
+        from src.core.llm.exceptions import ProviderActionRequiredError
+
+        chunks = [
+            {'text': f'Chunk {i}', 'local_tag_map': {}, 'global_indices': [],
+             'unit': {'unit_id': f'u{i}', 'status': 'PENDING'}}
+            for i in range(3)
+        ]
+        saved_states = []
+        original_save = temp_checkpoint_manager.save_xhtml_partial_state
+
+        def track_save(translation_id, file_href, state):
+            saved_states.append(state.current_chunk_index)
+            return original_save(translation_id, file_href, state)
+
+        temp_checkpoint_manager.save_xhtml_partial_state = track_save
+
+        calls = [0]
+        mock_client = MagicMock()
+
+        async def refusing_translate(*args, **kwargs):
+            calls[0] += 1
+            if calls[0] == 2:
+                raise ProviderActionRequiredError(
+                    "refused", reason="provider_refusal", provider="deepseek",
+                )
+            return create_mock_llm_response(f"Translated {calls[0]}")
+
+        mock_client.generate = refusing_translate
+        mock_client.extract_translation = lambda response: response
+
+        async def run(start, translated):
+            return await _translate_all_chunks_with_checkpoint(
+                chunks=chunks,
+                source_language="English",
+                target_language="French",
+                model_name="test-model",
+                llm_client=mock_client,
+                max_retries=1,
+                context_manager=None,
+                placeholder_format=('[[', ']]'),
+                checkpoint_manager=temp_checkpoint_manager,
+                translation_id="test_refusal",
+                file_href="OEBPS/test.xhtml",
+                file_path="OEBPS/test.xhtml",
+                start_chunk_index=start,
+                translated_chunks=translated,
+                global_tag_map={},
+                stats=None,
+            )
+
+        with pytest.raises(ProviderActionRequiredError):
+            await run(0, None)
+
+        assert calls[0] == 2
+        assert chunks[1]['unit']['status'] == 'FAILED'
+        assert chunks[1]['unit']['failure_reason'] == 'provider_refusal'
+        # The refused unit is the resume point and the first unit is kept.
+        assert saved_states[-1] == 1
+
+        with pytest.raises(ProviderActionRequiredError) as repeated:
+            await run(1, ["Translated 1"])
+
+        assert repeated.value.reason == "provider_refusal"
+        assert calls[0] == 2, "the refused passage must not be sent again"
 
 
 class TestBilingualModeWithInterruption:

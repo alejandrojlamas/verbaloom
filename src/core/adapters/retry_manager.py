@@ -15,6 +15,8 @@ from typing import Optional, Callable, Any, Dict, Type, List
 from dataclasses import dataclass
 from enum import Enum
 
+from src.common.provider_outage import note_transport_outage
+
 from .exceptions import (
     TranslationError,
     LLMError,
@@ -363,7 +365,22 @@ class RetryManager:
         """
         if not self._circuit_breaker:
             return True
-        return self._circuit_breaker.can_attempt()
+        allowed = self._circuit_breaker.can_attempt()
+        if not allowed:
+            # Failing fast is a provider-health decision, never a verdict on
+            # the request that was about to be sent.
+            note_transport_outage("circuit_open")
+        return allowed
+
+    def record_transport_failure(self, reason: str = "transport_failure") -> None:
+        """Record a failed attempt whose cause is the connection itself.
+
+        Use it for timeouts, connection errors and HTTP 5xx. A malformed or
+        empty model answer is not a transport failure; keep
+        ``record_attempt_result(False)`` for those.
+        """
+        note_transport_outage(reason)
+        self.record_attempt_result(False)
 
     def record_attempt_result(self, success: bool) -> None:
         """Record a plain transient-failure attempt's outcome against the

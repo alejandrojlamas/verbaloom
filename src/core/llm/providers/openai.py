@@ -222,7 +222,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 else:
                     print(f"{YELLOW}⚠️ OpenAI-compatible API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}{RESET}")
 
-                self._retry_manager.record_attempt_result(False)
+                self._retry_manager.record_transport_failure("timeout")
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                     delay = self._retry_manager.delay_for_attempt(attempt + 1)
                     if self.log_callback:
@@ -346,7 +346,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 # Reached only for a plain/unexpected HTTP error (the 429
                 # and context-overflow cases above already `continue`d or
                 # raised): a real connectivity/provider-health signal.
-                self._retry_manager.record_attempt_result(False)
+                self._retry_manager.record_transport_failure("http_error")
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                     delay = self._retry_manager.delay_for_attempt(attempt + 1)
                     if self.log_callback:
@@ -418,7 +418,11 @@ class OpenAICompatibleProvider(LLMProvider):
                 else:
                     print(f"{YELLOW}⚠️ OpenAI-compatible API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {type(e).__name__}: {e}{RESET}")
 
-                self._retry_manager.record_attempt_result(False)
+                if isinstance(e, httpx.HTTPError):
+                    # Connection reset, DNS failure, protocol error.
+                    self._retry_manager.record_transport_failure("connection_error")
+                else:
+                    self._retry_manager.record_attempt_result(False)
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                     delay = self._retry_manager.delay_for_attempt(attempt + 1)
                     if self.log_callback:

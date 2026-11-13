@@ -202,7 +202,18 @@ async def translate_epub_file(
             # 2.5. Restore checkpoint if resuming
             restored_docs = {}
             original_chunk_plan = None
-            if checkpoint_manager and translation_id and resume_from_index > 0:
+            completed_file_indices = _completed_epub_file_indices(
+                checkpoint_manager,
+                translation_id,
+                manifest_data['content_files'],
+                resume_from_index,
+            )
+            # A deferred failure at the first file leaves completed files
+            # behind a resume index of zero; they must be restored too.
+            restore_attempted = bool(
+                checkpoint_manager and translation_id and completed_file_indices
+            )
+            if restore_attempted:
                 # Count the pristine source before translated XHTML files are
                 # restored over it. Spanish and German versions can tokenize
                 # differently, which otherwise makes resumed progress exceed
@@ -242,6 +253,8 @@ async def translate_epub_file(
                 restored_docs=restored_docs,
                 runtime_state=runtime_state,
                 precount_result=original_chunk_plan,
+                completed_file_indices=completed_file_indices,
+                restore_attempted=restore_attempted,
             )
 
             # 4. Save translated files
@@ -261,6 +274,9 @@ async def translate_epub_file(
                     or int(results.get('failed_chunks') or 0) > 0
                     or int(results.get('completed_files') or 0)
                         < len(manifest_data['content_files'])
+                    # Counters can agree while a document is missing. Never
+                    # package a book whose content file was not produced.
+                    or bool(results.get('unresolved_files'))
                 )
             )
             if automatic_unresolved:
@@ -583,6 +599,48 @@ def _create_context_manager(
     return context_manager
 
 
+def _completed_epub_file_indices(
+    checkpoint_manager,
+    translation_id: Optional[str],
+    content_files: list,
+    resume_from_index: int,
+) -> set:
+    """Indexes of content files with a durable, matching file checkpoint.
+
+    ``resume_from_index`` is the contiguous completed prefix. When a failed
+    file was deferred, later files were still completed and checkpointed; the
+    prefix alone would translate (and pay for) them again. A later file counts
+    only when its checkpoint row is completed and names the same document.
+    """
+    total = len(content_files)
+    completed = set(range(max(0, min(int(resume_from_index or 0), total))))
+    if not (checkpoint_manager and translation_id):
+        return completed
+    loader = getattr(checkpoint_manager, 'load_checkpoint', None)
+    if not callable(loader):
+        return completed
+    try:
+        rows = (loader(translation_id) or {}).get('chunks') or []
+    except Exception:
+        return completed
+    for row in rows:
+        try:
+            index = int(row.get('chunk_index'))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if not 0 <= index < total:
+            continue
+        if row.get('status') != 'completed' or row.get('translated_text') is None:
+            continue
+        data = row.get('chunk_data') or {}
+        if data.get('file_type') != 'epub_xhtml':
+            continue
+        if data.get('last_file') != content_files[index]:
+            continue
+        completed.add(index)
+    return completed
+
+
 async def _restore_checkpoint_files(
     checkpoint_manager,
     translation_id: str,
@@ -778,9 +836,22 @@ async def _translate_single_xhtml_file(
         return None, False, None
     except Exception as e:
         # Re-raise RateLimitError to trigger auto-pause
-        from src.core.llm.exceptions import RateLimitError
+        from src.config import EPUB_DEFER_FAILED_FILES
+        from src.core.llm.exceptions import RateLimitError, is_unit_scoped_provider_stop
         if isinstance(e, RateLimitError):
-            raise
+            if not (EPUB_DEFER_FAILED_FILES and is_unit_scoped_provider_stop(e)):
+                raise
+            # A refusal or an unusable audit answer concerns one passage. It
+            # stays blocked for review (and is never re-sent, split or
+            # rephrased); the other documents do not depend on it.
+            if log_callback:
+                log_callback(
+                    "epub_unit_requires_review",
+                    f"🛑 '{content_href}': {getattr(e, 'reason', 'provider_stop')}. "
+                    "El pasaje queda pendiente de revisión y no se reenviará; "
+                    "la traducción continúa con el resto del libro.",
+                )
+            return None, False, getattr(e, "stats", None)
         if log_callback:
             log_callback("epub_file_error", f"Error processing '{content_href}': {e}")
         # Quality-stage failures carry the file metrics accumulated before the
@@ -943,6 +1014,8 @@ async def _process_all_content_files(
     restored_docs: Optional[Dict[str, etree._Element]] = None,
     runtime_state: Optional[dict] = None,
     precount_result: Optional[tuple[int, list[int]]] = None,
+    completed_file_indices: Optional[set] = None,
+    restore_attempted: bool = False,
 ) -> Dict:
     """
     Process all XHTML content files using GenericTranslationOrchestrator.
@@ -969,7 +1042,31 @@ async def _process_all_content_files(
     Returns:
         Dictionary with processing results
     """
+    from src.config import (
+        EPUB_DEFER_FAILED_FILES,
+        EPUB_MAX_CONSECUTIVE_FAILED_FILES,
+    )
     from .translation_metrics import TranslationMetrics
+
+    def _content_path(index: int) -> str:
+        return os.path.normpath(os.path.join(opf_dir, content_files[index]))
+
+    # Files completed after a deferred failure sit beyond the contiguous
+    # prefix. They are skipped only when their translated document was really
+    # restored; otherwise they are translated again.
+    sparse_completed = {
+        index
+        for index in (completed_file_indices or ())
+        if resume_from_index <= index < len(content_files)
+        and restored_docs
+        and _content_path(index) in restored_docs
+    }
+    resuming = resume_from_index > 0 or bool(sparse_completed)
+
+    def _prefix_file_available(index: int) -> bool:
+        # Without a restore attempt (direct callers) the prefix is trusted as
+        # before. After one, a prefix file counts only if it really came back.
+        return not restore_attempted or _content_path(index) in (restored_docs or {})
 
     # Pre-count chunks for accurate progress tracking
     plain_text_mode = bool(prompt_options and prompt_options.get('plain_text_mode'))
@@ -988,7 +1085,7 @@ async def _process_all_content_files(
     # denominator and completed baseline stored before the pause.
     effective_total_chunks = total_chunks
     resume_job = None
-    if checkpoint_manager and translation_id and resume_from_index > 0:
+    if checkpoint_manager and translation_id and resuming:
         try:
             resume_job = checkpoint_manager.get_job(translation_id)
         except Exception:
@@ -1014,12 +1111,20 @@ async def _process_all_content_files(
     if resume_job:
         snapshot = (resume_job.get('progress') or {}).get('epub_accumulated_stats')
         _restore_accumulated_stats(snapshot, accumulated_stats)
+        # ``failed_chunks`` counts units that are unresolved now. Every file
+        # that is not completed is processed again in this pass and reports
+        # its own failures; a count restored from the previous pass would
+        # block publication even after the pending file is repaired.
+        accumulated_stats.failed_chunks = 0
 
     # Track global chunk progress. ``completed_chunks_global`` must contain
     # only files before the current resume file; the current XHTML state adds
     # its own translated prefix through ``file_stats_wrapper``.
     completed_chunks_global = 0
-    for idx in range(resume_from_index):
+    for idx in sorted(
+        {index for index in range(resume_from_index) if _prefix_file_available(index)}
+        | sparse_completed
+    ):
         if idx < len(chunks_per_file):
             completed_chunks_global += chunks_per_file[idx]
 
@@ -1055,14 +1160,21 @@ async def _process_all_content_files(
     # Send initial stats if resuming (to update UI immediately). Forward the
     # restored fallback counters so the UI hydrates the Fallbacks card with
     # the work already done before the pause, instead of showing 0.
-    if stats_callback and resume_from_index > 0:
+    if stats_callback and resuming:
         stats_callback(_global_stats_payload(
             effective_total_chunks,
             completed_chunks_global + partial_completed_current,
             accumulated_stats,
         ))
 
+    # Units already translated inside files that are still pending, by file.
+    # Several files can be pending at once when failures are deferred.
+    pending_file_progress: Dict[int, int] = {}
+    if partial_completed_current > 0:
+        pending_file_progress[resume_from_index] = partial_completed_current
     incomplete_file_completed = partial_completed_current
+    consecutive_failed_files = 0
+    stopped_early = False
 
     for file_idx, content_href in enumerate(content_files):
         # Check for interruption
@@ -1075,7 +1187,19 @@ async def _process_all_content_files(
 
         # Skip if already processed (resume)
         if file_idx < resume_from_index:
-            completed_files += 1
+            if _prefix_file_available(file_idx):
+                completed_files += 1
+                continue
+            # The checkpoint says this file is done but its translated
+            # document could not be restored. Skipping it would package the
+            # source-language chapter, so translate it again.
+            if log_callback:
+                log_callback(
+                    "epub_restore_missing_file",
+                    f"⚠️ Checkpoint file missing for {content_href}; translating it again.",
+                )
+        elif file_idx in sparse_completed:
+            # Already counted in ``completed_files`` through the restored set.
             continue
 
         current_file_completed_latest = (
@@ -1141,12 +1265,16 @@ async def _process_all_content_files(
         # Save the document if translation succeeded
         if success and doc_root is not None:
             completed_chunks_global += chunks_in_this_file
-            incomplete_file_completed = 0
+            pending_file_progress.pop(file_idx, None)
+            incomplete_file_completed = sum(pending_file_progress.values())
             parsed_xhtml_docs[file_path] = doc_root
             completed_files += 1
+            consecutive_failed_files = 0
         else:
-            incomplete_file_completed = current_file_completed_latest
+            pending_file_progress[file_idx] = current_file_completed_latest
+            incomplete_file_completed = sum(pending_file_progress.values())
             failed_files += 1
+            consecutive_failed_files += 1
             # A file-level exception used to lose the chunk metrics returned by
             # the XHTML translator.  It represents one unresolved unit unless
             # the translator supplied a more precise count; completed siblings
@@ -1184,19 +1312,81 @@ async def _process_all_content_files(
         # jump over the failure and produced a deceptively "complete" EPUB
         # containing the original source chapter.  Stop at the first failed
         # file by default so resume starts exactly where quality failed.
-        if not success and (prompt_options or {}).get('abort_on_profile_fail', True):
+        #
+        # Deferral keeps that guarantee differently: the failed file writes no
+        # completed checkpoint row, so the resume index never moves past it,
+        # publication stays blocked while any file is pending, and resume
+        # retries exactly the pending files. Later files are still translated,
+        # so one stubborn unit no longer halts the whole book.
+        if not success:
+            if EPUB_DEFER_FAILED_FILES:
+                if consecutive_failed_files >= EPUB_MAX_CONSECUTIVE_FAILED_FILES:
+                    stopped_early = True
+                    if log_callback:
+                        log_callback(
+                            "epub_fail_fast",
+                            f"⛔ EPUB processing stopped at {content_href}: "
+                            f"{consecutive_failed_files} files failed in a row, "
+                            "which points at the configuration or the provider "
+                            "rather than at the text.",
+                        )
+                    break
+                if log_callback and file_idx < total_files - 1:
+                    log_callback(
+                        "epub_file_deferred",
+                        f"⏭️ {content_href} queda pendiente (su avance está guardado); "
+                        "la traducción continúa con los archivos siguientes y "
+                        "se reintentará al final.",
+                    )
+            elif (prompt_options or {}).get('abort_on_profile_fail', True):
+                stopped_early = True
+                if log_callback:
+                    log_callback(
+                        "epub_fail_fast",
+                        f"⛔ EPUB processing stopped at {content_href}; later files were not advanced.",
+                    )
+                break
+
+    unresolved_files: List[str] = []
+    if not was_interrupted and not stopped_early:
+        first_checked = 0 if restore_attempted else resume_from_index
+        unresolved_files = [
+            content_files[index]
+            for index in range(first_checked, total_files)
+            if _content_path(index) not in parsed_xhtml_docs
+        ]
+
+    # The handler recovers automatically only when the checkpoint itself
+    # proves that units are pending. A failed file writes no checkpoint row,
+    # so record the unresolved count explicitly (and clear it once resolved).
+    if (
+        checkpoint_manager
+        and translation_id
+        and not was_interrupted
+        and hasattr(checkpoint_manager, 'update_progress')
+        and (failed_files > 0 or resuming)
+    ):
+        try:
+            checkpoint_manager.update_progress(
+                translation_id,
+                failed_chunks=max(
+                    int(accumulated_stats.failed_chunks or 0),
+                    int(failed_files or 0),
+                ),
+            )
+        except Exception as progress_error:
             if log_callback:
                 log_callback(
-                    "epub_fail_fast",
-                    f"⛔ EPUB processing stopped at {content_href}; later files were not advanced.",
+                    "epub_checkpoint_save_error",
+                    f"⚠️ Could not record pending files in the checkpoint: {progress_error}",
                 )
-            break
 
     # Final progress
     return {
         'parsed_docs': parsed_xhtml_docs,
         'completed_files': completed_files,
         'failed_files': failed_files,
+        'unresolved_files': unresolved_files,
         'total_chunks': effective_total_chunks,
         'completed_chunks': min(
             effective_total_chunks,

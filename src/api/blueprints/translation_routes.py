@@ -12,7 +12,12 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from src.api.resume_schedule import clear_resume_schedule, resume_schedule_from_config
+from src.api.resume_schedule import (
+    build_resume_schedule,
+    clear_resume_schedule,
+    resume_schedule_from_config,
+    with_resume_schedule,
+)
 from src.api.safe_payloads import client_safe_config, client_safe_logs
 from src.api.services.path_validator import PathValidator
 from src.api.socket_events import EVENT_TRANSLATION_UPDATE
@@ -1034,9 +1039,11 @@ def create_translation_blueprint(
             )
             or _provider_default_endpoint(resume_provider)
         ).strip()
+        # A resume requested during the high-price window is queued, not
+        # refused: the worker waits on a durable schedule and continues by
+        # itself when the window ends. No token is sent before that, because
+        # the provider guard and the schedule both hold the request back.
         pricing_block = _deepseek_pricing_block(resume_provider, resume_endpoint)
-        if pricing_block:
-            return jsonify(pricing_block), 423
 
         # Get job config and add resume parameters
         job = checkpoint_data['job']
@@ -1097,8 +1104,33 @@ def create_translation_blueprint(
         config.pop('_provider_action_required', None)
         config.pop('_automatic_recovery_stop', None)
         # An explicit user action starts a fresh provider attempt. DeepSeek's
-        # current peak-price gate above still prevents bypassing the cost policy.
+        # current peak-price gate still applies: the resumed worker honors the
+        # schedule below before it contacts the provider.
         config = clear_resume_schedule(config)
+        scheduled_resume = None
+        if pricing_block:
+            availability = pricing_block.get("availability") or {}
+            try:
+                wait_seconds = float(availability.get("seconds_until_available") or 0)
+            except (TypeError, ValueError):
+                wait_seconds = 0.0
+            pricing_schedule = build_resume_schedule(
+                # Same boundary margin the provider guard uses.
+                delay_seconds=max(0.0, wait_seconds) + 2,
+                reason="deepseek_peak_pricing",
+                status="pricing_wait",
+                resume_at_utc=str(availability.get("next_available_at_utc") or ""),
+                resume_at_local=str(availability.get("next_available_at_local") or ""),
+                display_timezone=str(availability.get("display_timezone") or ""),
+            )
+            config = with_resume_schedule(config, pricing_schedule)
+            scheduled_resume = {
+                "status": pricing_schedule.status,
+                "reason": pricing_schedule.reason,
+                "resume_at_utc": pricing_schedule.resume_at_utc,
+                "resume_at_local": pricing_schedule.resume_at_local,
+                "display_timezone": pricing_schedule.display_timezone,
+            }
         # The interrupt fence remains raised until this worker owns execution.
         # An older worker may still be unwinding after a quick Pause/Resume.
         config['_explicit_resume_requested'] = True
@@ -1160,11 +1192,17 @@ def create_translation_blueprint(
 
         return jsonify({
             "translation_id": translation_id,
-            "message": "Translation resumed successfully",
+            "message": (
+                "Resume scheduled: it starts automatically when the DeepSeek "
+                "high-price window ends."
+                if scheduled_resume
+                else "Translation resumed successfully"
+            ),
             "resume_from_chunk": checkpoint_data['resume_from_index'],
             "model": config.get('model'),
             "llm_provider": config.get('llm_provider'),
             "worker_state": start_result,
+            "scheduled_resume": scheduled_resume,
         }), 200
 
     @bp.route('/api/checkpoint/<translation_id>', methods=['DELETE'])

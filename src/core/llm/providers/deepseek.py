@@ -458,7 +458,7 @@ class DeepSeekProvider(LLMProvider):
             except httpx.TimeoutException as e:
                 error_type = "ambiguous_timeout"
                 print(f"DeepSeek API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                self._retry_manager.record_attempt_result(False)
+                self._retry_manager.record_transport_failure("timeout")
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                     await asyncio.sleep(self._retry_manager.delay_for_attempt(attempt + 1))
                     continue
@@ -516,7 +516,7 @@ class DeepSeekProvider(LLMProvider):
                 # which propagate to translator.py's dedicated handling
                 # instead of hitting the circuit breaker): a real
                 # connectivity/provider-health signal.
-                self._retry_manager.record_attempt_result(False)
+                self._retry_manager.record_transport_failure("http_error")
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                     await asyncio.sleep(self._retry_manager.delay_for_attempt(attempt + 1))
                     continue
@@ -534,7 +534,11 @@ class DeepSeekProvider(LLMProvider):
             except Exception as e:
                 error_type = type(e).__name__
                 print(f"DeepSeek API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                self._retry_manager.record_attempt_result(False)
+                if isinstance(e, httpx.HTTPError):
+                    # Connection reset, DNS failure, protocol error.
+                    self._retry_manager.record_transport_failure("connection_error")
+                else:
+                    self._retry_manager.record_attempt_result(False)
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                     await asyncio.sleep(self._retry_manager.delay_for_attempt(attempt + 1))
                     continue

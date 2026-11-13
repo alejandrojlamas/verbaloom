@@ -621,6 +621,62 @@ EPUB_STRUCTURE_RECOVERY_MAX_CALLS = max(
 )
 """Hard per-chunk call budget for structural recovery."""
 
+EPUB_CHECKPOINT_FREQUENCY = max(
+    1,
+    int(os.getenv('EPUB_CHECKPOINT_FREQUENCY', '1')),
+)
+"""Translated XHTML units between durable partial-state saves.
+
+A provider wait, a peak-pricing boundary or a worker restart interrupts the
+translation loop with an exception. Every unit translated since the last save
+is then paid for again on resume, so the default persists each unit. The write
+is a local atomic JSON replace and is negligible next to one model request.
+"""
+
+EPUB_DEFER_FAILED_FILES = os.getenv('EPUB_DEFER_FAILED_FILES', 'true').lower() == 'true'
+"""Keep translating the remaining XHTML files after one file fails.
+
+A unit that no candidate could resolve used to stop the whole book at its
+file. With deferral the file stays pending (its checkpoint is preserved, the
+EPUB is not published) while every later file is translated; automatic
+recovery and resume then retry only the pending files. Set to 'false' for the
+previous stop-at-first-failure behavior.
+"""
+
+EPUB_MAX_CONSECUTIVE_FAILED_FILES = max(
+    1,
+    int(os.getenv('EPUB_MAX_CONSECUTIVE_FAILED_FILES', '3')),
+)
+"""Consecutive failed XHTML files that still stop the book.
+
+Isolated failures are unit problems. Several files failing in a row point at
+the configuration, the model or the provider, and continuing would only spend
+tokens on work that fails the same way.
+"""
+
+EPUB_PLACEHOLDER_SALVAGE = (
+    os.getenv('EPUB_PLACEHOLDER_SALVAGE', 'first_failure').strip().lower()
+)
+"""When to reuse a paid candidate whose placeholders were damaged.
+
+- 'first_failure' (default): as soon as strict validation rejects a
+  candidate, keep every block whose placeholders are provably intact and
+  request only the damaged blocks again, instead of the whole unit.
+- 'after_retries': keep the legacy whole-unit retries and salvage only the
+  last candidate, before the block-by-block structural recovery.
+- 'off': legacy behavior.
+"""
+
+EPUB_PLACEHOLDER_SALVAGE_MAX_DAMAGED_SHARE = min(
+    1.0,
+    max(0.0, float(os.getenv('EPUB_PLACEHOLDER_SALVAGE_MAX_DAMAGED_SHARE', '0.6'))),
+)
+"""Largest share of a unit's readable blocks that salvage may re-translate.
+
+Above it a regional repair costs about as much as a whole-unit attempt, so the
+legacy retry runs instead.
+"""
+
 
 def detect_placeholder_mode(text: str) -> tuple:
     """

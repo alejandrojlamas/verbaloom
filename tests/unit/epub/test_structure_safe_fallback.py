@@ -1218,6 +1218,9 @@ async def test_alignment_fallback_repairs_one_fidelity_rejection(monkeypatch):
         "supervise_fidelity",
         fake_supervise,
     )
+    # This test exercises the structural recovery itself. Placeholder salvage
+    # would restore the two dropped chunk-edge boundaries and never reach it.
+    monkeypatch.setattr(config, "EPUB_PLACEHOLDER_SALVAGE", "off")
     stats = TranslationMetrics(total_chunks=1)
     unit = {}
 

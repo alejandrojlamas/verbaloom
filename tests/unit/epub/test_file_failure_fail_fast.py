@@ -9,6 +9,9 @@ from src.core.epub.translator import _process_all_content_files, translate_epub_
 
 @pytest.mark.asyncio
 async def test_epub_stops_at_failed_file_and_counts_it_as_failed(monkeypatch, tmp_path):
+    # Stop-at-first-failure is the opt-out mode since failed files are deferred
+    # by default (see test_deferred_file_failures.py).
+    monkeypatch.setattr("src.config.EPUB_DEFER_FAILED_FILES", False)
     files = ["one.xhtml", "two.xhtml", "three.xhtml"]
     monkeypatch.setattr(
         "src.core.epub.translator._precount_chunks",
@@ -51,6 +54,7 @@ async def test_epub_stops_at_failed_file_and_counts_it_as_failed(monkeypatch, tm
 
 @pytest.mark.asyncio
 async def test_file_level_quality_failure_does_not_relabel_completed_siblings(monkeypatch, tmp_path):
+    monkeypatch.setattr("src.config.EPUB_DEFER_FAILED_FILES", False)
     files = ["chapter.xhtml", "later.xhtml"]
     monkeypatch.setattr(
         "src.core.epub.translator._precount_chunks",

@@ -55,9 +55,12 @@ class TranslationMetrics:
     token_alignment_used: int = 0  # Phase 2: Token alignment fallback used
     token_alignment_success: int = 0  # Phase 2: Token alignment succeeded
 
-    # === LLM Correction (legacy, kept for compatibility) ===
-    correction_attempts: int = 0  # Total LLM correction attempts made
-    correction_success: int = 0  # Successful LLM corrections
+    # === Placeholder salvage ===
+    # A rejected candidate is reused: intact blocks are kept and only damaged
+    # blocks are requested again. The field names predate this mechanism and
+    # are kept because checkpoints already persist them.
+    correction_attempts: int = 0  # Candidates handed to placeholder salvage
+    correction_success: int = 0  # Candidates reused without a whole-unit retry
 
     # === Timing ===
     total_time_seconds: float = 0.0
@@ -448,7 +451,7 @@ class TranslationMetrics:
                 f"Placeholder validation errors: {self.placeholder_errors}",
             ])
             if self.correction_attempts > 0:
-                summary_lines.append(f"LLM correction attempts: {self.correction_attempts} (success: {self.correction_success})")
+                summary_lines.append(f"Placeholder salvage attempts: {self.correction_attempts} (reused: {self.correction_success})")
 
         # Timing info (if finalized)
         if self.total_time_seconds > 0:

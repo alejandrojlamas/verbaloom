@@ -176,10 +176,16 @@ class TokenAlignmentFallback:
             step = 1.0 / max(1, len(positions) + 1)
             return [(i * step, ph) for i, (_, _, ph) in enumerate(positions)]
 
+        # ``positions`` are offsets in the text that still contains the
+        # placeholders, while ``text_length`` measures the clean text. Subtract
+        # the placeholders already passed; otherwise every later placeholder
+        # drifts toward the end of the block.
         relative = []
+        removed = 0
         for start, end, ph in positions:
-            rel_pos = start / text_length
+            rel_pos = min(1.0, max(0.0, (start - removed) / text_length))
             relative.append((rel_pos, ph))
+            removed += end - start
 
         return relative
 

@@ -44,6 +44,24 @@ class TestTokenAlignmentFallback:
         assert "Bonjour" in clean
         assert "monde" in clean
 
+    def test_positions_are_measured_in_clean_text(self, aligner):
+        """Later placeholders must not drift toward the end of the block."""
+        result = aligner.align_and_insert_placeholders(
+            "[id0]Hello[id1] world[id2]",
+            "Bonjour monde",
+            ["[id0]", "[id1]", "[id2]"],
+        )
+
+        assert result == "[id0]Bonjour[id1] monde[id2]"
+
+        result = aligner.align_and_insert_placeholders(
+            "One [id0]two[id1] three four five six seven eight nine ten.",
+            "Uno dos tres cuatro cinco seis siete ocho nueve diez.",
+            ["[id0]", "[id1]"],
+        )
+
+        assert result.index("[id1]") < result.index("tres")
+
     def test_simple_alignment_en_to_zh(self, aligner):
         """Test English to Chinese alignment (no spaces)."""
         original = "[id0]Hello[id1] world[id2]"

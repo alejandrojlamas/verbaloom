@@ -2,6 +2,7 @@
 Translation job handlers and processing logic
 """
 import asyncio
+import inspect
 import json
 import math
 import os
@@ -27,6 +28,7 @@ from src.api.resume_schedule import (
 )
 from src.api.services.path_validator import PathValidator
 from src.api.translation_state import translation_lifecycle_guard
+from src.common.provider_outage import provider_outage_recovery
 from src.config import (
     AUTO_PAUSE_ON_RATE_LIMIT,
     MAX_TRANSLATION_ATTEMPTS,
@@ -77,6 +79,7 @@ from src.core.llm.exceptions import (
     DeepSeekPeakPricingError,
     InsufficientCreditsError,
     ProviderActionRequiredError,
+    ProviderUnavailableError,
     RateLimitError,
 )
 from src.core.llm.factory import create_llm_provider
@@ -138,8 +141,23 @@ _DEFAULT_MAX_STUCK_RECOVERIES = 2
 _DEFAULT_MAX_FINALIZATION_RECOVERIES = 2
 _DEFAULT_MAX_WORKER_RECOVERIES = 2
 _DEFAULT_MAX_TRANSIENT_RECOVERIES = 5
-_DEFAULT_MAX_RATE_LIMIT_RECOVERIES = 5
+# Provider waits (HTTP 429, unreachable provider) at one checkpoint position.
+# With the backoff below, twelve waits ride out an outage of roughly five
+# hours before the job asks for attention; five waits gave up after ~75 min.
+_DEFAULT_MAX_RATE_LIMIT_RECOVERIES = 12
 _PROVIDER_WAIT_BACKOFF_SECONDS = (60, 180, 600, 1800)
+_DEFAULT_MAX_PROVIDER_WAIT_SECONDS = 7200
+# Cumulative waiting allowed over the whole job. A long book meets many short
+# waits; four hours in total made every later wait a manual resume.
+_DEFAULT_MAX_PROVIDER_WAIT_TOTAL_SECONDS = 86400
+# Older releases froze their own defaults into each job's config. Those values
+# were never chosen by the user, so a job created before this policy version
+# moves to the current defaults; any other saved ceiling is obeyed as is.
+_PROVIDER_WAIT_POLICY_VERSION = 2
+_LEGACY_PROVIDER_WAIT_DEFAULTS = {
+    "max_rate_limit_auto_resumes": 5,
+    "max_provider_wait_total_seconds": 14400,
+}
 
 _TRANSLATION_WORKER_SUPERVISOR = JobSupervisor()
 _RECOVERY_TOKEN_FIELD = "_recovery_token"
@@ -236,6 +254,42 @@ def _live_activity_label(event: str, message: str = "", data: Any = None) -> str
     if "llm_response" in text or "response received" in text:
         return "Validando la respuesta del modelo"
     return ""
+
+
+def _with_provider_outage_recovery(phase_func):
+    """Run a paid pipeline phase so provider outages wait instead of failing.
+
+    Inside the phase a request that got no answer because the provider was
+    unreachable raises ``ProviderUnavailableError``. The job boundary below
+    turns it into a durable, bounded wait and resumes from the checkpoint,
+    instead of spending every attempt of a healthy unit within seconds.
+    Finalization audits stay outside the scope and keep their own recovery.
+    """
+
+    async def _run(*args, **kwargs):
+        with provider_outage_recovery():
+            result = phase_func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+
+    return _run
+
+
+def _provider_stop_pauses_job(error: BaseException, config: Dict[str, Any]) -> bool:
+    """Whether a provider stop ends the worker instead of scheduling a resume.
+
+    A known pricing boundary and an unreachable provider say nothing about the
+    book, so they always wait and resume, whatever the user chose for real
+    HTTP 429 rate limits. The outage wait still consumes the finite
+    provider-recovery budget. Non-retryable stops (credits, refusals,
+    configuration) always pause.
+    """
+    if isinstance(error, (DeepSeekPeakPricingError, ProviderUnavailableError)):
+        return False
+    if not getattr(error, 'retryable', True):
+        return True
+    return bool(config.get('auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT))
 
 
 def _build_failed_chunk_recovery_plan(
@@ -491,6 +545,19 @@ def _is_transient_worker_failure(error: BaseException | None) -> bool:
     )
 
 
+def _upgrade_provider_wait_policy(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Release ceilings that an older release froze at its own defaults."""
+    if recovery_counter(config.get("_provider_wait_policy_version")) >= _PROVIDER_WAIT_POLICY_VERSION:
+        return config
+    upgraded = dict(config)
+    for key, legacy_default in _LEGACY_PROVIDER_WAIT_DEFAULTS.items():
+        saved = upgraded.get(key)
+        if not isinstance(saved, bool) and saved == legacy_default:
+            upgraded.pop(key)
+    upgraded["_provider_wait_policy_version"] = _PROVIDER_WAIT_POLICY_VERSION
+    return upgraded
+
+
 def _build_rate_limit_auto_resume_plan(
     config: Dict[str, Any],
     *,
@@ -499,6 +566,7 @@ def _build_rate_limit_auto_resume_plan(
     suggested_seconds: int | float | None = None,
 ) -> Dict[str, Any]:
     """Reserve a finite provider retry before its durable wait is published."""
+    config = _upgrade_provider_wait_policy(config)
     last_resume_index = (
         recovery_counter(config['_auto_resume_last_index'])
         if '_auto_resume_last_index' in config else None
@@ -511,8 +579,14 @@ def _build_rate_limit_auto_resume_plan(
     )
     wait_config = dict(config, _auto_resume_stuck_count=stuck_count - 1)
     delay = _provider_wait_seconds(wait_config, suggested_seconds)
-    max_wait = recovery_limit(config.get("max_provider_wait_seconds"), 7200)
-    max_total_wait = recovery_limit(config.get("max_provider_wait_total_seconds"), 14400)
+    max_wait = recovery_limit(
+        config.get("max_provider_wait_seconds"),
+        _DEFAULT_MAX_PROVIDER_WAIT_SECONDS,
+    )
+    max_total_wait = recovery_limit(
+        config.get("max_provider_wait_total_seconds"),
+        _DEFAULT_MAX_PROVIDER_WAIT_TOTAL_SECONDS,
+    )
     try:
         previous_wait = float(config.get("_provider_wait_total_seconds") or 0)
     except (ValueError, TypeError, OverflowError):
@@ -2479,7 +2553,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 )
             operation_success = await engine.run_phase(
                 JobPhase.REFINE,
-                refine_file,
+                _with_provider_outage_recovery(refine_file),
                 input_filepath=input_path_for_translate_module,
                 output_filepath=output_filepath_on_server,
                 target_language=config['target_language'],
@@ -2512,7 +2586,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             # follow, so the UI renders the phase bar from the start of phase 1.
             operation_success = await engine.run_phase(
                 JobPhase.TRANSLATE,
-                translate_file,
+                _with_provider_outage_recovery(translate_file),
                 input_filepath=input_path_for_translate_module,
                 output_filepath=output_filepath_on_server,
                 source_language=config['source_language'],
@@ -2638,7 +2712,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 )
                 refinement_success = await engine.run_phase(
                     JobPhase.REFINE,
-                    refine_file,
+                    _with_provider_outage_recovery(refine_file),
                     input_filepath=output_filepath_on_server,
                     output_filepath=output_filepath_on_server,
                     target_language=config['target_language'],
@@ -3579,15 +3653,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         pricing_pause = isinstance(e, DeepSeekPeakPricingError)
         action_required = isinstance(e, ProviderActionRequiredError)
         credits_exhausted = isinstance(e, InsufficientCreditsError)
-        auto_pause = (
-            False
-            if pricing_pause
-            else (
-                True
-                if not getattr(e, 'retryable', True)
-                else config.get('auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT)
-            )
-        )
+        provider_outage = isinstance(e, ProviderUnavailableError)
+        auto_pause = _provider_stop_pauses_job(e, config)
         retry_msg = f" Retry suggested after ~{e.retry_after}s." if e.retry_after else ""
         provider_name = e.provider or config.get('llm_provider', 'API')
 
@@ -3637,6 +3704,16 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 wait_event = "deepseek_peak_pricing_wait"
                 waiting_status = "pricing_wait"
                 pause_reason = "deepseek_peak_pricing"
+            elif provider_outage:
+                wait_seconds = rate_limit_plan['delay_seconds']
+                wait_msg = (
+                    f"🔌 {provider_name} no responde ({getattr(e, 'reason', 'sin respuesta')}). "
+                    "No se marcó ningún fragmento como fallido; reintento automático "
+                    f"en {int(wait_seconds)} s desde el último checkpoint."
+                )
+                wait_event = "provider_unavailable_auto_resume"
+                waiting_status = "provider_wait"
+                pause_reason = "provider_unavailable"
             else:
                 wait_seconds = rate_limit_plan['delay_seconds']
                 wait_msg = (f"⏳ Rate limited by {provider_name}.{retry_msg} "
