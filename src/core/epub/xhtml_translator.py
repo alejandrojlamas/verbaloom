@@ -118,6 +118,7 @@ from src.core.literary_continuity import (
 from src.core.fidelity_supervisor import (
     build_fidelity_retry_prompt_options,
     fidelity_supervisor_enabled,
+    recheck_saved_language_rejection,
     resolve_fidelity_auditor_model,
     supervise_fidelity,
 )
@@ -3528,12 +3529,38 @@ async def _audit_epub_unit(
         # Re-evaluate the saved counters against an explicitly larger allowance.
         # judge() still enforces both per-phase and cumulative limits before I/O.
         journal["stop_reason"] = ""
-    if journal.get("stop_reason"):
-        fail(journal["stop_reason"])
     entries = journal["candidates"]
     best = entries[journal["selected"]]
     if best["hash"] != expected_hash:
         fail("audit_checkpoint_invalid", stop=True)
+    stop_reason = journal.get("stop_reason")
+    if stop_reason in {"repair_attempts_exhausted", "repair_no_improvement", "repair_repeated_candidate"}:
+        # Recheck only a previously judged, unchanged candidate. Keep the paid
+        # judgment and repair counters; no extra requests or retries are granted.
+        phase = "adjudication" if "adjudication" in best["assessments"] else "audit"
+        saved_decision = restore_decision(best, phase)
+        if saved_decision is not None:
+            rechecked = recheck_saved_language_rejection(
+                saved_decision, source_semantic, semantic(best),
+                source_language=source_language, target_language=target_language,
+                prompt_options=audit_options,
+            )
+            if rechecked is not None:
+                data = rechecked.to_dict()
+                best["assessments"][phase] = {
+                    "candidate_hash": best["hash"], "decision": data,
+                    "checksum": decision_hash(data),
+                    "rechecked_from": best["assessments"][phase]["checksum"],
+                }
+                journal["stop_reason"] = ""
+                journal["pending"] = None
+                if log_callback:
+                    log_callback(
+                        "epub_audit_local_recheck",
+                        f"Revalidated saved audit unit {idx + 1} against the current language gate",
+                    )
+    if journal.get("stop_reason"):
+        fail(journal["stop_reason"])
     best_decision = await evaluate(best)
     if best_decision is None or interrupted():
         return None

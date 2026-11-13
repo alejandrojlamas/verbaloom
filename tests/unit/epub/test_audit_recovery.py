@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +16,9 @@ from src.core.epub.unit_contract import (
     text_sha256,
     validate_publishable_units,
 )
-from src.core.fidelity_supervisor import FidelityDecision, FidelityIssue
+from src.core.fidelity_supervisor import (
+    FidelityDecision, FidelityIssue, apply_fidelity_audit_assessment, assess_fidelity,
+)
 from src.core.llm.base import LLMResponse
 from src.core.llm.exceptions import ProviderActionRequiredError, RateLimitError
 
@@ -555,6 +558,71 @@ async def test_explicit_larger_repair_allowance_does_not_repeat_saved_audit(
         chunks, candidates, options={**OPTIONS, "max_repair_rounds": 1}
     ) == [REPAIRED]
     assert calls == [ORIGINAL, REPAIRED]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocker", ["repeated_dialogue", "untranslated_clause", "material_defect", "checksum"])
+async def test_terminal_checkpoint_rechecks_only_superseded_language_alert(monkeypatch, blocker):
+    source = "Mire, mire! called the driver from the other side of the bridge."
+    translation = "\u2014\u00a1Mire, mire! \u2014grit\u00f3 el conductor desde el otro lado del puente."
+    if blocker == "untranslated_clause":
+        source += " [id0]The bridge collapsed into the river."
+        translation += " [id0]The bridge collapsed into the river."
+    tags = {"[id0]": "<br/>"} if blocker == "untranslated_clause" else {}
+    chunks = [{"text": source, "local_tag_map": tags, "global_indices": [0] if tags else []}]
+    record, = ensure_unit_records(chunks, "Text/chapter.xhtml")
+    mark_reviewed(record, translation, review={"status": "pass"})
+    calls = []
+
+    async def legacy_audit(source, candidate, **kwargs):
+        calls.append("audit")
+        decision = assess_fidelity(
+            source, candidate, chunk_index=1, phase=kwargs["phase"],
+            source_language=kwargs["source_language"], target_language=kwargs["target_language"],
+        )
+        # Simulate the former hard rejection for a copied, repeated utterance.
+        if blocker != "untranslated_clause":
+            decision.issues = [
+                FidelityIssue(**{**asdict(issue), "severity": "reject"})
+                if issue.code == "source_language_residual" else issue
+                for issue in decision.issues
+            ]
+        decision.local_accepted = decision.accepted = False
+        return apply_fidelity_audit_assessment(
+            decision,
+            {
+                "verdict": "warn", "confidence": 0.91,
+                "reason": "The repeated expression is already in the target language.",
+                "changed_facts": ["Changed the speaker's identity"] if blocker == "material_defect" else [],
+            },
+            model="deepseek-v4-pro",
+        ), LLMResponse(content="structured assessment")
+
+    async def legacy_repair(**kwargs):
+        calls.append("repair")
+        return None
+
+    monkeypatch.setattr(subject, "supervise_fidelity", legacy_audit)
+    monkeypatch.setattr(subject, "_repair_audited_candidate", legacy_repair)
+    with pytest.raises(ChunkTranslationFailedError, match="repair_attempts_exhausted"):
+        await run(chunks, [translation])
+    assert calls == ["audit", "repair", "repair"]
+    saved = json.loads(json.dumps(chunks))
+    record = saved[0]["unit"]
+    if blocker == "checksum":
+        record["audit_repair"]["candidates"][0]["assessments"]["audit"]["checksum"] = "invalid"
+
+    if blocker == "repeated_dialogue":
+        assert await run(saved, [translation]) == [translation]
+        assert validate_publishable_units(saved)[0]
+        assert await run(json.loads(json.dumps(saved)), [translation]) == [translation]
+    else:
+        with pytest.raises(ChunkTranslationFailedError):
+            await run(saved, [translation])
+        assert not validate_publishable_units(saved)[0]
+    assert record["audit_attempts"] == 1
+    assert record["audit_repair_attempts"] == 2
+    assert calls == ["audit", "repair", "repair"]
 
 
 @pytest.mark.asyncio

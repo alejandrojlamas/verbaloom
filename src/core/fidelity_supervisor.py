@@ -14,7 +14,7 @@ import json
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -837,6 +837,55 @@ def target_language_gate_issues(
     return _unique_issues(issues)
 
 
+def recheck_saved_language_rejection(
+    decision: FidelityDecision,
+    source_text: str,
+    candidate_text: str,
+    *,
+    source_language: str,
+    target_language: str,
+    prompt_options: Optional[Mapping[str, Any]],
+) -> Optional[FidelityDecision]:
+    """Reuse a favorable semantic judgment when its sole local blocker changed."""
+    if (
+        decision.accepted
+        or not decision.rejections
+        or any(issue.code != "source_language_residual" for issue in decision.rejections)
+        or not (
+            (decision.judge_decision == "pass" and decision.judge_confidence >= 0.88)
+            or (decision.judge_decision == "warn" and decision.judge_confidence >= 0.72)
+        )
+        or decision.judge_missing_from_source
+        or decision.judge_added_not_in_source
+        or decision.judge_changed_facts
+        or decision.judge_censored_or_softened
+    ):
+        return None
+
+    current = assess_fidelity(
+        source_text, candidate_text, chunk_index=decision.chunk_index,
+        phase=decision.phase, section=decision.section, source_language=source_language,
+        target_language=target_language, prompt_options=prompt_options,
+    )
+    if (
+        current.rejections
+        or current.source_hash != decision.source_hash
+        or current.candidate_hash != decision.candidate_hash
+    ):
+        return None
+    contextual_details = {
+        issue.detail for issue in current.warnings if issue.code == "source_language_residual"
+    }
+    if not all(issue.detail in contextual_details for issue in decision.rejections):
+        return None
+    return replace(
+        decision,
+        accepted=True,
+        local_accepted=True,
+        issues=_unique_issues(decision.warnings + current.warnings),
+    )
+
+
 def _source_language_residual_issue(
     source: str,
     candidate: str,
@@ -874,12 +923,13 @@ def _source_language_residual_issue(
     )
     analysis_source = _strip_language_neutral_literals(source)
     analysis_candidate = _strip_language_neutral_literals(candidate)
-    copied_phrases = _copied_source_language_phrases(
+    copied_phrases, repeated_dialogue = _copied_source_language_phrases(
         analysis_source,
         analysis_candidate,
         source_code=source_code,
         target_key=target_key,
         preserved=preserved,
+        required_translation=required_translation,
     )
     stylized_sound_effects: list[tuple[str, float]] = []
     ambiguous_short_phrases: list[tuple[str, float]] = []
@@ -987,6 +1037,10 @@ def _source_language_residual_issue(
             f"fuente={source_language}; destino={target_language}; residuos={examples}",
         )
 
+    contextual_phrases = (
+        stylized_sound_effects + ambiguous_short_phrases + ambiguous_vocatives
+        + repeated_dialogue + bibliographic_metadata
+    )
     source_tokens = _surface_token_map(analysis_source)
     candidate_tokens = _surface_token_map(analysis_candidate)
     overlap = set(source_tokens).intersection(candidate_tokens)
@@ -994,10 +1048,7 @@ def _source_language_residual_issue(
         return _ambiguous_source_phrase_warning(
             source_language,
             target_language,
-            stylized_sound_effects
-            + ambiguous_short_phrases
-            + ambiguous_vocatives
-            + bibliographic_metadata,
+            contextual_phrases,
         )
 
     suspicious: list[tuple[str, float, bool]] = []
@@ -1034,10 +1085,7 @@ def _source_language_residual_issue(
         return _ambiguous_source_phrase_warning(
             source_language,
             target_language,
-            stylized_sound_effects
-            + ambiguous_short_phrases
-            + ambiguous_vocatives
-            + bibliographic_metadata,
+            contextual_phrases,
         )
     # A single same-script token is not enough evidence by itself: loanwords,
     # technical labels and genre terms are common in otherwise valid prose,
@@ -1055,10 +1103,7 @@ def _source_language_residual_issue(
         return _ambiguous_source_phrase_warning(
             source_language,
             target_language,
-            stylized_sound_effects
-            + ambiguous_short_phrases
-            + ambiguous_vocatives
-            + bibliographic_metadata,
+            contextual_phrases,
         )
     examples = ", ".join(
         f"{token} ({confidence:.2f})" for token, confidence, _strong in suspicious[:5]
@@ -1456,7 +1501,8 @@ def _copied_source_language_phrases(
     source_code: str,
     target_key: str,
     preserved: set[str],
-) -> list[tuple[str, float]]:
+    required_translation: set[str],
+) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
     """Find contiguous source prose copied into a same-script translation.
 
     Single-token language identification is deliberately conservative because
@@ -1466,14 +1512,14 @@ def _copied_source_language_phrases(
     catches complete residual clauses while leaving publisher names, place
     lists, work titles and other proper-name sequences alone.
     """
-    findings: list[tuple[str, float]] = []
-    seen: set[str] = set()
+    findings: dict[str, tuple[str, float]] = {}
+    repeated_dialogue: dict[str, tuple[str, float]] = {}
     source_segments = _placeholder_bounded_segments(source)
     candidate_segments = _placeholder_bounded_segments(candidate)
     # Placeholder integrity has its own hard gate. Do not manufacture a
     # language-residue phrase by aligning text across missing HTML boundaries.
     if len(source_segments) != len(candidate_segments):
-        return []
+        return [], []
 
     for source_segment, candidate_segment in zip(source_segments, candidate_segments):
         source_tokens = _ordered_surface_tokens(source_segment)
@@ -1603,11 +1649,21 @@ def _copied_source_language_phrases(
             if detected_code == source_code and confidence < 0.80:
                 continue
             normalized = phrase.casefold()
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            findings.append((phrase, confidence))
-    return findings
+            # Repeating one word is not independent language evidence. Keep
+            # it for semantic review unless another occurrence is actionable
+            # or the glossary explicitly requires a translation.
+            if (
+                dialogue_overlap
+                and len(folded) <= 4
+                and len(set(folded)) == 1
+                and folded[0] not in required_translation
+            ):
+                repeated_dialogue.setdefault(normalized, (phrase, confidence))
+            else:
+                findings.setdefault(normalized, (phrase, confidence))
+    return list(findings.values()), [
+        item for key, item in repeated_dialogue.items() if key not in findings
+    ]
 
 
 def _is_target_language_function_word_sequence(
@@ -3172,6 +3228,9 @@ that the source leaves unspecified is an unsupported addition even when the repl
 Dialogue, narration, and internal monologue are supposed to be translated into the target language. Translating them
 does not by itself change narrative convention, voice, grammatical person, or factual content; compare their meaning,
 speaker, intent, and pragmatic force instead of requiring source-language wording.
+Check copied dialogue against both languages in context. Translate genuine source-language dialogue, even repeated
+exclamations, but preserve dialogue already written in the target language. A local language-ID warning on a short
+repeated utterance is not by itself evidence of untranslated prose.
 When an explicit measurement is localized, require the original numeric value and unit to remain present. A converted
 value may be added in parentheses, but replacing the source measurement with a rounded conversion is a fidelity defect.
 For same-language transformations such as modernization, do not require literal wording. Accept safe wording updates,

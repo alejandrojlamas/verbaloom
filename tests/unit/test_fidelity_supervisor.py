@@ -2671,6 +2671,52 @@ def test_target_language_gate_keeps_repeated_target_markers_when_detector_is_wro
     }
 
 
+@pytest.mark.parametrize("word", ["Mire", "Venga", "Run"])
+@pytest.mark.parametrize("boundary", ["", "He stopped.[id0]"])
+def test_repeated_dialogue_requires_context_not_a_hard_language_rejection(word, boundary):
+    line = f"{word}, {word.lower()}!"
+    decision = assess_fidelity(
+        f"{boundary}{line} called the driver from the other side of the bridge.",
+        f"{'Se detuvo.[id0]' if boundary else ''}\u2014\u00a1{line} "
+        "\u2014grit\u00f3 el conductor desde el otro lado del puente.",
+        chunk_index=0,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+    assert not decision.rejections
+    assert any(issue.code == "source_language_residual" for issue in decision.warnings)
+
+
+@pytest.mark.parametrize("glossary_key", ["Mire", "Mire, mire"])
+def test_repeated_dialogue_does_not_bypass_glossary_translation(glossary_key):
+    decision = assess_fidelity(
+        "Mire, mire! called the driver from the other side of the bridge.",
+        "\u2014\u00a1Mire, mire! \u2014grit\u00f3 el conductor desde el otro lado del puente.",
+        chunk_index=0,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+        prompt_options={"glossary_terms": {glossary_key: "Observe"}},
+    )
+    assert any(issue.code == "source_language_residual" for issue in decision.rejections)
+
+
+def test_repeated_dialogue_does_not_hide_other_untranslated_clauses():
+    decision = assess_fidelity(
+        "Mire, mire! The driver hurried away. [id0]The bridge collapsed into the river.",
+        "\u00a1Mire, mire! El conductor se alej\u00f3 deprisa. [id0]The bridge collapsed into the river.",
+        chunk_index=0,
+        phase="translation",
+        source_language="English",
+        target_language="Spanish",
+    )
+    assert any(
+        issue.code == "source_language_residual" and "bridge collapsed" in issue.detail
+        for issue in decision.rejections
+    )
+
+
 def test_target_language_gate_rejects_ambiguous_short_source_dialogue():
     source = "No problem! He stood up and walked toward the door."
     candidate = "No problem! Se levantó y caminó hacia la puerta."
