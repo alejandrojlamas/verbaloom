@@ -155,6 +155,7 @@ def _checkpoint_prompt_options(prompt_options: Optional[Dict]) -> Optional[Dict]
     safe_options.pop('_fidelity_report', None)
     safe_options.pop('_editorial_quality_report', None)
     safe_options.pop('_candidate_results', None)
+    safe_options.pop('_final_epub_language_audit', None)
     safe_options.pop('automatic_failure_recovery', None)
     safe_options.pop('automatic_failure_recovery_cycle', None)
     return safe_options
@@ -3756,6 +3757,7 @@ async def _audit_epub_chunks(
         raise ChunkTranslationFailedError("Audit input does not cover every EPUB unit.",
                                           reason="audit_coverage_incomplete")
     options = dict(prompt_options or {})
+    options.pop("_final_epub_language_audit", None)
     require_full_audit = bool(
         options.get("audit_entire_book") or options.get("strict_stage_contract")
         or options.get("permit_unaudited_segments") is False
@@ -4169,6 +4171,12 @@ async def translate_xhtml_simplified(
     enable_refinement = prompt_options and prompt_options.get('refine')
     final_unit_audit = needs_final_unit_audit(prompt_options)
     deferred_review = final_unit_audit and skip_universal_refinement(prompt_options)
+    if enable_refinement and (
+        prompt_options.get("audit_entire_book") or prompt_options.get("strict_stage_contract")
+        or prompt_options.get("permit_unaudited_segments") is False
+    ):
+        # Only this native path guarantees a full source-aware audit later.
+        prompt_options["_final_epub_language_audit"] = True
     if not enable_refinement and not final_unit_audit and any(
         (record.get("cache_identity_migration") or {}).get("reason")
         == "profile_content_changed_or_previously_unrecorded"

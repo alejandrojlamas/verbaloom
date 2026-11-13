@@ -2734,6 +2734,62 @@ def test_target_language_gate_rejects_ambiguous_short_source_dialogue():
     assert "source_language_residual" in {item.code for item in decision.rejections}
 
 
+@pytest.mark.parametrize("phrase", ["Tiene oro", "No hay agua"])
+@pytest.mark.parametrize("prefix", ["", "He stopped.[id0]"])
+def test_unconfirmed_dialogue_is_deferred_only_with_contextual_review(phrase, prefix):
+    source = f"{prefix}{phrase}? he asked the traveler near the bridge."
+    candidate_prefix = "Se detuvo.[id0]" if prefix else ""
+    candidate = f"{candidate_prefix}\u2014\u00bf{phrase}? \u2014le pregunt\u00f3 al viajero junto al puente."
+    for options, severity in [
+        ({"_final_epub_language_audit": True}, "warning"),
+        ({"audit_entire_book": True}, "reject"),
+        ({"fidelity_supervisor_mode": "strict_full"}, "warning"),
+        ({"fidelity_supervisor_mode": "local"}, "reject"),
+        ({}, "reject"),
+    ]:
+        decision = assess_fidelity(
+            source, candidate, chunk_index=1, phase="translation",
+            source_language="English", target_language="Spanish", prompt_options=options,
+        )
+        assert any(
+            issue.code == "source_language_residual" and issue.severity == severity
+            for issue in decision.issues
+        )
+
+
+@pytest.mark.parametrize("phrase", ["Oh my God", "Are you sure", "Good morning"])
+def test_contextual_review_does_not_defer_dialogue_with_source_evidence(phrase):
+    decision = assess_fidelity(
+        f"{phrase}! he called to the people gathered on the other side.",
+        f"\u2014{phrase}! \u2014grit\u00f3 a quienes estaban reunidos del otro lado.",
+        chunk_index=1, phase="translation", source_language="English", target_language="Spanish",
+        prompt_options={"_final_epub_language_audit": True},
+    )
+    assert any(issue.code == "source_language_residual" for issue in decision.rejections)
+
+
+@pytest.mark.parametrize("verdict", ["warn", "fail"])
+def test_auditor_blocks_a_real_omission_in_ambiguous_dialogue(verdict):
+    decision = assess_fidelity(
+        "No problem! He stood up and walked toward the door.",
+        "No problem! Se levant\u00f3 y camin\u00f3 hacia la puerta.",
+        chunk_index=1, phase="final_epub_unit_audit",
+        source_language="English", target_language="Spanish",
+        prompt_options={"fidelity_supervisor_mode": "strict_full"},
+    )
+    assert decision.accepted and _should_run_llm_audit(
+        decision, {"fidelity_supervisor_mode": "strict_full"},
+    )
+    assert any(issue.code == "source_language_residual" for issue in decision.warnings)
+    audited = apply_fidelity_audit_assessment(
+        decision,
+        {"verdict": verdict, "confidence": 0.99, "reason": "Untranslated dialogue.",
+         "missing_from_source": ["The English reply is not translated."]},
+        model="test-model",
+    )
+    assert not audited.accepted
+
+
 def test_target_language_gate_still_rejects_german_clause_with_capitalized_ends():
     source = (
         "Wir gingen nach Hause, weil der Regen immer stärker wurde und niemand "

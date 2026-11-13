@@ -9,6 +9,7 @@ def test_checkpoint_prompt_options_drops_runtime_candidate_results():
         "_fidelity_report": object(),
         "_editorial_quality_report": object(),
         "_candidate_results": [{"phase": "translation", "text_snippet": "runtime only"}],
+        "_final_epub_language_audit": True,
     }
 
     safe = _checkpoint_prompt_options(options)
@@ -17,4 +18,5 @@ def test_checkpoint_prompt_options_drops_runtime_candidate_results():
     assert "_fidelity_report" not in safe
     assert "_editorial_quality_report" not in safe
     assert "_candidate_results" not in safe
+    assert "_final_epub_language_audit" not in safe
     assert "_candidate_results" in options

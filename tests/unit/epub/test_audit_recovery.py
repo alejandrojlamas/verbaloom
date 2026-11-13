@@ -561,10 +561,11 @@ async def test_explicit_larger_repair_allowance_does_not_repeat_saved_audit(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("blocker", ["repeated_dialogue", "untranslated_clause", "material_defect", "checksum"])
-async def test_terminal_checkpoint_rechecks_only_superseded_language_alert(monkeypatch, blocker):
-    source = "Mire, mire! called the driver from the other side of the bridge."
-    translation = "\u2014\u00a1Mire, mire! \u2014grit\u00f3 el conductor desde el otro lado del puente."
+@pytest.mark.parametrize("blocker", ["dialogue", "untranslated_clause", "material_defect", "checksum"])
+@pytest.mark.parametrize("utterance", ["Mire, mire!", "Tiene oro?"])
+async def test_terminal_checkpoint_rechecks_only_superseded_language_alert(monkeypatch, blocker, utterance):
+    source = f"{utterance} called the driver from the other side of the bridge."
+    translation = f"\u2014{utterance} \u2014grit\u00f3 el conductor desde el otro lado del puente."
     if blocker == "untranslated_clause":
         source += " [id0]The bridge collapsed into the river."
         translation += " [id0]The bridge collapsed into the river."
@@ -579,8 +580,9 @@ async def test_terminal_checkpoint_rechecks_only_superseded_language_alert(monke
         decision = assess_fidelity(
             source, candidate, chunk_index=1, phase=kwargs["phase"],
             source_language=kwargs["source_language"], target_language=kwargs["target_language"],
+            prompt_options=kwargs["prompt_options"],
         )
-        # Simulate the former hard rejection for a copied, repeated utterance.
+        # Simulate the former hard rejection for a copied utterance.
         if blocker != "untranslated_clause":
             decision.issues = [
                 FidelityIssue(**{**asdict(issue), "severity": "reject"})
@@ -592,7 +594,7 @@ async def test_terminal_checkpoint_rechecks_only_superseded_language_alert(monke
             decision,
             {
                 "verdict": "warn", "confidence": 0.91,
-                "reason": "The repeated expression is already in the target language.",
+                "reason": "The expression is already in the target language.",
                 "changed_facts": ["Changed the speaker's identity"] if blocker == "material_defect" else [],
             },
             model="deepseek-v4-pro",
@@ -612,7 +614,7 @@ async def test_terminal_checkpoint_rechecks_only_superseded_language_alert(monke
     if blocker == "checksum":
         record["audit_repair"]["candidates"][0]["assessments"]["audit"]["checksum"] = "invalid"
 
-    if blocker == "repeated_dialogue":
+    if blocker == "dialogue":
         assert await run(saved, [translation]) == [translation]
         assert validate_publishable_units(saved)[0]
         assert await run(json.loads(json.dumps(saved)), [translation]) == [translation]

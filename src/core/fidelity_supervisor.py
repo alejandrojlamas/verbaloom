@@ -928,13 +928,14 @@ def _source_language_residual_issue(
     )
     analysis_source = _strip_language_neutral_literals(source)
     analysis_candidate = _strip_language_neutral_literals(candidate)
-    copied_phrases, repeated_dialogue = _copied_source_language_phrases(
+    copied_phrases, contextual_dialogue = _copied_source_language_phrases(
         analysis_source,
         analysis_candidate,
         source_code=source_code,
         target_key=target_key,
         preserved=preserved,
         required_translation=required_translation,
+        contextual_review=_has_contextual_language_review(prompt_options),
     )
     stylized_sound_effects: list[tuple[str, float]] = []
     ambiguous_short_phrases: list[tuple[str, float]] = []
@@ -1044,7 +1045,7 @@ def _source_language_residual_issue(
 
     contextual_phrases = (
         stylized_sound_effects + ambiguous_short_phrases + ambiguous_vocatives
-        + repeated_dialogue + bibliographic_metadata
+        + contextual_dialogue + bibliographic_metadata
     )
     source_tokens = _surface_token_map(analysis_source)
     candidate_tokens = _surface_token_map(analysis_candidate)
@@ -1507,6 +1508,7 @@ def _copied_source_language_phrases(
     target_key: str,
     preserved: set[str],
     required_translation: set[str],
+    contextual_review: bool,
 ) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
     """Find contiguous source prose copied into a same-script translation.
 
@@ -1518,7 +1520,7 @@ def _copied_source_language_phrases(
     lists, work titles and other proper-name sequences alone.
     """
     findings: dict[str, tuple[str, float]] = {}
-    repeated_dialogue: dict[str, tuple[str, float]] = {}
+    contextual_dialogue: dict[str, tuple[str, float]] = {}
     source_segments = _placeholder_bounded_segments(source)
     candidate_segments = _placeholder_bounded_segments(candidate)
     # Placeholder integrity has its own hard gate. Do not manufacture a
@@ -1654,21 +1656,41 @@ def _copied_source_language_phrases(
             if detected_code == source_code and confidence < 0.80:
                 continue
             normalized = phrase.casefold()
-            # Repeating one word is not independent language evidence. Keep
-            # it for semantic review unless another occurrence is actionable
-            # or the glossary explicitly requires a translation.
+            # Punctuation and overlap locate dialogue but do not identify its
+            # language. Without source-language evidence, let the configured
+            # bilingual audit decide. Repetition alone is also weak evidence.
             if (
                 dialogue_overlap
-                and len(folded) <= 4
-                and len(set(folded)) == 1
-                and folded[0] not in required_translation
+                and not required_translation.intersection(folded)
+                and (
+                    (len(folded) <= 4 and len(set(folded)) == 1)
+                    or (
+                        contextual_review
+                        and detected_code != source_code
+                        and not _has_distinct_target_language_marker(folded, source_code)
+                    )
+                )
             ):
-                repeated_dialogue.setdefault(normalized, (phrase, confidence))
+                contextual_dialogue.setdefault(normalized, (phrase, confidence))
             else:
                 findings.setdefault(normalized, (phrase, confidence))
     return list(findings.values()), [
-        item for key, item in repeated_dialogue.items() if key not in findings
+        item for key, item in contextual_dialogue.items() if key not in findings
     ]
+
+
+def _has_contextual_language_review(prompt_options: Optional[Mapping[str, Any]]) -> bool:
+    from src.core.review_strategy import source_audited
+
+    options = prompt_options or {}
+    return bool(
+        options.get("_final_epub_language_audit") is True
+        or source_audited(options)
+        or (
+            fidelity_supervisor_enabled(options)
+            and fidelity_supervisor_mode(options) != "local"
+        )
+    )
 
 
 def _is_target_language_function_word_sequence(
@@ -1775,13 +1797,17 @@ _DISTINCT_TARGET_LANGUAGE_MARKERS = {
     },
     "english": {
         "and", "are", "as", "at", "be", "but", "by", "for", "from",
-        "had", "has", "have", "is", "it", "of", "on", "that", "the",
-        "their", "they", "this", "to", "was", "were", "which", "with",
+        "had", "has", "have", "is", "it", "my", "of", "on", "that", "the",
+        "their", "they", "this", "to", "was", "were", "which", "with", "you", "your",
     },
     "french": {
         "avec", "ce", "cette", "dans", "des", "du", "est", "et", "la",
         "le", "les", "mais", "par", "pas", "plus", "pour", "qui", "sont",
         "sur", "une",
+    },
+    "german": {
+        "aber", "auf", "das", "dass", "dem", "den", "der", "die", "ein", "eine",
+        "ich", "ist", "mit", "nicht", "oder", "sind", "und", "von", "war", "wir", "zu",
     },
 }
 
@@ -1801,6 +1827,7 @@ def _has_distinct_target_language_marker(
         "es": "spanish", "espanol": "spanish", "español": "spanish",
         "en": "english",
         "fr": "french", "francais": "french", "français": "french",
+        "de": "german", "deutsch": "german", "aleman": "german", "alemán": "german",
     }
     marker_key = aliases.get(normalized, normalized)
     markers = _DISTINCT_TARGET_LANGUAGE_MARKERS.get(marker_key, set())
@@ -3242,9 +3269,9 @@ that the source leaves unspecified is an unsupported addition even when the repl
 Dialogue, narration, and internal monologue are supposed to be translated into the target language. Translating them
 does not by itself change narrative convention, voice, grammatical person, or factual content; compare their meaning,
 speaker, intent, and pragmatic force instead of requiring source-language wording.
-Check copied dialogue against both languages in context. Translate genuine source-language dialogue, even repeated
-exclamations, but preserve dialogue already written in the target language. A local language-ID warning on a short
-repeated utterance is not by itself evidence of untranslated prose.
+Check copied dialogue against both languages in context. Reject actual untranslated source-language dialogue,
+including short or repeated utterances, as a material omission. Preserve dialogue already written in the target
+language. A local language-ID warning on a short utterance is not by itself evidence of untranslated prose.
 When an explicit measurement is localized, require the original numeric value and unit to remain present. A converted
 value may be added in parentheses, but replacing the source measurement with a rounded conversion is a fidelity defect.
 For same-language transformations such as modernization, do not require literal wording. Accept safe wording updates,
