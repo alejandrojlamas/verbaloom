@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/alejandrojlamas/verbaloom/releases/latest"><img alt="Latest VerbaLoom release" src="https://img.shields.io/github/v/release/alejandrojlamas/verbaloom?display_name=tag&amp;label=release&amp;color=0f766e"></a>
   <a href="#recommended-setup"><img alt="Local first" src="https://img.shields.io/badge/local--first-web%20app-111827"></a>
   <a href="#supported-formats"><img alt="Formats" src="https://img.shields.io/badge/formats-EPUB%20%7C%20PDF%20%7C%20DOCX%20%7C%20TXT%20%7C%20SRT-2563eb"></a>
   <a href="#book-profiles"><img alt="Book profiles" src="https://img.shields.io/badge/editorial-book%20profiles-16a34a"></a>
@@ -17,7 +18,17 @@
 
 ---
 
-VerbaLoom is a local, browser-based system for processing entire books with LLMs. It is designed for long literary and academic documents where a simple "translate this file" loop is not enough: the app chunks the book, keeps continuity memory, prepares book-specific editorial profiles, audits output against the source, repairs weak chunks, and rebuilds downloadable files.
+VerbaLoom translates and edits entire books from a local web app. It keeps an editorial profile and glossary for each book, checks translations against the source, and saves progress so a long job can continue without retranslating approved passages.
+
+**[Downloads](https://github.com/alejandrojlamas/verbaloom/releases/latest)** · **[Install from source](#recommended-setup)** · **[v1.5.0 release notes (Español)](https://github.com/alejandrojlamas/verbaloom/releases/tag/v1.5.0)**
+
+## New in v1.5.0
+
+- **OpenAI Flow B.** GPT-6 Luna prepares editorial profiles and repairs structure. GPT-6.1 Terra reviews glossaries and handles translation, refinement, fidelity audits, and text repair. B keeps the compatible review policy and can be enabled per installation without changing saved jobs.
+- **Automatic recovery.** Temporary provider outages trigger spaced retries from the last checkpoint. With DeepSeek's off-peak restriction enabled, pressing Resume during the expensive window queues the job for the next allowed period.
+- **Less repeated EPUB work.** The native path checkpoints each translated unit, can defer an unresolved XHTML section while later sections continue, and retries only damaged blocks when their structure can be recovered safely. Unresolved units still block final publication.
+
+See the [release notes](docs/releases/v1.5.0.md) and the [technical recovery and cost notes](docs/CONTINUITY_AND_COST_2026-11-13.md).
 
 ## Applied AI Lab
 
@@ -45,8 +56,6 @@ Historical upstream resources remain available in the
 New VerbaLoom work is tracked in
 [alejandrojlamas/verbaloom](https://github.com/alejandrojlamas/verbaloom).
 
-The recommended primary model is **DeepSeek Pro** (`deepseek-v4-pro`). It is the main target for the current long-book workflow and offers a strong balance of cost, context, and quality for translation, audit, and repair. **DeepSeek V4.1 Flash** (`deepseek-flash`) is used for cheaper preflight profile preparation.
-
 ## Highlights
 
 - **Long-book ready:** resumable chunk processing for books that take hours.
@@ -60,6 +69,7 @@ The recommended primary model is **DeepSeek Pro** (`deepseek-v4-pro`). It is the
 
 ## Table of Contents
 
+- [New in v1.5.0](#new-in-v150)
 - [Applied AI Lab](#applied-ai-lab)
 - [Provenance](#provenance)
 - [What It Does](#what-it-does)
@@ -201,7 +211,7 @@ Core agents:
 
 - **Translator / Modernizer**
   - Produces the first candidate chunk.
-  - Uses the active provider and model, usually `deepseek-v4-pro`.
+  - Uses the model assigned to the active role, or the selected provider and model when no role configuration is active.
 
 - **Continuity Memory Agent**
   - Maintains compact state for long books.
@@ -228,10 +238,10 @@ Core agents:
   - Suggestions are pending by default, not automatically global.
 
 - **Preflight Profile Preparation**
-  - Before the expensive translation/modernization run, the web UI can scan the selected book with **DeepSeek V4.1 Flash** (`deepseek-flash`).
+  - Before translating or modernizing, the **Profile** tab analyzes the book with the configured preparation and glossary review models. Flow B uses Luna and Terra respectively.
   - The preflight scan creates a book-scoped editorial profile, approves only mechanically safe preserve-as-written entries, and stores all other discoveries as pending suggestions.
   - The preparation runs as a visible background job: the UI shows stage/chunk progress, then auto-saves and selects the generated profile when it finishes.
-  - The generated profile appears in the **Editorial profile** selector and is passed into the main run, where **DeepSeek Pro** (`deepseek-v4-pro`) remains the recommended model for translation, audit, and repair.
+  - The generated profile appears in the **Editorial profile** selector for the main translation or transformation.
 
 ## Book Profiles
 
@@ -263,17 +273,16 @@ Profile responsibilities:
 
 Automatic profile preparation:
 
-1. Open **Transform text**.
+1. Open **Profile**.
 2. Drop the source book.
 3. Choose the profile goal: faithful translation, audiobook, modernization, explanation, or literary polish.
-4. Click **Analyze with DeepSeek Flash**.
-5. Watch the progress bar while extraction, local scan, reviewer batches, and Flash discovery chunks run.
+4. Click **Prepare profile**.
+5. Follow extraction, local analysis, glossary review batches, and model-assisted discovery in the progress panel.
 6. The generated profile is saved automatically and selected in **Editorial profile**.
 7. Start the transformation or translation flow with that profile active.
 
-This keeps the engine generic: DeepSeek Flash performs cheap discovery, but
-book-specific decisions still live under `profiles/<profile_id>/`.
-The selected goal changes the business rules and budgets: faithful translation
+Book-specific decisions live under `profiles/<profile_id>/`, independent of the
+provider used to prepare them. The selected goal changes the rules and budgets: faithful translation
 looks for canonical names plus terms that must be translated consistently;
 audiobook profiles look for captions, references, page furniture, and listening
 hygiene; modernization profiles look for archaisms, treatments, syntax, and
@@ -359,16 +368,12 @@ Reports are meant to make long jobs auditable. A failed chunk is not silently dr
 
 ## Resumability
 
-Long translations can pause or fail because of:
-
-- rate limits
-- network issues
-- model errors
-- browser refreshes
-- app restarts
-- machine sleep
-
-The checkpoint system stores chunk progress so jobs can resume from saved state instead of restarting from zero. Refinement and transformation jobs also track chunk-level progress.
+Translations run on the server; refreshing or closing the browser does not
+itself pause a job. Temporary provider failures enter an automatic wait and
+retry from the last checkpoint. A manual pause, invalid credentials, exhausted
+credits, or a recovery limit can still require action. Resuming preserves the
+job's saved model choices and skips work already approved. Refinement and
+transformation also track progress at chunk level.
 
 ## Recommended Setup
 
@@ -380,18 +385,36 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure DeepSeek Pro
+### 2. Choose a provider and model flow
 
-Copy `.env.example` to `.env` and set:
+For **OpenAI Flow B**, copy `.env.example` to `.env` on a new installation and
+set these non-secret options. On an existing installation, edit the existing
+`.env` rather than replacing it.
 
-```bash
+```dotenv
+LLM_PROVIDER=openai
+DEFAULT_MODEL=gpt-6.1-terra
+VERBALOOM_DEFAULT_PIPELINE=openai_equivalent
+```
+
+Set `OPENAI_API_KEY` locally and start or restart the app. In **Settings →
+Models and review**, confirm **B · Equivalent OpenAI** and use **Check model
+access** to verify that both models are visible without generating text.
+An explicit browser preference takes precedence over the server default.
+Leaving `VERBALOOM_DEFAULT_PIPELINE` unset preserves the installation's
+existing provider defaults.
+
+For a **DeepSeek** setup instead:
+
+```dotenv
 LLM_PROVIDER=deepseek
 DEEPSEEK_MODEL=deepseek-v4-pro
-DEEPSEEK_API_KEY=YOUR_DEEPSEEK_API_KEY
 DEEPSEEK_OFF_PEAK_ONLY=true
 ```
 
-Do not commit real API keys. The app supports multiple comma-separated keys for providers that use key rotation.
+Set `DEEPSEEK_API_KEY` locally and leave the OpenAI pipeline setting unset.
+Never commit the real `.env` or provider keys. For other providers, see
+[Provider configuration](docs/PROVIDERS.md).
 
 DeepSeek's official high-price periods are blocked by default. A translation
 that crosses into one is checkpointed without sending more tokens, remains
