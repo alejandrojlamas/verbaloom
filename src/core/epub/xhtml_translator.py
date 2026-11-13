@@ -3324,7 +3324,9 @@ async def _audit_epub_unit(
 ):
     """Resume the existing unit contract with a durable candidate/decision journal."""
     from copy import deepcopy
-    from .audit_repair import bounded_count, contract_hash, new_candidate, repair_limit, strictly_better
+    from .audit_repair import (
+        bounded_count, contract_hash, new_candidate, repair_conflict_context, repair_limit, strictly_better,
+    )
     from src.core.fidelity_supervisor import FidelityDecision
 
     record = chunk.get("unit")
@@ -3462,7 +3464,7 @@ async def _audit_epub_unit(
             reason="audit_error",
         ) from exc
 
-    async def judge(entry, phase, preceding=None):
+    async def judge(entry, phase, prior_assessment=None):
         restored = restore_decision(entry, phase)
         if restored is not None:
             return restored
@@ -3476,14 +3478,13 @@ async def _audit_epub_unit(
         mark_attempt(record, "audit")
         save("audit_pending", phase=phase, candidate_hash=entry["hash"])
         request_options = dict(audit_options)
-        if preceding is not None:
-            request_options["_fidelity_adjudication_context"] = preceding.to_dict()
+        if prior_assessment is not None:
+            request_options["_fidelity_adjudication_context"] = prior_assessment
             request_options["fidelity_supervisor_mode"] = "strict_full"
         try:
             decision, response = await supervise_fidelity(
                 source_semantic, semantic(entry), chunk_index=idx + 1,
-                phase=("final_epub_unit_adjudication" if phase == "adjudication"
-                       else "final_epub_unit_audit"),
+                phase=f"final_epub_unit_{phase}",
                 section=str(record.get("source_document") or "EPUB"),
                 source_language=source_language, target_language=target_language,
                 primary_model=model_name, primary_provider=getattr(llm_client, "provider_type", ""),
@@ -3493,7 +3494,8 @@ async def _audit_epub_unit(
             request_failed(exc)
         check_version()
         structural_only = not (source_semantic.strip() or semantic(entry).strip())
-        if require_full_audit and not structural_only and (response is None or not decision.judge_decision):
+        if ((require_full_audit or phase == "repair_adjudication") and not structural_only
+                and (response is None or not decision.judge_decision)):
             fail("audit_response_invalid")
         data = decision.to_dict()
         entry["assessments"][phase] = {
@@ -3503,17 +3505,74 @@ async def _audit_epub_unit(
         save("judged", phase=phase, candidate_hash=entry["hash"], accepted=decision.accepted)
         return decision
 
+    def decisive_pass(decision):
+        return (
+            decision is not None and decision.accepted
+            and decision.judge_decision == "pass" and decision.judge_confidence >= 0.88
+            and not (decision.judge_missing_from_source or decision.judge_added_not_in_source
+                     or decision.judge_changed_facts or decision.judge_censored_or_softened
+                     or decision.judge_structure_issues)
+        )
+
     async def evaluate(entry):
         if not validate_placeholders(local_text(entry), local_tag_map):
             fail("audit_structure_invalid", stop=True)
+        if journal.get("repair_adjudication") == entry["hash"]:
+            resolved = restore_decision(entry, "repair_adjudication")
+            if decisive_pass(resolved):
+                return resolved
         decision = await judge(entry, "audit")
         if (entry["origin"] == "reviewed" and not decision.accepted
                 and options.get("fidelity_adjudicate_rejections") is not False
                 and any(issue.code == "fidelity_judge_reject" for issue in decision.rejections)):
             if interrupted():
                 return None
-            decision = await judge(entry, "adjudication", decision)
+            decision = await judge(entry, "adjudication", decision.to_dict())
         return decision
+
+    def accept(entry, decision):
+        nonlocal expected_hash
+        selected = journal["selected"]
+        if entry is not entries[selected]:
+            review = {**(record.get("review") or {}), "fidelity_repair_base_hash": expected_hash}
+            journal["selected"] = entries.index(entry)
+            expected_hash = journal["selected_hash"] = entry["hash"]
+            candidate_chunks[idx] = entry["text"]
+            mark_reviewed(record, entry["text"], review=review)
+        journal["stop_reason"] = ""
+        journal["pending"] = None
+        mark_audited(record, entry["text"], review=record.get("review"), audit=decision.to_dict())
+        save("audited")
+        return entry["text"]
+
+    async def finish_repair(reason):
+        """Adjudicate one evidence-backed disagreement before stopping a unit."""
+        if options.get("fidelity_adjudicate_rejections") is False or repair_rounds == 0:
+            fail(reason, stop=True)
+        if interrupted():
+            return None
+        journal["stop_reason"] = reason
+        reserved = journal.get("repair_adjudication")
+        for position in range(len(entries) - 1, 0, -1):
+            entry = entries[position]
+            if reserved is not None and reserved != entry["hash"]:
+                continue
+            base = next((item for item in entries[:position] if item["hash"] == entry.get("base_hash")), None)
+            if base is None or not validate_placeholders(local_text(entry), local_tag_map):
+                continue
+            before = restore_decision(base, "adjudication") or restore_decision(base, "audit")
+            after = restore_decision(entry, "audit")
+            context = repair_conflict_context(source_semantic, semantic(base), semantic(entry), before, after)
+            if context is None:
+                continue
+            journal["repair_adjudication"] = entry["hash"]
+            decision = await judge(entry, "repair_adjudication", {"repair_conflict": context})
+            if interrupted():
+                return None
+            if decisive_pass(decision):
+                return accept(entry, decision)
+            break
+        fail(reason, stop=True)
 
     if journal.get("stop_reason") == "provider_refusal":
         raise ProviderActionRequiredError(
@@ -3560,6 +3619,8 @@ async def _audit_epub_unit(
                         f"Revalidated saved audit unit {idx + 1} against the current language gate",
                     )
     if journal.get("stop_reason"):
+        if journal["stop_reason"] in {"repair_attempts_exhausted", "repair_no_improvement", "repair_repeated_candidate"}:
+            return await finish_repair(journal["stop_reason"])
         fail(journal["stop_reason"])
     best_decision = await evaluate(best)
     if best_decision is None or interrupted():
@@ -3585,15 +3646,11 @@ async def _audit_epub_unit(
                 save("repaired", accepted=decision.accepted)
             else:
                 if bounded_count(record.get("audit_repair_attempts", 0)) >= repair_rounds:
-                    fail("repair_no_improvement", stop=True)
+                    return await finish_repair("repair_no_improvement")
                 save("repair_rejected", candidate_hash=pending["hash"])
 
         if best_decision.accepted:
-            journal["pending"] = None
-            mark_audited(record, best["text"], review=record.get("review"),
-                         audit=best_decision.to_dict())
-            save("audited")
-            return best["text"]
+            return accept(best, best_decision)
         if interrupted():
             return None
         attempts = bounded_count(record.get("audit_repair_attempts", 0))
@@ -3608,7 +3665,7 @@ async def _audit_epub_unit(
                 fail("repair_checkpoint_invalid", stop=True)
         current_attempt = attempts if saved_patch is not None else attempts + 1
         if saved_patch is None and attempts >= repair_rounds:
-            fail("repair_attempts_exhausted", stop=True)
+            return await finish_repair("repair_attempts_exhausted")
 
         repair_feedback = None
         for previous in reversed(entries):
@@ -3670,7 +3727,7 @@ async def _audit_epub_unit(
             continue
         entry = new_candidate(repaired, origin="fidelity_repair", base_hash=best["hash"])
         if any(prior["hash"] == entry["hash"] for prior in entries):
-            fail("repair_repeated_candidate", stop=True)
+            return await finish_repair("repair_repeated_candidate")
         entries.append(entry)
         journal["pending"] = len(entries) - 1
         # Keep the selected reviewed text in the translation prefix. The paid

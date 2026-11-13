@@ -104,6 +104,46 @@ def new_candidate(text: str, *, origin: str, base_hash: str = "") -> dict:
     }
 
 
+def repair_conflict_context(source, base_text, repaired_text, before, after):
+    """Identify competing findings tied to the same source and distinct renderings."""
+    if any(
+        decision is None or decision.accepted or not decision.rejections
+        or any(issue.code != "fidelity_judge_reject" for issue in decision.rejections)
+        for decision in (before, after)
+    ):
+        return None
+
+    def normalize(text):
+        return " ".join(text.casefold().split())
+
+    def excerpts(values, text):
+        return {
+            excerpt for value in values if len(excerpt := normalize(value)) >= 8
+            and excerpt in text
+        }
+
+    original, base, repaired = map(normalize, (source, base_text, repaired_text))
+    shared_source = (
+        excerpts(before.judge_evidence_source, original)
+        & excerpts(after.judge_evidence_source, original)
+    )
+    distinct_base = [
+        value for value in excerpts(before.judge_evidence_candidate, base) if value not in repaired
+    ]
+    distinct_repair = [
+        value for value in excerpts(after.judge_evidence_candidate, repaired) if value not in base
+    ]
+    if not shared_source or not distinct_base or not distinct_repair:
+        return None
+    return {
+        "shared_source_evidence": sorted(shared_source),
+        "previous_rendering_evidence": sorted(distinct_base),
+        "repaired_rendering_evidence": sorted(distinct_repair),
+        "previous_audit": before.to_dict(),
+        "repair_audit": after.to_dict(),
+    }
+
+
 def strictly_better(previous, candidate) -> bool:
     """Never use confidence, style scores or recency as an improvement signal.
 

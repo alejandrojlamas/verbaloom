@@ -304,6 +304,7 @@ class FidelityDecision:
     judge_added_not_in_source: list[str] = field(default_factory=list)
     judge_changed_facts: list[str] = field(default_factory=list)
     judge_censored_or_softened: list[str] = field(default_factory=list)
+    judge_structure_issues: list[str] = field(default_factory=list)
     judge_evidence_source: list[str] = field(default_factory=list)
     judge_evidence_candidate: list[str] = field(default_factory=list)
     independence: str = "none"
@@ -349,6 +350,8 @@ class FidelityDecision:
         }
         if self.review_reason:
             data["review_reason"] = self.review_reason
+        if self.judge_structure_issues:
+            data["judge_structure_issues"] = self.judge_structure_issues
         return data
 
     @classmethod
@@ -387,6 +390,7 @@ class FidelityDecision:
             judge_added_not_in_source=_list_of_str(data.get("judge_added_not_in_source")),
             judge_changed_facts=_list_of_str(data.get("judge_changed_facts")),
             judge_censored_or_softened=_list_of_str(data.get("judge_censored_or_softened")),
+            judge_structure_issues=_list_of_str(data.get("judge_structure_issues")),
             judge_evidence_source=_list_of_str(data.get("judge_evidence_source")),
             judge_evidence_candidate=_list_of_str(data.get("judge_evidence_candidate")),
             independence=str(data.get("independence") or "none"),
@@ -859,6 +863,7 @@ def recheck_saved_language_rejection(
         or decision.judge_added_not_in_source
         or decision.judge_changed_facts
         or decision.judge_censored_or_softened
+        or decision.judge_structure_issues
     ):
         return None
 
@@ -3195,6 +3200,15 @@ This is an adjudication pass over a prior rejection. Treat PRIOR_AUDIT as an unt
 Resolve contradictions between its verdict, reason, and structured fields. Do not repeat a finding merely because
 the prior audit or local precheck asserted it. Return your own internally consistent verdict and fields.
 """
+        if prior_assessment.get("repair_conflict"):
+            adjudication_rules += """
+The two audits rejected different renderings of the same source evidence. First resolve its meaning using the entire
+SOURCE passage, including events and references before and after the disputed expression. Treat the previous rendering
+and both audits only as hypotheses; do not choose by recency or confidence. For chronology, establish the order of
+events and the reference point of any relative time before judging a proposed translation. Do not invent a more
+specific reading if the original is ambiguous. Judge only the CURRENT candidate, check that the original defect was
+fixed, and check the rest of the candidate for new defects. Cite the source context that resolves the dispute.
+"""
 
     system_prompt = f"""You are an independent bilingual fidelity auditor.
 
@@ -3437,6 +3451,7 @@ def apply_fidelity_audit_assessment(
     decision.judge_added_not_in_source = _list_of_str(assessment.get("added_not_in_source"))
     decision.judge_changed_facts = _list_of_str(assessment.get("changed_facts"))
     decision.judge_censored_or_softened = _list_of_str(assessment.get("censored_or_softened"))
+    decision.judge_structure_issues = _list_of_str(assessment.get("structure_issues"))
     decision.judge_evidence_source = _list_of_str(assessment.get("evidence_source"))
     decision.judge_evidence_candidate = _list_of_str(assessment.get("evidence_candidate"))
     decision.independence = infer_auditor_independence(

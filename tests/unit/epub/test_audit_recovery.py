@@ -818,6 +818,74 @@ async def test_repair_does_not_add_another_adjudication_layer(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["pass", "fail", "warn", "structure", "unverified"])
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_conflicting_repairs_adjudicated_once_and_reused(monkeypatch, outcome, legacy):
+    chunks, candidates = fixture()
+    calls = []
+
+    async def audit(source, candidate, **kwargs):
+        phase = kwargs["phase"].removeprefix("final_epub_unit_")
+        calls.append(phase)
+        if phase == "repair_adjudication":
+            context = kwargs["prompt_options"]["_fidelity_adjudication_context"]["repair_conflict"]
+            assert context["shared_source_evidence"] == ["remembered his childhood"]
+            assert context["previous_rendering_evidence"] == ["recuerda su infancia"]
+            assert context["repaired_rendering_evidence"] == ["recordaba su infancia"]
+            decision, response = verdict(source, candidate, outcome != "fail")
+            if outcome == "warn":
+                decision.judge_decision = "warn"
+            if outcome == "structure":
+                decision.judge_structure_issues = ["Lost a heading"]
+            return decision, response
+        decision, response = verdict(source, candidate, False, ["Disputed reading"])
+        decision.judge_evidence_source = [
+            "invented source quote" if outcome == "unverified" else "remembered his childhood"
+        ]
+        decision.judge_evidence_candidate = [
+            "recuerda su infancia" if candidate == ORIGINAL else "recordaba su infancia"
+        ]
+        return decision, response
+
+    async def repair(**kwargs):
+        calls.append("repair")
+        return REPAIRED
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+    monkeypatch.setattr(subject, "_repair_audited_candidate", repair)
+    options = {**OPTIONS, "max_repair_rounds": 1, "fidelity_adjudicate_rejections": True}
+    if legacy:
+        with pytest.raises(ChunkTranslationFailedError, match="repair_no_improvement"):
+            await run(chunks, candidates, options={**options, "fidelity_adjudicate_rejections": False})
+        # Old workers used the same contract with adjudication enabled for
+        # the original but not for repairs. Reproduce that terminal journal.
+        from src.core.epub.audit_repair import contract_hash
+
+        chunk, = chunks
+        chunk["unit"]["audit_repair"]["contract"] = contract_hash(
+            chunk["unit"], chunk,
+            {**options, "fidelity_supervisor": True, "fidelity_supervisor_mode": "strict_full",
+             "fidelity_supervisor_model": "deepseek-v4-pro"},
+            source_language="English", target_language="Spanish",
+            model_name="deepseek-v4-pro", provider="deepseek", placeholder_format=("[id", "]"),
+        )
+        chunks = json.loads(json.dumps(chunks))
+    for _ in range(2):
+        if outcome == "pass":
+            assert await run(chunks, candidates, options=options) == [REPAIRED]
+            assert validate_publishable_units(chunks)[0]
+        else:
+            with pytest.raises(ChunkTranslationFailedError, match="repair_no_improvement"):
+                await run(chunks, candidates, options=options)
+            assert candidates == [ORIGINAL]
+            assert not validate_publishable_units(chunks)[0]
+        chunks = json.loads(json.dumps(chunks))
+    assert calls.count("repair") == 1
+    assert calls.count("repair_adjudication") == int(outcome != "unverified")
+    assert chunks[0]["unit"]["audit_repair_attempts"] == 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("field", ["audit_attempts", "audit_repair_attempts"])
 @pytest.mark.parametrize("value", [None, -1, "2", True, 1.5])
 async def test_corrupt_lifetime_counters_cannot_replenish_requests(
