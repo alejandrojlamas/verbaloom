@@ -8,6 +8,7 @@ from src.core.epub.unit_contract import (
     ensure_unit_records,
     mark_audited,
     mark_reviewed,
+    mark_translated,
     text_sha256,
 )
 from src.core.epub.xhtml_translator import (
@@ -523,3 +524,53 @@ async def test_refinement_reuses_completed_review_without_new_request():
 
     assert result == [candidate]
     assert checkpoints[0][3]["status"] == "cached"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("move_text", [False, True])
+async def test_refinement_preserves_text_within_paragraph_boundaries(move_text):
+    lead = "El equipo preparo el campamento antes de que llegara la tormenta."
+    body = "Las linternas seguian encendidas cuando llegaron los excursionistas. " * 4
+    draft = f"[id21]{lead}[id22]{body}[id23]"
+    if move_text:
+        revision = f"[id0]{lead} {body[:-8]}[id1]{body[-8:]}[id2]"
+    else:
+        revision = f"[id0]{lead}[id1]{body.replace('encendidas', 'prendidas')}[id2]"
+
+    class Refiner(SequenceAuditClient):
+        make_request = SequenceAuditClient.generate
+
+        def extract_translation(self, content):
+            return content
+
+    chunks = [{
+        "text": "[id0]The team prepared camp.[id1]The lanterns were still burning.[id2]",
+        "local_tag_map": {"[id0]": '<div><p class="body">', "[id1]": "</p><p>", "[id2]": "</p></div>"},
+        "global_indices": [21, 22, 23],
+    }]
+    records = ensure_unit_records(chunks, "Text/chapter.xhtml")
+    mark_translated(records[0], draft)
+    client = Refiner(revision)
+    checkpoints = []
+
+    result = await _refine_epub_chunks(
+        translated_chunks=[draft],
+        chunks=chunks,
+        target_language="Spanish",
+        model_name="test",
+        llm_client=client,
+        context_manager=None,
+        placeholder_format=("[id", "]"),
+        log_callback=None,
+        prompt_options={"editorial_quality_guard": False, "fidelity_supervisor": False},
+        checkpoint_callback=lambda *args: checkpoints.append(args),
+        source_language="English",
+    )
+
+    expected = draft if move_text else draft.replace("encendidas", "prendidas").rstrip()
+    assert result == [expected]
+    assert checkpoints[0][2] == expected
+    assert records[0]["review"]["decision"] == (
+        "retained_after_paragraph_boundary_rejection" if move_text else "refined"
+    )
+    assert client.calls == 1

@@ -57,6 +57,7 @@ from .exceptions import (
 )
 from .placeholder_validator import PlaceholderValidator
 from .structure_safe_fallback import (
+    refinement_preserves_paragraphs,
     split_structure_safe_parts,
     structure_signature,
     structural_placeholders,
@@ -2624,11 +2625,20 @@ async def _refine_epub_chunks(
                     else:
                         # CRITICAL: Validate placeholders before accepting refinement
                         # refined_text should have LOCAL indices (0, 1, 2...) matching local_tag_map
-                        if local_tag_map and not validate_placeholders(refined_text, local_tag_map):
-                            _log_error(log_callback, "epub_refinement_placeholder_corruption",
-                                        f"Chunk {idx + 1}/{total_chunks}: refinement corrupted placeholders, using original translation")
+                        rejection = None
+                        if not validate_placeholders(refined_text, local_tag_map):
+                            rejection = "placeholder"
+                        elif not transform_instructions and not refinement_preserves_paragraphs(
+                            text_for_refinement, refined_text, local_tag_map,
+                        ):
+                            rejection = "paragraph_boundary"
+                        if rejection:
+                            _log_error(
+                                log_callback, f"epub_refinement_{rejection}_corruption",
+                                f"Chunk {idx + 1}/{total_chunks}: refinement changed {rejection}, using original translation",
+                            )
                             refined_chunks.append(translated_text)
-                            review_decision = "retained_after_placeholder_rejection"
+                            review_decision = f"retained_after_{rejection}_rejection"
                             observe_literary_continuity(
                                 runtime_state=runtime_state,
                                 source_text=text_for_refinement,
@@ -2636,7 +2646,6 @@ async def _refine_epub_chunks(
                                 section=current_section,
                                 phase="refinement",
                             )
-                            review_decision = "retained_after_placeholder_rejection"
                         else:
                             # Validation passed! Now convert LOCAL indices back to GLOBAL indices
                             refined_with_global_indices = refined_text

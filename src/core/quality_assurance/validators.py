@@ -36,6 +36,10 @@ VALIDATOR_VERSION = "universal-deterministic-validators-v1"
 _DIGIT_GROUP_RE = re.compile(
     r"(?<!\w)(?:\d{1,3}(?:[ \u00a0\u202f]\d{3})+|\d+)(?!\w)"
 )
+_OCR_GROUPED_INTEGER_RE = re.compile(
+    r"(?<![\w/.,-])[1-9][0-9Oo]{0,2}(?:[, \u00a0\u202f][0-9Oo]{3})+"
+    r"(?!\w|[.,][0-9Oo])"
+)
 _DATE_RE = re.compile(
     r"(?<!\w)(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?!\w)"
 )
@@ -554,18 +558,24 @@ def validate_unit_entities(
             "critical",
         ),
     )
+    excluded = tuple(str(text or "") for text in unit.source_reference.get(
+        "intentional_exclusions", ()
+    ))
     for label, extractor, enabled, severity in checks:
         if not enabled:
             continue
-        source_values = Counter(extractor(source))
+        source_value, target_value, excluded_values = source, target, excluded
+        if label == "number":
+            source_value, target_value, excluded_values = _normalize_ocr_integer_evidence(
+                source, target, excluded
+            )
+        source_values = Counter(extractor(source_value))
         intentionally_excluded = Counter()
-        for excluded_text in unit.source_reference.get(
-            "intentional_exclusions", ()
-        ):
-            intentionally_excluded.update(extractor(str(excluded_text or "")))
+        for excluded_text in excluded_values:
+            intentionally_excluded.update(extractor(excluded_text))
         if intentionally_excluded:
             source_values -= intentionally_excluded
-        target_values = Counter(extractor(target))
+        target_values = Counter(extractor(target_value))
         missing = list((source_values - target_values).elements())
         added = list((target_values - source_values).elements())
         details[label] = {
@@ -1175,6 +1185,39 @@ def _section_key(structural_path: str) -> str:
     path = str(structural_path or "/")
     parts = [part for part in path.split("/") if part]
     return "/" + "/".join(parts[:2]) if parts else "/"
+
+
+def _normalize_ocr_integer_evidence(
+    source: str, target: str, excluded: tuple[str, ...]
+) -> tuple[str, str, tuple[str, ...]]:
+    """Compare visibly corrupted grouped integers without changing the book text."""
+    verified: set[str] = set()
+    ungroup = str.maketrans("", "", ", \u00a0\u202f")
+    replace_zeros = str.maketrans("Oo", "00")
+
+    def repair_source(match: re.Match[str]) -> str:
+        token = match.group()
+        if token.count("O") + token.count("o") < 2:
+            return token
+        digits = token.translate(replace_zeros).translate(ungroup)
+        verified.add(digits)
+        return digits
+
+    source = _OCR_GROUPED_INTEGER_RE.sub(repair_source, source)
+    excluded = tuple(_OCR_GROUPED_INTEGER_RE.sub(repair_source, text) for text in excluded)
+    if not verified:
+        return source, target, excluded
+
+    def canonicalize(match: re.Match[str]) -> str:
+        token = match.group()
+        digits = token.translate(ungroup)
+        return digits if digits in verified else token
+
+    return (
+        _OCR_GROUPED_INTEGER_RE.sub(canonicalize, source),
+        _OCR_GROUPED_INTEGER_RE.sub(canonicalize, target),
+        tuple(_OCR_GROUPED_INTEGER_RE.sub(canonicalize, text) for text in excluded),
+    )
 
 
 def _extract_digit_groups(text: str) -> list[str]:

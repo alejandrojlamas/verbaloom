@@ -9,6 +9,8 @@ paragraphs, headings, table cells, or captions.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import unescape
+import re
 from typing import Dict, Literal
 
 from src.common.placeholder_format import PlaceholderFormat
@@ -18,6 +20,8 @@ from .tag_classifier import TagClassifier
 
 PartKind = Literal["content", "structure"]
 _TAG_CLASSIFIER = TagClassifier()
+_PARAGRAPH_OPEN = re.compile(r"<p(?:\s[^<>]*)?>\s*$", re.IGNORECASE)
+_PARAGRAPH_CLOSE = re.compile(r"^\s*</p\s*>", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -98,4 +102,33 @@ def structure_signature(text: str, tag_map: Dict[str, str]) -> tuple[str, ...]:
         placeholder
         for _start, _end, placeholder, _index in fmt.find_all(text)
         if placeholder in structural
+    )
+
+
+def refinement_preserves_paragraphs(
+    draft: str, revision: str, tag_map: Dict[str, str]
+) -> bool:
+    """Check for extreme text movement across intact paragraph markers."""
+    fmt = PlaceholderFormat.from_config()
+
+    def paragraph_lengths(text: str) -> dict[tuple[str, str], int]:
+        boundaries = [
+            (start, end, placeholder)
+            for start, end, placeholder, _index in fmt.find_all(text)
+            if is_structural_tag_group(tag_map.get(placeholder, ""))
+        ]
+        return {
+            (opening, closing): len(" ".join(unescape(fmt.remove_all(text[left:right])).split()))
+            for (_, left, opening), (right, _, closing) in zip(boundaries, boundaries[1:])
+            if _PARAGRAPH_OPEN.search(tag_map[opening]) and _PARAGRAPH_CLOSE.match(tag_map[closing])
+        }
+
+    if not tag_map:
+        return True
+    if structure_signature(draft, tag_map) != structure_signature(revision, tag_map):
+        return False
+    before, after = paragraph_lengths(draft), paragraph_lengths(revision)
+    return all(
+        size < 40 or 0.28 <= after.get(key, 0) / size <= 4.5
+        for key, size in before.items()
     )

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from src.core.candidate_result import CandidateIssue
 from src.core.quality_assurance.config import QualityAssuranceConfig
 from src.core.quality_assurance.extractors import build_manifest
@@ -205,6 +207,53 @@ def test_entity_numbers_and_metric_spacing_use_canonical_values():
     assert not any(issue.code in {"number_mismatch", "measurement_mismatch"} for issue in result.issues)
     assert detail["number"]["source"] == detail["number"]["target"]
     assert detail["measurement"]["source"] == detail["measurement"]["target"]
+
+
+@pytest.mark.parametrize("value", ["500,000", "500 000", "500\u202f000", "500000"])
+def test_audit_matches_grouped_ocr_integer_to_same_translated_value(value):
+    unit = _unit(
+        "The lab examined a 5OO,ooo-year-old specimen in 2021.",
+        f"El laboratorio examino un ejemplar de {value} anos en 2021.",
+    )
+
+    result, details = validate_unit_entities(unit, QualityAssuranceConfig())
+
+    assert result.passed
+    assert details["number"]["source"] == details["number"]["target"] == {
+        "500000": 1, "2021": 1,
+    }
+
+
+@pytest.mark.parametrize("value", ["510,000", "500.000", "500,0000", "500,000,000"])
+def test_ocr_integer_evidence_does_not_excuse_a_changed_value(value):
+    unit = _unit(
+        "The lab examined a 5OO,ooo-year-old specimen.",
+        f"El laboratorio examino un ejemplar de {value} anos.",
+    )
+    unit.source_reference["publication_audited"] = True
+
+    result, details = validate_unit_entities(unit, QualityAssuranceConfig())
+
+    assert not result.passed
+    assert details["number"]["missing"] == ["500000"]
+    assert any(issue.code == "number_mismatch" for issue in result.issues)
+
+
+def test_ocr_integer_normalization_preserves_exclusions_and_multiplicity():
+    unit = _unit(
+        "The 5OO,ooo samples included a duplicate entry for 500,000 samples.",
+        "Las muestras incluyeron una entrada duplicada de 500 000 muestras.",
+    )
+    unit.source_reference["intentional_exclusions"] = ["5OO,ooo"]
+
+    result, details = validate_unit_entities(unit, QualityAssuranceConfig())
+
+    assert result.passed
+    assert details["number"]["intentionally_excluded"] == {"500000": 1}
+    unit.source_reference.pop("intentional_exclusions")
+    result, details = validate_unit_entities(unit, QualityAssuranceConfig())
+    assert not result.passed
+    assert details["number"]["missing"] == ["500000"]
 
 
 def test_identifier_suffix_is_not_misread_as_single_letter_measurement():
