@@ -1,5 +1,6 @@
 """Serializable model-role configuration, independent of HTTP and Flask."""
 
+import os
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 
@@ -206,6 +207,15 @@ def pipeline_preset(name, config):
             "roles": roles,
         }
     )
+
+
+def configured_default_pipeline():
+    """Return the installation's opt-in default for new jobs, not a resume policy."""
+    if os.getenv("VERBALOOM_DEFAULT_PIPELINE", "").strip() == "openai_equivalent":
+        return pipeline_preset(
+            "openai_equivalent", {"llm_provider": "openai", "model": "gpt-6.1-terra"}
+        )
+    return None
 
 
 def apply_pipeline(config, pipeline):

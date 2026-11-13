@@ -35,6 +35,7 @@
   "pipe_role_structure_repair": "Structure repair",
   "pipe_loading": "Loading configuration…",
   "pipe_saved": "Saved for new jobs; running jobs keep their settings.",
+  "pipe_default": "Server default for new jobs.",
   "pipe_unchanged": "Current provider and review settings unchanged.",
   "pipe_storage_error": "Settings could not be saved on this browser.",
   "pipe_invalid": "Invalid configuration. Check the baseline model, role assignments and limits.",

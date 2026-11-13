@@ -40,7 +40,7 @@ from src.core.deepseek_pricing import (
     is_official_deepseek_endpoint,
 )
 from src.core.job_runtime_config import configure_editorial_guard_options
-from src.core.pipeline_config import apply_pipeline, validate_pipeline
+from src.core.pipeline_config import apply_pipeline, configured_default_pipeline, validate_pipeline
 from src.core.progress import apply_active_timing
 from src.persistence.checkpoint_reconcile import checkpoint_progress_snapshot
 from src.tts.tts_config import TTSConfig
@@ -545,9 +545,14 @@ def create_translation_blueprint(
             replay = _submission_replay(state_manager, translation_id, fingerprint)
             if replay is not None:
                 return replay
-        if data.get("pipeline") is not None:
+        pipeline = data.get("pipeline")
+        if "pipeline" not in data and not any(
+            data.get(key) for key in ("llm_provider", "model", "llm_api_endpoint")
+        ):
+            pipeline = configured_default_pipeline()
+        if pipeline is not None:
             try:
-                apply_pipeline(data, data["pipeline"])
+                apply_pipeline(data, pipeline)
             except (ValueError, TypeError) as exc:
                 return jsonify({"error": "Invalid pipeline configuration", "message": str(exc)}), 400
         provider = str(data.get('llm_provider') or 'ollama').lower()

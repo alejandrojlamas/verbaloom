@@ -49,8 +49,7 @@ function refreshProviderSurface() {
 
 function persist() {
     try {
-        if (pipeline) localStorage.setItem(STORAGE, JSON.stringify(pipeline));
-        else localStorage.removeItem(STORAGE);
+        localStorage.setItem(STORAGE, JSON.stringify(pipeline || 'legacy'));
         status(pipeline ? 'saved' : 'unchanged');
     } catch { status('storage_error'); }
     notify();
@@ -158,19 +157,29 @@ export const PipelineSettings = {
         window.addEventListener('defaultConfigLoaded', refreshProviderSurface);
         let saved, invalidSaved = false;
         try { saved = JSON.parse(localStorage.getItem(STORAGE) || 'null'); } catch { invalidSaved = true; }
+        if (saved === 'legacy') return;
         const ticket = revision;
-        if (saved || invalidSaved) { $('pipelinePreset').value = 'custom'; pending = true; status('loading'); }
+        pending = true;
+        status('loading');
+        notify();
         try {
             catalog = await ApiClient.getPipelineCatalog();
+            if (ticket !== revision) return;
             if (invalidSaved) throw new Error('Invalid saved pipeline');
-            if (saved) {
-                const result = await ApiClient.configurePipeline({ pipeline: saved });
-                if (ticket !== revision) return;
-                pipeline = result.pipeline;
-                $('pipelinePreset').value = pipeline.preset;
-                render(); status('saved'); notify();
+            const selected = saved
+                ? (await ApiClient.configurePipeline({ pipeline: saved })).pipeline
+                : catalog.default_pipeline;
+            if (ticket !== revision) return;
+            pipeline = selected || null;
+            $('pipelinePreset').value = pipeline?.preset || 'legacy';
+            render();
+            status(saved ? 'saved' : pipeline ? 'default' : 'unchanged');
+        } catch {
+            if (ticket === revision) {
+                $('pipelinePreset').value = 'custom';
+                status(saved || invalidSaved ? 'invalid' : 'unavailable');
             }
-        } catch { if (ticket === revision) status(saved || invalidSaved ? 'invalid' : 'unavailable'); }
+        }
         finally { if (ticket === revision) { pending = false; notify(); } }
     },
 
@@ -193,7 +202,7 @@ export const PipelineSettings = {
     },
 
     isEnabled() {
-        return !!$('pipelinePreset') && $('pipelinePreset').value !== 'legacy';
+        return !!$('pipelinePreset') && (pending || $('pipelinePreset').value !== 'legacy');
     },
 
     snapshot({ reportValidity = true } = {}) {

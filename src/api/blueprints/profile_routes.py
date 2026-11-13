@@ -43,7 +43,7 @@ from src.core.book_profiles.profile_goals import resolve_profile_goal
 from src.core.llm.factory import create_llm_provider
 from src.core.output_formats import extract_readable_text
 from src.core.usage import reset_usage_context, set_usage_context
-from src.core.pipeline_config import ENDPOINTS, validate_pipeline
+from src.core.pipeline_config import ENDPOINTS, configured_default_pipeline, validate_pipeline
 from src.core.pipeline_runtime import activate_pipeline, active_pipeline, close_pipeline
 from src.core.llm.exceptions import RateLimitError
 import src.config as _config
@@ -643,6 +643,10 @@ def _collect_profile_prep_payload() -> dict[str, Any]:
         or ("deepseek-v4-pro" if provider_type == "deepseek" else model)
     )
     pipeline = form.get("pipeline")
+    if "pipeline" not in form and not any(
+        form.get(key) for key in ("provider", "model", "review_model", "term_review_model", "api_endpoint", "api_key")
+    ):
+        pipeline = configured_default_pipeline()
     pipeline_credentials = {}
     if pipeline is not None:
         try:

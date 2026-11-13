@@ -30,7 +30,7 @@ async function preset(name) {
   await page.locator('#pipelinePreset').selectOption(name);
   await page.waitForFunction(name => {
     const data = JSON.parse(localStorage.getItem('verbaloom.pipeline.v1') || 'null');
-    return name === 'legacy' ? !data : data?.preset === name;
+    return name === 'legacy' ? data === 'legacy' : data?.preset === name;
   }, name);
 }
 async function waitForJobStatus(id, status) {
@@ -51,6 +51,19 @@ try {
   report.checks.push('Correct page, meaningful content, no framework overlay');
   await page.screenshot({ path: `${output}/home-desktop.png` });
   await settings();
+  const { default_pipeline: defaultPipeline } = await (await page.request.get(base + '/api/pipeline/catalog')).json();
+  if (defaultPipeline) {
+    await page.waitForFunction(() => document.getElementById('pipelineStatus').dataset.i18n === 'settings:pipe_default');
+    assert.equal(await page.locator('#pipelinePreset').inputValue(), 'openai_equivalent');
+    assert.deepEqual((await snapshot()).value, defaultPipeline);
+    assert.equal(await storage(), null, 'A server default is not a saved browser override');
+    await page.screenshot({ path: `${output}/default-desktop.png` });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#pipelineSettings').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${output}/default-mobile.png` });
+    await page.setViewportSize({ width: 1365, height: 900 });
+    report.checks.push('Fresh desktop and mobile settings use server flow B without saving a local override');
+  }
   for (const name of ['compatible', 'openai_equivalent', 'deepseek_source_audited', 'openai_source_audited']) {
     await preset(name);
     const value = await storage();
@@ -221,6 +234,9 @@ try {
   assert.ok(!('openai_api_key' in profileRequest));
   await page.waitForFunction(() => !document.getElementById('profilePrepStartBtn').disabled);
   assert.deepEqual(JSON.parse(profileForm.get('pipeline')), profileSnapshot);
+  assert.equal(profileForm.has('provider'), false);
+  assert.equal(profileForm.has('model'), false);
+  assert.equal(profileForm.has('review_model'), false);
   assert.equal(profileForm.has('openai_api_key'), false);
   assert.ok(profileForm.has('deepseek_api_key'));
   const label = await page.locator('#profilePrepModelLabel').innerText();
@@ -238,6 +254,10 @@ try {
   assert.equal(await page.locator('#pipelinePreset').inputValue(), 'custom');
   assert.ok((await snapshot()).error, 'Corrupted saved configuration must not silently use legacy models');
   await preset('legacy');
+  assert.equal((await snapshot()).value, null);
+  await page.reload({ waitUntil: 'networkidle' });
+  await settings();
+  assert.equal(await page.locator('#pipelinePreset').inputValue(), 'legacy');
   assert.equal((await snapshot()).value, null);
   await page.waitForFunction(() => [...document.getElementById('model').options].some(option => option.value === 'deepseek-v4-pro'));
   report.checks.push('Corrupt saved settings fail closed; explicit legacy rollback remains available');

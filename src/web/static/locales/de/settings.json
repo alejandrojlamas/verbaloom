@@ -35,6 +35,7 @@
   "pipe_role_structure_repair": "Strukturreparatur",
   "pipe_loading": "Konfiguration wird geladen…",
   "pipe_saved": "Für neue Aufträge gespeichert; laufende Aufträge behalten ihre Einstellungen.",
+  "pipe_default": "Serverstandard für neue Aufträge.",
   "pipe_unchanged": "Aktueller Anbieter und Prüfstrategie unverändert.",
   "pipe_storage_error": "Einstellungen konnten nicht im Browser gespeichert werden.",
   "pipe_invalid": "Ungültige Konfiguration. Basismodell, Rollen und Limits prüfen.",

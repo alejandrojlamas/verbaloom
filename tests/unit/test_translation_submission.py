@@ -41,6 +41,32 @@ def payload():
             "output_filename": "fixture.txt", "file_type": "txt"}
 
 
+def test_new_translation_default_does_not_override_explicit_choices(setup, monkeypatch):
+    from src.core.pipeline_config import configured_default_pipeline, pipeline_preset
+
+    monkeypatch.setenv("VERBALOOM_DEFAULT_PIPELINE", "openai_equivalent")
+    monkeypatch.setenv("OPENAI_API_KEY", "YOUR_OPENAI_KEY_HERE")
+    make_app, _, manager, _ = setup
+    automatic = payload()
+    automatic.pop("model")
+    automatic.pop("llm_provider")
+    custom = pipeline_preset(
+        "compatible", {"llm_provider": "openai", "model": "gpt-6-luna"}
+    )
+    with make_app().test_client() as client:
+        for data, expected, model in (
+            (automatic, configured_default_pipeline(), "gpt-6.1-terra"),
+            (payload(), None, "fixture-model"),
+            ({**payload(), "pipeline": None}, None, "fixture-model"),
+            ({**payload(), "pipeline": custom}, custom, "gpt-6-luna"),
+        ):
+            response = client.post("/api/translate", json=data)
+            assert response.status_code == 200, response.json
+            saved = manager.get_job(response.json["translation_id"])["config"]
+            assert saved.get("pipeline") == expected
+            assert saved["model"] == model
+
+
 def test_repeated_submission_launches_once_and_is_durable_before_worker(setup):
     make_app, state, manager, calls = setup
     data = payload()

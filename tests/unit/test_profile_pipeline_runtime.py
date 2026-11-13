@@ -2,6 +2,7 @@
 
 import json
 from copy import deepcopy
+from io import BytesIO
 from types import SimpleNamespace
 
 import httpx
@@ -47,6 +48,28 @@ def collect(pipeline):
         }
     ):
         return routes._collect_profile_prep_payload()
+
+
+@pytest.mark.parametrize("multipart", [False, True])
+def test_profile_defaults_to_flow_b_unless_model_choice_is_explicit(monkeypatch, multipart):
+    monkeypatch.setenv("VERBALOOM_DEFAULT_PIPELINE", "openai_equivalent")
+    monkeypatch.setenv("OPENAI_API_KEY", "YOUR_OPENAI_KEY_HERE")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "YOUR_DEEPSEEK_KEY_HERE")
+    app = Flask(__name__)
+    data = {"text": "The inventor approved the proposed design.", "source_language": "English"}
+    for extra, models in (
+        ({}, ("openai", "gpt-6-luna", "gpt-6.1-terra")),
+        ({"provider": "deepseek"}, ("deepseek", "deepseek-flash", "deepseek-v4-pro")),
+    ):
+        request_data = {**data, **extra}
+        kwargs = (
+            {"data": {**request_data, "files": (BytesIO(data["text"].encode()), "fixture.txt")}}
+            if multipart else {"json": request_data}
+        )
+        with app.test_request_context(**kwargs):
+            result = routes._collect_profile_prep_payload()
+        assert (result["provider_type"], result["model"], result["review_model"]) == models
+        assert ("pipeline" in result) == (not extra)
 
 
 @pytest.fixture

@@ -191,37 +191,6 @@ jobs:
         files: |
           VerbaLoom-macOS-Intel/VerbaLoom-macOS-Intel.zip
           VerbaLoom-macOS-AppleSilicon/VerbaLoom-macOS-AppleSilicon.zip
-        body: |
-          ## macOS Executable Release
-
-          ### Downloads
-          - **VerbaLoom-macOS-AppleSilicon.zip** - For Apple Silicon Macs (M1/M2/M3/M4)
-          - **VerbaLoom-macOS-Intel.zip** - For Intel-based Macs
-
-          ### Installation
-          1. Download the appropriate version for your Mac
-          2. Extract the zip file
-          3. Install [Ollama](https://ollama.ai) (required for local LLM)
-          4. Open Terminal and run `./VerbaLoom`
-          5. Open http://localhost:5000 in your browser
-
-          ### First Launch - Security Authorization
-          macOS will block the app on first launch:
-          1. Double-click VerbaLoom - macOS shows a warning
-          2. Open **System Settings > Privacy & Security**
-          3. Click **"Open Anyway"** next to the VerbaLoom message
-
-          This only needs to be done once.
-
-          ### What's Included
-          - Single-file macOS executable (no Python installation required)
-          - Auto-generated configuration on first run
-          - Support for .txt, .epub, .srt translation
-
-          ### System Requirements
-          - macOS 11+ (Big Sur or later)
-          - Ollama installed for local LLM support
-          - Or API keys for cloud providers (OpenAI, Gemini, OpenRouter)
         draft: false
         prerelease: false
       env:

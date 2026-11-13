@@ -122,9 +122,6 @@ export const ProfilePrepManager = {
         formData.append('target_locale', /^spanish$/i.test(language) ? 'es-MX' : '');
         formData.append('transform_mode', purpose);
         formData.append('profile_goal', purpose);
-        formData.append('provider', 'deepseek');
-        formData.append('model', 'deepseek-flash');
-        formData.append('review_model', 'deepseek-v4-pro');
         formData.append('llm_full_coverage', 'true');
 
         if (pipeline) {
@@ -133,6 +130,9 @@ export const ProfilePrepManager = {
                 if (value) formData.append(field, value);
             }
         } else {
+            formData.append('provider', 'deepseek');
+            formData.append('model', 'deepseek-flash');
+            formData.append('review_model', 'deepseek-v4-pro');
             const deepseekKey = ApiKeyUtils.getValue('deepseekApiKey');
             if (deepseekKey) formData.append('api_key', deepseekKey);
         }

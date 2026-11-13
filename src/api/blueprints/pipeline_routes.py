@@ -9,6 +9,7 @@ from src.core.pipeline_config import (
     MODELS,
     PRESETS,
     ROLES,
+    configured_default_pipeline,
     pipeline_preset,
     validate_pipeline,
 )
@@ -32,6 +33,7 @@ def register_pipeline_routes(bp):
         return reply({
             "version": 1, "roles": list(ROLES), "presets": list(PRESETS),
             "models": {key: sorted(value) for key, value in MODELS.items()},
+            "default_pipeline": configured_default_pipeline(),
         })
 
     @bp.post("/api/pipeline/configure")

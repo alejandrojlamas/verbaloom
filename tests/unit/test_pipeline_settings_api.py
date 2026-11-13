@@ -25,6 +25,7 @@ def test_settings_resolve_the_same_core_presets(preset):
 
 
 def test_catalog_is_complete_and_has_no_keys(monkeypatch):
+    monkeypatch.delenv("VERBALOOM_DEFAULT_PIPELINE", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "YOUR_API_KEY_HERE")
     response = client().get("/api/pipeline/catalog")
     assert response.status_code == 200
@@ -32,6 +33,25 @@ def test_catalog_is_complete_and_has_no_keys(monkeypatch):
     assert payload["roles"] == list(ROLES)
     assert "gpt-6-luna" in payload["models"]["openai"]
     assert "deepseek-v4-pro" in payload["models"]["deepseek"]
+    assert payload["default_pipeline"] is None
+    assert "YOUR_API_KEY_HERE" not in response.get_data(as_text=True)
+
+
+def test_catalog_exposes_opt_in_flow_b_without_credentials(monkeypatch):
+    monkeypatch.setenv("VERBALOOM_DEFAULT_PIPELINE", "openai_equivalent")
+    monkeypatch.setenv("OPENAI_API_KEY", "YOUR_API_KEY_HERE")
+    response = client().get("/api/pipeline/catalog")
+    default = response.json["default_pipeline"]
+    assert default["preset"] == "openai_equivalent"
+    assert default["review_policy"] == default["epub_repair_policy"] == "compatible"
+    assert default["budget"] is None
+    for name, role in default["roles"].items():
+        assert role == {
+            "provider": "openai",
+            "model": ("gpt-6-luna" if name in {"profile_prepare", "structure_repair"} else "gpt-6.1-terra"),
+            "reasoning_effort": "none",
+            "max_output_tokens": 8192,
+        }
     assert "YOUR_API_KEY_HERE" not in response.get_data(as_text=True)
 
 

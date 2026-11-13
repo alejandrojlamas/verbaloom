@@ -35,6 +35,7 @@
   "pipe_role_structure_repair": "结构修复",
   "pipe_loading": "正在加载配置…",
   "pipe_saved": "已为新任务保存；运行中的任务保留原配置。",
+  "pipe_default": "新任务的服务器默认配置。",
   "pipe_unchanged": "当前提供商与审核设置保持不变。",
   "pipe_storage_error": "无法在此浏览器中保存设置。",
   "pipe_invalid": "配置无效。请检查基准模型、角色分配和限制。",

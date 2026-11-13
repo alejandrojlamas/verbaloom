@@ -146,26 +146,6 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: VerbaLoom-Windows.zip
-        body: |
-          ## Windows Executable Release
-
-          ### Installation
-          1. Download and extract VerbaLoom-Windows.zip
-          2. Install [Ollama](https://ollama.ai) (required for local LLM)
-          3. Run VerbaLoom.exe
-          4. Open http://localhost:5000 in your browser
-
-          ### What's Included
-          - Single-file Windows executable (no Python installation required)
-          - Auto-generated configuration on first run
-          - Support for .txt, .epub, .srt translation
-
-          ### System Requirements
-          - Windows 10/11 (64-bit)
-          - Ollama installed for local LLM support
-          - Or API keys for cloud providers (OpenAI, Gemini, OpenRouter)
-
-          **Size:** ${{ steps.exe_info.outputs.size_mb }} MB
         draft: false
         prerelease: false
       env:

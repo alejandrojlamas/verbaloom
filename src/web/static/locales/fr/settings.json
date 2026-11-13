@@ -35,6 +35,7 @@
   "pipe_role_structure_repair": "Réparation de la structure",
   "pipe_loading": "Chargement de la configuration…",
   "pipe_saved": "Enregistré pour les nouvelles tâches ; les tâches actives conservent leurs réglages.",
+  "pipe_default": "Configuration par défaut du serveur pour les nouvelles tâches.",
   "pipe_unchanged": "Fournisseur et révision actuels inchangés.",
   "pipe_storage_error": "Impossible d’enregistrer les réglages dans ce navigateur.",
   "pipe_invalid": "Configuration invalide. Vérifiez le modèle de référence, les rôles et les limites.",
