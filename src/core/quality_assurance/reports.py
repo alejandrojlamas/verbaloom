@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from html import escape
@@ -71,12 +70,14 @@ def write_quality_reports(
         {
             "schema_version": 1,
             "run_id": manifest.run_id,
+            "generated_at": gate_report.generated_at,
             "status": gate_report.status.value,
             "publishable": gate_report.publishable,
             "output_path": manifest.output_path,
             "output_exists": Path(manifest.output_path).is_file(),
             "output_size_bytes": _file_size(manifest.output_path),
-            "output_sha256": _file_sha256(manifest.output_path),
+            "output_sha256": manifest.metadata.get("validation_artifacts", {}).get("output_sha256", ""),
+            "validation_artifacts": dict(manifest.metadata.get("validation_artifacts") or {}),
             "source_format": manifest.source_format,
             "output_format": manifest.output_format,
             "quality_gates": [gate.to_dict() for gate in gate_report.gates],
@@ -100,6 +101,7 @@ def build_translation_report(
         "document_id": manifest.document_id,
         "status": gate_report.status.value,
         "publishable": gate_report.publishable,
+        "validation_artifacts": dict(manifest.metadata.get("validation_artifacts") or {}),
         "executive_summary": _executive_summary(manifest, gate_report),
         "source": {
             "path": manifest.source_path,
@@ -310,14 +312,3 @@ def _limitations(manifest: BookManifest, report: QualityGateReport) -> list[str]
 def _file_size(path: str | Path) -> int:
     artifact = Path(path)
     return artifact.stat().st_size if artifact.is_file() else 0
-
-
-def _file_sha256(path: str | Path) -> str:
-    artifact = Path(path)
-    if not artifact.is_file():
-        return ""
-    digest = hashlib.sha256()
-    with artifact.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()

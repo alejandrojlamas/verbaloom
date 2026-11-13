@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import time
 import inspect
+import uuid
 from typing import Optional
 
 from src.config import REQUEST_TIMEOUT
 from src.core.llm.base import LLMResponse
 from src.core.llm.request_deadline import await_llm_call
+from src.core.llm.attempts import attempt_observer, attempt_reserver
 
 from .context import get_usage_context
 from .store import default_usage_store
+from .budget import BudgetLimitError, SpendBudget
+from .request_budget import request_bound
+from src.core.pipeline_runtime import active_pipeline, request_role
 
 
 class UsageTrackingProvider:
@@ -58,8 +63,8 @@ class UsageTrackingProvider:
         return self._wrapped.extract_translation(response)
 
     async def translate_text(self, prompt: str) -> Optional[str]:
-        response = await self.generate(prompt)
-        if response:
+        response = await await_llm_call(self.generate, prompt, provider=self, role="translate")
+        if response and not response.was_truncated and response.status == "completed":
             return self.extract_translation(response.content)
         return None
 
@@ -71,34 +76,90 @@ class UsageTrackingProvider:
         temperature: Optional[float] = None,
     ) -> Optional[LLMResponse]:
         started = time.perf_counter()
+        operation_id = uuid.uuid4().hex
+        attempts = 0
+        context = get_usage_context()
+        runtime = active_pipeline.get()
+        role = request_role.get()
+        selected_provider, selected_name = self._wrapped, self.provider_name
+        if runtime is not None:
+            selected_provider, selected = runtime.provider_for(role)
+            selected_name = selected["provider"]
+        store = runtime.usage_store if runtime is not None else None
+        scope_ids = list(dict.fromkeys([*(context.get("budget_scope_ids") or []),
+                                       *(runtime.budget_scope_ids if runtime else [])]))
+        selected_model = getattr(selected_provider, "model", self.model)
+        common_metadata = {"effective_provider": selected_name, "effective_model": selected_model,
+                           "role": role, "operation_id": operation_id}
+        common_metadata.update({key: context[key] for key in (
+            "unit_id", "profile_hash", "glossary_hash", "prompt_version", "reason",
+        ) if key in context})
+        if scope_ids and not getattr(selected_provider, "supports_attempt_reservations", False):
+            raise BudgetLimitError("This provider does not support per-attempt reservations",
+                                   reason="budget_configuration")
+
+        def reserve(*, endpoint, payload, attempt):
+            upper, metadata = request_bound(selected_name, endpoint, payload)
+            metadata.update({"operation_id": operation_id, "attempt": attempt,
+                             **{key: context[key] for key in (
+                                 "translation_id", "process_id", "phase", "unit_id",
+                                 "prompt_version", "profile_hash", "glossary_hash",
+                             ) if key in context}})
+            try:
+                return SpendBudget(store or default_usage_store()).reserve(scope_ids, upper_usd=upper,
+                                                                  metadata=metadata)
+            except BudgetLimitError:
+                raise
+            except Exception as exc:
+                raise BudgetLimitError("Unable to persist the pre-request budget reservation",
+                                       reason="budget_ledger_unavailable") from exc
+
+        def record_attempt(*, response, status, metadata):
+            nonlocal attempts
+            attempts += 1
+            self._record(prompt=prompt, system_prompt=system_prompt or "", response=response,
+                         status=status, store=store, metadata={**metadata, **common_metadata,
+                                                  "scope": "http_attempt"})
+
+        observer_token = attempt_observer.set(record_attempt)
+        reserver_token = attempt_reserver.set(reserve if scope_ids else None)
         try:
             kwargs = {"timeout": timeout, "system_prompt": system_prompt}
-            if _supports_temperature(self._wrapped.generate):
+            if _supports_temperature(selected_provider.generate):
                 kwargs["temperature"] = temperature
             response = await await_llm_call(
-                self._wrapped.generate,
+                selected_provider.generate,
                 prompt,
-                provider=self._wrapped,
+                provider=selected_provider,
                 request_timeout=timeout,
                 **kwargs,
             )
         except Exception as exc:
+            if not attempts and not scope_ids:
+                self._record(
+                    prompt=prompt,
+                    system_prompt=system_prompt or "",
+                    response=getattr(exc, "response", None),
+                    status="error",
+                    store=store,
+                    metadata={**common_metadata, "error": type(exc).__name__,
+                              "reason": getattr(exc, "reason", ""),
+                              "elapsed_ms": int((time.perf_counter() - started) * 1000)},
+                )
+            raise
+        finally:
+            attempt_observer.reset(observer_token)
+            attempt_reserver.reset(reserver_token)
+
+        if not attempts:
             self._record(
                 prompt=prompt,
                 system_prompt=system_prompt or "",
-                response=None,
-                status="error",
-                metadata={"error": type(exc).__name__, "elapsed_ms": int((time.perf_counter() - started) * 1000)},
+                response=response,
+                status=("incomplete" if response.was_truncated else "ok") if response is not None else "empty_response",
+                store=store,
+                metadata={**common_metadata, "elapsed_ms": int((time.perf_counter() - started) * 1000)},
             )
-            raise
-
-        self._record(
-            prompt=prompt,
-            system_prompt=system_prompt or "",
-            response=response,
-            status="ok" if response is not None else "empty_response",
-            metadata={"elapsed_ms": int((time.perf_counter() - started) * 1000)},
-        )
         return response
 
     def _record(
@@ -109,14 +170,17 @@ class UsageTrackingProvider:
         response: Optional[LLMResponse],
         status: str,
         metadata: dict,
+        store=None,
     ) -> None:
         try:
             context = get_usage_context()
-            if not context.get("phase") or context.get("phase") == "llm_call":
+            if metadata.get("role"):
+                context["phase"] = metadata["role"]
+            elif not context.get("phase") or context.get("phase") == "llm_call":
                 context["phase"] = _infer_phase(prompt, system_prompt)
-            default_usage_store().record_call(
-                provider=self.provider_name,
-                model=getattr(self._wrapped, "model", self.model),
+            (store or default_usage_store()).record_call(
+                provider=metadata.get("effective_provider") or self.provider_name,
+                model=metadata.get("effective_model") or getattr(self._wrapped, "model", self.model),
                 prompt=prompt or "",
                 system_prompt=system_prompt or "",
                 response_content=getattr(response, "content", "") if response else "",
@@ -130,10 +194,23 @@ class UsageTrackingProvider:
                 metadata={
                     **metadata,
                     "reasoning_tokens": int(getattr(response, "reasoning_tokens", 0) or 0) if response else 0,
+                    "raw_usage": getattr(response, "raw_usage", {}) if response else {},
+                    "service_tier": getattr(response, "service_tier", "") if response else "",
+                    "request_id": (getattr(response, "request_id", "") if response else "") or metadata.get("request_id", ""),
+                    "response_id": getattr(response, "response_id", "") if response else "",
+                    "response_model": getattr(response, "response_model", "") if response else "",
+                    "finish_reason": getattr(response, "finish_reason", "") if response else "",
+                    "usage_observed": bool(response and (response.prompt_tokens or response.completion_tokens)),
                 },
             )
         except Exception as exc:
-            # Usage tracking must never break translation.
+            if metadata.get("budget_reservation_id"):
+                if metadata.get("error") == "cancelled_in_flight":
+                    # Cancellation wins; the durable pending allowance is not released.
+                    return
+                raise BudgetLimitError("Unable to persist request usage; allowance remains reserved",
+                                       reason="budget_ledger_unavailable") from exc
+            # Unbudgeted legacy calls retain best-effort telemetry behavior.
             print(f"⚠️ Token usage tracking failed: {exc}")
 
 

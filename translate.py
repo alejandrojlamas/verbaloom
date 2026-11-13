@@ -5,6 +5,8 @@ import os
 import argparse
 import asyncio
 import logging
+import sys
+from pathlib import Path
 
 # Force UTF-8 stdio before anything prints, so emoji log lines (💬, ✅, ❌, ...)
 # don't crash on Windows cp1252 consoles. See issue #184.
@@ -15,17 +17,20 @@ ensure_utf8_stdio()
 logging.getLogger('httpx').setLevel(logging.WARNING)
 
 from src.config import DEFAULT_MODEL, API_ENDPOINT, LLM_PROVIDER, GEMINI_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY, DEEPSEEK_API_KEY, POE_API_KEY, NIM_API_KEY, DEFAULT_SOURCE_LANGUAGE, DEFAULT_TARGET_LANGUAGE
-from src.utils.file_utils import get_unique_output_path, generate_tts_for_translation
+from src.utils.file_utils import generate_tts_for_translation
 from src.utils.unified_logger import setup_cli_logger, LogType
 from src.tts.tts_config import TTSConfig, TTS_ENABLED, TTS_VOICE, TTS_RATE, TTS_BITRATE, TTS_OUTPUT_FORMAT
 from src.persistence.checkpoint_manager import CheckpointManager
-from src.core.adapters import translate_file, refine_file
+from src.core.adapters import translate_file, refine_file, get_file_type_from_path
+from src.core.pipeline_cli import add_pipeline_arguments, check_cli_pipeline, configure_cli_pipeline, run_cli_operation
+from src.core.quality_assurance.cli import finalize_cli_run, record_cli_failure
+from src.core.quality_assurance.publication import create_staging_path
 from src.utils.notifier import notify, EVENT_SUCCESS, EVENT_FAILURE
 import time
 import uuid
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Translate a text, EPUB or SRT file using an LLM.",
         epilog="Tip: any --*_api_key flag also accepts comma-separated keys "
@@ -47,6 +52,8 @@ if __name__ == "__main__":
     parser.add_argument("--poe_api_key", default=POE_API_KEY, help="Poe API key (required if using poe provider). Get your key at https://poe.com/api_key")
     parser.add_argument("--nim_api_key", default=NIM_API_KEY, help="NVIDIA NIM API key (required if using nim provider). Get your key at https://build.nvidia.com/")
     parser.add_argument("--no-color", action="store_true", help="Disable colored output.")
+    parser.add_argument("--target-locale", default="", help="Explicit editorial locale; no regional variant is assumed.")
+    add_pipeline_arguments(parser)
 
     # Prompt options (optional system prompt instructions)
     prompt_group = parser.add_argument_group('Prompt Options', 'Optional instructions to include in the translation prompt')
@@ -63,7 +70,7 @@ if __name__ == "__main__":
     tts_group.add_argument("--tts-bitrate", default=TTS_BITRATE, help="Audio bitrate for encoding, e.g. '64k', '96k' (default: %(default)s).")
     tts_group.add_argument("--tts-format", default=TTS_OUTPUT_FORMAT, choices=["opus", "mp3"], help="Audio output format (default: %(default)s).")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Auto-select default model based on provider if not explicitly set
     from src.config import NIM_MODEL, MISTRAL_MODEL, DEEPSEEK_MODEL, POE_MODEL, OPENROUTER_MODEL, GEMINI_MODEL, LITELLM_MODEL
@@ -82,6 +89,30 @@ if __name__ == "__main__":
             args.model = OPENROUTER_MODEL
         elif args.provider == "gemini" and GEMINI_MODEL:
             args.model = GEMINI_MODEL
+
+    prompt_options = {
+        'preserve_technical_content': True,
+        'text_cleanup': args.text_cleanup,
+        'refine': args.refine and not args.refine_only,
+        'strict_quality_assurance': True,
+    }
+    if args.target_locale:
+        prompt_options['target_locale'] = args.target_locale
+    cli_config = {
+        'llm_provider': args.provider, 'model': args.model,
+        'llm_api_endpoint': args.api_endpoint, 'prompt_options': prompt_options,
+        'refine_only': args.refine_only,
+    }
+    try:
+        configure_cli_pipeline(args, cli_config)
+    except ValueError as exc:
+        parser.error(str(exc))
+    args.provider = cli_config['llm_provider']
+    args.model = cli_config['model']
+    args.api_endpoint = cli_config['llm_api_endpoint']
+    credentials = {f'{provider}_api_key': getattr(args, f'{provider}_api_key') for provider in (
+        'gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe', 'nim',
+    )}
 
     # If no .env was found, surface the *effective* settings now (after argparse)
     # so the warning box shows the real CLI arguments rather than the import-time
@@ -106,8 +137,8 @@ if __name__ == "__main__":
         else:
             args.output = f"{base} ({args.target_lang}){output_ext}"
 
-    # Ensure output path is unique (add number suffix if file exists)
-    args.output = get_unique_output_path(args.output)
+    # The exclusive publication commit chooses a free name after validation.
+    args.output = str(Path(args.output).expanduser().absolute())
 
     # Determine file type
     if args.input.lower().endswith('.epub'):
@@ -153,7 +184,9 @@ if __name__ == "__main__":
             f"{args.target_lang}."
         )
 
-    if args.refine_only:
+    if args.preflight_only:
+        pass
+    elif args.refine_only:
         logger.info("Refine-Only Started", LogType.TRANSLATION_START, {
             'target_lang': args.target_lang,
             'file_type': file_type,
@@ -186,16 +219,6 @@ if __name__ == "__main__":
         if total > 0:
             logger.update_progress(completed, total)
 
-    # Build prompt_options from CLI arguments
-    # Technical content protection is now always enabled.
-    # In refine-only mode the refinement pass is implicit, so we force the
-    # `refine` flag off to avoid double-counting in the progress tracker.
-    prompt_options = {
-        'preserve_technical_content': True,
-        'text_cleanup': args.text_cleanup,
-        'refine': args.refine and not args.refine_only,
-    }
-
     # Load glossary file (JSON or CSV) into prompt_options
     if args.glossary:
         try:
@@ -212,17 +235,52 @@ if __name__ == "__main__":
             parser.error(f"Failed to load glossary {args.glossary}: {e}")
 
     start_time = time.time()
+    checkpoint_manager = None
+    translation_id = f"cli_{uuid.uuid4().hex[:12]}"
+    published = False
     try:
+        source = Path(args.input).expanduser().resolve()
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        if args.preflight_only:
+            import json
+            report = asyncio.run(check_cli_pipeline(cli_config, credentials))
+            print(json.dumps(report, indent=2))
+            return 0 if report['status'] == 'models_visible' else 2
         # Create checkpoint manager for resume capability
         checkpoint_manager = CheckpointManager()
-
-        # Generate unique translation ID
-        translation_id = f"cli_{uuid.uuid4().hex[:8]}"
+        desired = Path(args.output)
+        staged = create_staging_path(desired)
+        job_config = {
+            **cli_config,
+            'file_path': str(source),
+            'input_file_path': str(source),
+            'output_filepath': str(desired),
+            'output_file_path': str(staged),
+            'output_filename': desired.name,
+            'qa_staging_output': str(staged),
+            'source_language': args.target_lang if args.refine_only else args.source_lang,
+            'target_language': args.target_lang,
+            'model': args.model,
+            'model_name': args.model,
+            'llm_provider': args.provider,
+            'llm_api_endpoint': args.api_endpoint,
+            'refine_only': args.refine_only,
+            'prompt_options': prompt_options,
+            'quality_assurance': {'strict': True},
+        }
+        if not checkpoint_manager.start_job(
+            translation_id, get_file_type_from_path(str(source)), job_config, str(source)
+        ):
+            raise RuntimeError("Could not persist the CLI job before processing.")
+        source = Path(job_config['preserved_input_path'])
+        logger.info(f"Run ID: {translation_id}; private candidate: {staged}")
 
         if args.refine_only:
-            asyncio.run(refine_file(
-                input_filepath=args.input,
-                output_filepath=args.output,
+            success = asyncio.run(run_cli_operation(
+                refine_file, job_config, translation_id, credentials,
+                input_filepath=str(source),
+                output_filepath=str(staged),
                 target_language=args.target_lang,
                 model_name=args.model,
                 llm_provider=args.provider,
@@ -241,14 +299,11 @@ if __name__ == "__main__":
                 nim_api_key=args.nim_api_key,
                 prompt_options=prompt_options,
             ))
-            logger.info("Refine-Only Completed Successfully", LogType.TRANSLATION_END, {
-                'output_file': args.output,
-                'mode': 'refine-only',
-            })
         else:
-            asyncio.run(translate_file(
-                input_filepath=args.input,
-                output_filepath=args.output,
+            success = asyncio.run(run_cli_operation(
+                translate_file, job_config, translation_id, credentials,
+                input_filepath=str(source),
+                output_filepath=str(staged),
                 source_language=args.source_lang,
                 target_language=args.target_lang,
                 model_name=args.model,
@@ -269,9 +324,25 @@ if __name__ == "__main__":
                 prompt_options=prompt_options
             ))
 
-            logger.info("Translation Completed Successfully", LogType.TRANSLATION_END, {
-                'output_file': args.output
+        exit_code = finalize_cli_run(
+            checkpoint_manager, translation_id, job_config, source, staged, desired,
+            processing_success=success, report_root="data/quality_runs",
+        )
+        if exit_code:
+            logger.error("Publication blocked; candidate and checkpoint retained.", LogType.ERROR_DETAIL)
+            notify(EVENT_FAILURE, {
+                'file': args.input, 'run_id': translation_id,
+                'output': str(staged), 'error': 'Publication blocked by processing or quality checks',
+                'duration_seconds': time.time() - start_time,
+                'provider': args.provider, 'model': args.model,
             })
+            return exit_code
+        published = True
+        args.output = checkpoint_manager.get_job(translation_id)['config']['output_filepath']
+        logger.info(
+            "Refine-Only Completed Successfully" if args.refine_only else "Translation Completed Successfully",
+            LogType.TRANSLATION_END, {'output_file': args.output},
+        )
 
         notify(EVENT_SUCCESS, {
             'file': args.input,
@@ -286,7 +357,7 @@ if __name__ == "__main__":
 
         # TTS Generation (if enabled)
         if args.tts:
-            logger.info("Starting TTS Generation", LogType.INFO, {
+            logger.info("Starting TTS Generation", LogType.GENERAL, {
                 'voice': args.tts_voice or 'auto',
                 'rate': args.tts_rate,
                 'format': args.tts_format
@@ -304,15 +375,23 @@ if __name__ == "__main__":
             ))
 
             if success:
-                logger.info("TTS Generation Completed", LogType.INFO, {
+                logger.info("TTS Generation Completed", LogType.GENERAL, {
                     'audio_file': audio_path
                 })
             else:
                 logger.error(f"TTS generation failed: {message}", LogType.ERROR_DETAIL, {
                     'details': message
                 })
+                return 1
+        return 0
+
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        record_cli_failure(checkpoint_manager, translation_id, interrupted=True, published=published)
+        logger.warning("Interrupted; checkpoint and private candidate retained.")
+        return 130
 
     except Exception as e:
+        record_cli_failure(checkpoint_manager, translation_id, published=published)
         logger.error(f"Translation failed: {str(e)}", LogType.ERROR_DETAIL, {
             'details': str(e),
             'input_file': args.input
@@ -326,3 +405,11 @@ if __name__ == "__main__":
             'model': args.model,
             'error': str(e),
         })
+        return 1
+    finally:
+        if checkpoint_manager is not None:
+            checkpoint_manager.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

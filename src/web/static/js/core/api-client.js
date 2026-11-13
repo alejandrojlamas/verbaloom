@@ -119,6 +119,14 @@ export const ApiClient = {
         return await apiRequest('/api/providers/deepseek/availability');
     },
 
+    getPipelineCatalog() { return apiRequest('/api/pipeline/catalog', { signal: AbortSignal.timeout(15000) }); },
+    configurePipeline(data) {
+        return apiRequest('/api/pipeline/configure', { method: 'POST', body: JSON.stringify(data), signal: AbortSignal.timeout(15000) });
+    },
+    preflightPipeline(data) {
+        return apiRequest('/api/pipeline/preflight', { method: 'POST', body: JSON.stringify(data), signal: AbortSignal.timeout(45000) });
+    },
+
     // ========================================
     // Book Editorial Profiles
     // ========================================
@@ -257,7 +265,8 @@ export const ApiClient = {
     async startTranslation(config) {
         return await apiRequest('/api/translate', {
             method: 'POST',
-            body: JSON.stringify(config)
+            body: JSON.stringify(config),
+            signal: AbortSignal.timeout(45000)
         });
     },
 
@@ -267,7 +276,7 @@ export const ApiClient = {
      * @returns {Promise<Object>} Translation status
      */
     async getTranslationStatus(translationId) {
-        return await apiRequest(`/api/translation/${translationId}`);
+        return await apiRequest(`/api/translation/${translationId}`, { signal: AbortSignal.timeout(15000) });
     },
 
     /**
@@ -285,7 +294,8 @@ export const ApiClient = {
      */
     async interruptTranslation(translationId) {
         return await apiRequest(`/api/translation/${translationId}/interrupt`, {
-            method: 'POST'
+            method: 'POST',
+            signal: AbortSignal.timeout(15000)
         });
     },
 

@@ -1,0 +1,13 @@
+.pipeline-settings { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--ds-border); }
+.pipeline-settings h3 { font-size: 1.05rem; margin: 0 0 1rem; }
+.pipeline-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; margin: .75rem 0; }
+.pipeline-fields label { display: flex; flex-direction: column; gap: .4rem; min-width: 0; font-size: .85rem; }
+.pipeline-fields .form-control { width: 100%; min-width: 0; }
+.pipeline-roles { border-block: 1px solid var(--ds-border); margin: 1rem 0; padding: .8rem 0; }
+.pipeline-roles summary { cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; }
+.pipeline-role { border: 0; border-bottom: 1px solid var(--ds-border); padding: .6rem 0; margin: 0 0 .6rem; min-width: 0; }
+.pipeline-role legend { font-weight: 600; font-size: .9rem; padding: .5rem 0; }
+.pipeline-budget-toggle { display: flex; align-items: center; gap: .6rem; min-height: 44px; }
+#pipelineStatus { color: var(--ds-text-muted); margin: .65rem 0 1rem; font-size: .85rem; overflow-wrap: anywhere; }
+.pipeline-settings [hidden] { display: none !important; }
+@media (max-width: 600px) { .pipeline-fields { grid-template-columns: minmax(0, 1fr); } }

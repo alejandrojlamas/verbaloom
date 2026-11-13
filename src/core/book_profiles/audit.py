@@ -7,6 +7,7 @@ token-free precheck and report primitives that make profile isolation auditable.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional
@@ -163,6 +164,13 @@ def build_profile_audit_prompt(
 Profile-specific score dimensions to include in the JSON scores object:
 {", ".join(score_fields)}
 
+Each score must be a number from 0 to 10. Include every requested dimension.
+overall_decision must be pass, warn, or fail. issues must be an array of objects
+with type, severity (low/medium/high), reason, source_excerpt, candidate_excerpt,
+and suggested_fix strings. Locate each issue with source or candidate evidence.
+Use an empty issues array when no changes are needed. glossary_suggestions must
+be an array of objects and summary a short string. Do not omit these fields.
+
 Return only valid JSON wrapped in {PROFILE_AUDIT_TAG_IN} and {PROFILE_AUDIT_TAG_OUT}.
 Do not include markdown or commentary outside the tags.
 """
@@ -184,14 +192,56 @@ Do not include markdown or commentary outside the tags.
     return system.strip(), user.strip()
 
 
-def parse_profile_audit_response(text: str) -> Optional[dict[str, Any]]:
+def validate_profile_audit_payload(
+    payload: Mapping[str, Any], *, score_fields: tuple[str, ...] = SCORE_FIELDS,
+) -> None:
+    """Validate remote judgments before permissive report normalization."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("Profile audit must be an object")
+    scores = payload.get("scores")
+    if not isinstance(scores, Mapping) or any(
+        type(scores.get(key)) not in (int, float)
+        or not math.isfinite(scores[key]) or not 0 <= scores[key] <= 10
+        for key in score_fields
+    ):
+        raise ValueError("Profile audit requires all finite dimension scores")
+    if payload.get("overall_decision") not in ("pass", "warn", "fail"):
+        raise ValueError("Invalid profile audit decision")
+    issues = payload.get("issues")
+    if not isinstance(issues, list):
+        raise ValueError("Profile audit issues must be an array")
+    for issue in issues:
+        if not isinstance(issue, Mapping) or any(
+            not isinstance(issue.get(key), str)
+            for key in ("type", "severity", "reason", "source_excerpt", "candidate_excerpt", "suggested_fix")
+        ) or issue["severity"] not in ("low", "medium", "high"):
+            raise ValueError("Invalid structured profile issue")
+        if not issue["reason"].strip() or not (
+            issue["source_excerpt"].strip() or issue["candidate_excerpt"].strip()
+        ):
+            raise ValueError("Profile issue requires localized evidence")
+    suggestions = payload.get("glossary_suggestions")
+    if not isinstance(suggestions, list) or any(not isinstance(item, Mapping) for item in suggestions):
+        raise ValueError("Invalid profile glossary suggestions")
+    if not isinstance(payload.get("summary"), str):
+        raise ValueError("Profile audit requires a summary string")
+
+
+def parse_profile_audit_response(
+    text: str, *, score_fields: tuple[str, ...] = SCORE_FIELDS,
+) -> Optional[dict[str, Any]]:
     if not text:
         return None
     payload = (
         extract_tagged_payload(text, PROFILE_AUDIT_TAG_IN, PROFILE_AUDIT_TAG_OUT)
         or text
     )
-    return loads_first_json_object(payload)
+    parsed = loads_first_json_object(payload)
+    try:
+        validate_profile_audit_payload(parsed, score_fields=score_fields)
+    except ValueError:
+        return None
+    return parsed
 
 
 def profile_audit_result_from_payload(

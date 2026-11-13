@@ -4,14 +4,19 @@ import pytest
 
 from src.core.epub import xhtml_translator
 from src.core.epub.exceptions import ChunkTranslationFailedError
-from src.core.epub.unit_contract import ensure_unit_records, mark_audited, mark_reviewed, text_sha256
+from src.core.epub.unit_contract import (
+    ensure_unit_records,
+    mark_audited,
+    mark_reviewed,
+    text_sha256,
+)
 from src.core.epub.xhtml_translator import (
     _audit_epub_chunks,
     _refine_epub_chunks,
     _repair_audited_candidate,
 )
 from src.core.llm.base import LLMResponse
-from src.core.llm.exceptions import ContentRiskError
+from src.core.llm.exceptions import ContentRiskError, ProviderActionRequiredError
 
 
 class AuditClient:
@@ -156,7 +161,8 @@ async def test_full_stage_audit_preserves_table_context(monkeypatch):
 async def test_full_stage_audit_blocks_empty_or_malformed_judge_response():
     chunks, candidate = _chunks()
 
-    with pytest.raises(ChunkTranslationFailedError, match="structured verdict"):
+    checkpoints = []
+    with pytest.raises(ProviderActionRequiredError) as caught:
         await _audit_epub_chunks(
             [candidate],
             chunks,
@@ -166,9 +172,14 @@ async def test_full_stage_audit_blocks_empty_or_malformed_judge_response():
             llm_client=AuditClient("truncated {"),
             placeholder_format=("[id", "]"),
             prompt_options={"audit_entire_book": True},
+            checkpoint_callback=lambda *args: checkpoints.append(args),
         )
 
+    assert caught.value.reason == "audit_invalid_response"
     assert chunks[0]["unit"]["audit_status"] == "FAILED"
+    assert chunks[0]["unit"]["review_status"] == "COMPLETED"
+    assert checkpoints[-1][1] == candidate
+    assert checkpoints[-1][2]["status"] == "review_required"
 
 
 @pytest.mark.asyncio
@@ -226,30 +237,27 @@ async def test_full_stage_audit_blocks_semantic_rejection():
 
 
 @pytest.mark.asyncio
-async def test_full_stage_audit_uses_local_checks_when_provider_filters_clean_passage():
+async def test_full_stage_audit_never_substitutes_local_approval_after_refusal():
     chunks, candidate = _chunks()
     client = ContentRiskAuditClient()
 
-    result = await _audit_epub_chunks(
-        [candidate],
-        chunks,
-        source_language="German",
-        target_language="Spanish",
-        model_name="deepseek-v4-pro",
-        llm_client=client,
-        placeholder_format=("[id", "]"),
-        prompt_options={"audit_entire_book": True},
-    )
+    checkpoints = []
+    with pytest.raises(ProviderActionRequiredError) as caught:
+        await _audit_epub_chunks(
+            [candidate], chunks, source_language="German", target_language="Spanish",
+            model_name="deepseek-v4-pro", llm_client=client,
+            placeholder_format=("[id", "]"), prompt_options={"audit_entire_book": True},
+            checkpoint_callback=lambda *args: checkpoints.append(args),
+        )
 
     record = chunks[0]["unit"]
-    assert result == [candidate]
+    assert caught.value.reason == "provider_refusal"
     assert client.calls == 1
-    assert record["audit_status"] == "COMPLETED"
-    assert record["status"] == "AUDITED"
-    assert any(
-        issue["code"] == "fidelity_auditor_content_filter"
-        for issue in record["audit"]["issues"]
-    )
+    assert record["audit_status"] == "FAILED"
+    assert record["review_status"] == "COMPLETED"
+    assert record["translation_hash"] == text_sha256(candidate)
+    assert checkpoints[-1][1] == candidate
+    assert checkpoints[-1][2] == {"status": "review_required", "reason": "provider_refusal"}
 
 
 @pytest.mark.asyncio
@@ -259,7 +267,7 @@ async def test_full_stage_audit_does_not_hide_local_fidelity_failure_behind_filt
     mark_reviewed(chunks[0]["unit"], untranslated, review={"status": "pass"})
     client = ContentRiskAuditClient()
 
-    with pytest.raises(ChunkTranslationFailedError, match="publication is blocked"):
+    with pytest.raises(ProviderActionRequiredError) as caught:
         await _audit_epub_chunks(
             [untranslated],
             chunks,
@@ -275,6 +283,7 @@ async def test_full_stage_audit_does_not_hide_local_fidelity_failure_behind_filt
         )
 
     assert client.calls == 1
+    assert caught.value.reason == "provider_refusal"
     assert chunks[0]["unit"]["audit_status"] == "FAILED"
 
 
@@ -328,7 +337,10 @@ async def test_full_stage_audit_repairs_only_rejected_unit_then_reaudits(monkeyp
     assert client.calls == 2
     assert chunks[0]["unit"]["audit_status"] == "COMPLETED"
     assert chunks[0]["unit"]["audit_attempts"] == 2
-    assert [item[2]["status"] for item in checkpoints] == ["repaired", "audited"]
+    assert [item[2]["status"] for item in checkpoints] == [
+        "audit_pending", "judged", "repair_pending", "candidate_saved",
+        "audit_pending", "judged", "repaired", "audited",
+    ]
 
 
 @pytest.mark.asyncio
@@ -365,9 +377,8 @@ async def test_full_stage_audit_adjudicates_false_positive_before_rewriting(monk
 
 
 @pytest.mark.asyncio
-async def test_rejected_audit_repair_persists_exact_resumable_candidate(monkeypatch):
+async def test_rejected_audit_repair_preserves_reviewed_candidate_without_blind_fallback(monkeypatch):
     chunks, candidate = _chunks()
-    repaired = "El caminante contempló el mar y recordó su infancia."
     client = SequenceAuditClient(
         _assessment("fail", 0.97),
         _assessment("fail", 0.98),
@@ -376,7 +387,7 @@ async def test_rejected_audit_repair_persists_exact_resumable_candidate(monkeypa
     checkpoints = []
 
     async def fake_repair(**_kwargs):
-        return repaired
+        pytest.fail("An unavailable local repair must not trigger a full retranslation")
 
     async def unavailable_local_repair(**_kwargs):
         return None
@@ -409,12 +420,12 @@ async def test_rejected_audit_repair_persists_exact_resumable_candidate(monkeypa
         )
 
     record = chunks[0]["unit"]
-    assert record["translation"] == repaired
-    assert record["translation_hash"] == text_sha256(repaired)
+    assert record["translation"] == candidate
+    assert record["translation_hash"] == text_sha256(candidate)
     assert record["translation_status"] == "COMPLETED"
-    assert record["review_status"] == "PENDING"
+    assert record["review_status"] == "COMPLETED"
     assert record["audit_status"] == "FAILED"
-    assert checkpoints[-1][1] == repaired
+    assert checkpoints[-1][1] == candidate
 
 
 @pytest.mark.asyncio

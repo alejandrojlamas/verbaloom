@@ -95,9 +95,14 @@ class PdfAdapter(FormatAdapter):
         text_chunks: List[str] = []
         separator = "-" * 40
 
+        if len(self.translated_chunks) != len(self.chunks) or any(
+            not text or not text.strip() for text in self.translated_chunks
+        ):
+            raise ValueError("Cannot reconstruct PDF text with untranslated units")
+
         for i, translated_chunk in enumerate(self.translated_chunks):
             original = self.chunks[i]["main_content"].strip()
-            translated = translated_chunk.strip() if translated_chunk else original
+            translated = translated_chunk.strip()
             if bilingual:
                 text_chunks.append(f"{original}\n\n{translated}\n\n{separator}")
             else:
@@ -115,7 +120,7 @@ class PdfAdapter(FormatAdapter):
                 if chunk_data.get("status") != "completed":
                     continue
                 metadata = chunk_data.get("chunk_data", {})
-                chunk_index = metadata.get("chunk_index")
+                chunk_index = chunk_data.get("chunk_index", metadata.get("chunk_index"))
                 translated_text = chunk_data.get("translated_text")
                 if chunk_index is not None and translated_text is not None:
                     if 0 <= chunk_index < len(self.translated_chunks):

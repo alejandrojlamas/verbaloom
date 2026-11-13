@@ -160,6 +160,42 @@ def test_startup_never_revives_a_manual_pause(tmp_path):
     assert report.skipped["job-1"] == "manual pause requested"
 
 
+def test_startup_never_dispatches_without_durable_reservation(tmp_path):
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"book")
+    checkpoint = _checkpoint(source)
+    manager = _CheckpointManager({"job-1": checkpoint}, ["job-1"])
+    manager.update_job_config = lambda *_args: False
+    state = _StateManager(manager, [{"translation_id": "job-1"}])
+    starts = []
+
+    report, _ = restore_jobs_after_restart(state, lambda *args: starts.append(args))
+
+    assert starts == []
+    assert report.skipped["job-1"] == "could not persist recovery reservation"
+    assert state.states["job-1"]["status"] == "paused"
+    assert manager.statuses == {}
+
+
+def test_startup_budget_exhaustion_keeps_a_visible_durable_reason(tmp_path):
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"book")
+    checkpoint = _checkpoint(source)
+    checkpoint["job"]["config"].update({
+        "max_automatic_recoveries": 2, "_worker_exception_recovery_cycle": 2,
+    })
+    manager = _CheckpointManager({"job-1": checkpoint}, ["job-1"])
+    state = _StateManager(manager, [{"translation_id": "job-1"}])
+    starts = []
+
+    report, _ = restore_jobs_after_restart(state, lambda *args: starts.append(args))
+
+    assert starts == []
+    assert report.skipped["job-1"] == "automatic_recovery_budget_exhausted"
+    assert state.states["job-1"]["pause_reason"] == "automatic_recovery_budget_exhausted"
+    assert manager.config_updates["job-1"]["_automatic_recovery_stop"]["budget"] == {"used": 2, "limit": 2}
+
+
 def test_startup_requires_preserved_source(tmp_path):
     missing = tmp_path / "missing.epub"
     checkpoint = _checkpoint(missing)

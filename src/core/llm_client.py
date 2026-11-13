@@ -130,8 +130,9 @@ class LLMClient:
         Returns:
             Extracted translation or None if failed
         """
-        response = await self.make_request(prompt, model=model)
-        if response is None:
+        response = await await_llm_call(self.make_request, prompt, model=model,
+                                        provider=self, role="translate")
+        if response is None or response.was_truncated or response.status != "completed":
             return None
         return self.extract_translation(response.content)
     

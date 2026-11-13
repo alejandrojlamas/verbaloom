@@ -799,6 +799,24 @@ def _nav_type(node: etree._Element) -> str:
     return str(node.get(_qname(EPUB_NS, "type")) or node.get("epub:type") or "")
 
 
+def build_cover_landmarks(
+    *, href: str, cover_page_href: str, language_code: str,
+) -> etree._Element:
+    """One deterministic subtree, shared with source-aware publication validation."""
+    landmarks = etree.Element(_qname(XHTML_NS, "nav"))
+    landmarks.set(_qname(EPUB_NS, "type"), "landmarks")
+    landmarks.set("hidden", "hidden")
+    heading = etree.SubElement(landmarks, _qname(XHTML_NS, "h2"))
+    heading.text = "Guía" if language_code == "es" else "Guide"
+    ordered = etree.SubElement(landmarks, _qname(XHTML_NS, "ol"))
+    item = etree.SubElement(ordered, _qname(XHTML_NS, "li"))
+    link = etree.SubElement(item, _qname(XHTML_NS, "a"))
+    link.set(_qname(EPUB_NS, "type"), "cover")
+    link.set("href", _relative_target(href, cover_page_href))
+    link.text = "Portada" if language_code == "es" else "Cover"
+    return landmarks
+
+
 def _write_navigation(
     path: Path,
     *,
@@ -848,17 +866,9 @@ def _write_navigation(
         None,
     )
     if landmarks is None and cover_page_href:
-        landmarks = etree.SubElement(body, _qname(XHTML_NS, "nav"))
-        landmarks.set(_qname(EPUB_NS, "type"), "landmarks")
-        landmarks.set("hidden", "hidden")
-        landmarks_heading = etree.SubElement(landmarks, _qname(XHTML_NS, "h2"))
-        landmarks_heading.text = "Guía" if language_code == "es" else "Guide"
-        landmarks_list = etree.SubElement(landmarks, _qname(XHTML_NS, "ol"))
-        landmark = etree.SubElement(landmarks_list, _qname(XHTML_NS, "li"))
-        link = etree.SubElement(landmark, _qname(XHTML_NS, "a"))
-        link.set(_qname(EPUB_NS, "type"), "cover")
-        link.set("href", _relative_target(href, cover_page_href))
-        link.text = "Portada" if language_code == "es" else "Cover"
+        body.append(build_cover_landmarks(
+            href=href, cover_page_href=cover_page_href, language_code=language_code,
+        ))
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(

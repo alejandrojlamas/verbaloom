@@ -75,6 +75,7 @@ async def await_llm_call(
     provider: Any,
     request_timeout: int | float | None = None,
     deadline: int | float | None = None,
+    role: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Execute an async LLM call within one total wall-clock budget.
@@ -102,8 +103,11 @@ async def await_llm_call(
         request_timeout=request_budget,
         deadline=deadline,
     )
-    return await asyncio.wait_for(
-        call(*args, **filtered),
-        timeout=total_budget,
-    )
+    from src.core.pipeline_runtime import request_role
+    token = request_role.set(role) if role else None
+    try:
+        return await asyncio.wait_for(call(*args, **filtered), timeout=total_budget)
+    finally:
+        if token is not None:
+            request_role.reset(token)
 

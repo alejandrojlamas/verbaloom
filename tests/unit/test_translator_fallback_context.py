@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 from src.core.translator import _make_llm_request_with_adaptive_context
 from src.core.llm.base import LLMResponse
-from src.core.llm.exceptions import ContentRiskError
+from src.core.llm.exceptions import ContentRiskError, ProviderActionRequiredError
 
 
 class TestTranslatorFallbackContext:
@@ -200,7 +200,8 @@ class TestTranslatorFallbackContext:
         assert context_manager.increase_context.called
 
     @pytest.mark.asyncio
-    async def test_content_filter_retries_as_smaller_semantic_units(self):
+    @pytest.mark.parametrize("length", [1, 40])
+    async def test_content_filter_stops_without_splitting_or_target_only_rewrite(self, length):
         source = (
             "The traveler crossed the silent city before dawn and carefully recorded every "
             "street, conversation, landmark, and event that occurred during the difficult "
@@ -211,98 +212,25 @@ class TestTranslatorFallbackContext:
             "He finished the report in the same order in which the events had happened and "
             "sent the complete account to his companions."
         )
-        first_translation = (
-            "El viajero cruzó la ciudad silenciosa antes del amanecer y registró con cuidado "
-            "cada calle, conversación, punto de referencia y suceso ocurrido durante el difícil "
-            "trayecto. No omitió nada de su relato, porque cada detalle sería importante para "
-            "quienes esperaban noticias en casa."
-        )
-        second_translation = (
-            "Más tarde esa mañana, el viajero llegó al puerto y describió los barcos, a los "
-            "trabajadores, el clima y la larga fila de familias que esperaban junto al mar. "
-            "Terminó el informe en el mismo orden en que habían ocurrido los hechos y envió el "
-            "relato completo a sus compañeros."
-        )
+        source *= length
+        refusal = ContentRiskError("Content Exists Risk", provider="deepseek")
         client = Mock()
         client.generate = AsyncMock(side_effect=[
-            ContentRiskError("Content Exists Risk", provider="deepseek"),
-            LLMResponse(content=f"<TRANSLATION>{first_translation}</TRANSLATION>"),
-            LLMResponse(content=f"<TRANSLATION>{second_translation}</TRANSLATION>"),
+            refusal,
+            LLMResponse(content="Must not be requested after refusal"),
         ])
-        client.extract_translation = Mock(
-            side_effect=lambda text: text.split("<TRANSLATION>", 1)[1].split("</TRANSLATION>", 1)[0]
-        )
         events = []
-
-        translated, actual_content, _response = await _make_llm_request_with_adaptive_context(
-            main_content=source,
-            context_before="",
-            context_after="",
-            previous_translation_context="",
-            source_language="English",
-            target_language="Spanish",
-            model="deepseek-v4-pro",
-            llm_client=client,
-            log_callback=lambda event, message, **_kwargs: events.append((event, message)),
-            has_placeholders=False,
-            prompt_options={},
-        )
-
-        assert actual_content == source
-        assert translated == f"{first_translation}\n{second_translation}"
-        assert client.generate.await_count == 3
-        assert any(event == "content_risk_split_retry" for event, _message in events)
-
-    @pytest.mark.asyncio
-    async def test_content_filter_microfragments_are_reassembled_in_target_language(self):
-        source = (
-            "The traveler crossed the silent city before dawn and carefully recorded every "
-            "street, conversation, landmark, and event that occurred during the difficult "
-            "journey. Nothing was omitted from his account, because each detail would matter "
-            "to the people waiting for news at home.\n\n"
-            "Later that morning, the traveler reached the harbor and described the ships, "
-            "the workers, the weather, and the long line of families waiting beside the sea. "
-            "He finished the report in the same order in which the events had happened and "
-            "sent the complete account to his companions."
-        )
-        micro_translation = (
-            "El viajero cruzó la ciudad antes del amanecer y registró cuidadosamente cada "
-            "calle y cada conversación."
-        )
-        remaining_translation = (
-            "No omitió ningún detalle de su relato, porque todo sería importante para quienes "
-            "esperaban noticias en casa. Más tarde llegó al puerto y describió los barcos, a "
-            "los trabajadores, el clima y a las familias junto al mar. Terminó el informe en "
-            "el mismo orden de los hechos y envió el relato completo a sus compañeros."
-        )
-        stitched = f"{micro_translation} {remaining_translation}"
-        client = Mock()
-        client.generate = AsyncMock(side_effect=[
-            ContentRiskError("Content Exists Risk", provider="deepseek"),
-            ContentRiskError("Content Exists Risk", provider="deepseek"),
-            LLMResponse(content=f"<TRANSLATION>{micro_translation}</TRANSLATION>"),
-            LLMResponse(content=f"<TRANSLATION>{remaining_translation}</TRANSLATION>"),
-            LLMResponse(content=f"<TRANSLATION>{stitched}</TRANSLATION>"),
-        ])
-        client.extract_translation = Mock(
-            side_effect=lambda text: text.split("<TRANSLATION>", 1)[1].split("</TRANSLATION>", 1)[0]
-        )
-        events = []
-
-        translated, _actual_content, _response = await _make_llm_request_with_adaptive_context(
-            main_content=source,
-            context_before="",
-            context_after="",
-            previous_translation_context="",
-            source_language="English",
-            target_language="Spanish",
-            model="deepseek-v4-pro",
-            llm_client=client,
-            log_callback=lambda event, message, **_kwargs: events.append((event, message)),
-            has_placeholders=False,
-            prompt_options={},
-        )
-
-        assert translated == stitched
-        assert client.generate.await_count == 5
-        assert any(event == "content_risk_stitch_accepted" for event, _message in events)
+        with pytest.raises(ProviderActionRequiredError) as caught:
+            await _make_llm_request_with_adaptive_context(
+                main_content=source,
+                context_before="", context_after="", previous_translation_context="",
+                source_language="English", target_language="Spanish",
+                model="deepseek-v4-pro", llm_client=client,
+                log_callback=lambda event, message, **_kwargs: events.append((event, message)),
+                has_placeholders=False, prompt_options={},
+            )
+        assert caught.value is refusal
+        assert caught.value.retryable is False
+        assert caught.value.reason == "provider_refusal"
+        assert client.generate.await_count == 1
+        assert not any("split" in event or "stitch" in event for event, _ in events)

@@ -6,11 +6,13 @@ import hashlib
 import json
 import os
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, BinaryIO, Iterable, Mapping
 
 QA_SCHEMA_VERSION = 1
 QA_PIPELINE_VERSION = "universal-book-qa-v1"
@@ -453,6 +455,17 @@ def document_id_for_path(path: str | Path) -> str:
 
 
 def atomic_write_text(path: str | Path, text: str) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"))
+
+
+def atomic_write_bytes(path: str | Path, content: bytes) -> None:
+    with atomic_binary_writer(path) as stream:
+        stream.write(content)
+
+
+@contextmanager
+def atomic_binary_writer(path: str | Path) -> Iterator[BinaryIO]:
+    """Stream large artifacts without exposing an incomplete replacement."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -462,8 +475,8 @@ def atomic_write_text(path: str | Path, text: str) -> None:
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(text)
+        with os.fdopen(descriptor, "wb") as stream:
+            yield stream
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(destination)

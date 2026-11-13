@@ -105,6 +105,7 @@ async def suggest_terms(
         llm_provider.generate,
         prompt.user,
         provider=llm_provider,
+        role="profile_prepare",
         system_prompt=prompt.system,
     )
     if response is None:

@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 
 from src.utils.branding import env_value
 
-
 # A configurable endpoint is not automatically trusted just because it was
 # loaded at startup. Otherwise changing OPENAI_API_ENDPOINT in ``.env`` and
 # restarting would silently turn an arbitrary host into a credential sink.
@@ -126,3 +125,36 @@ def sanitize_restored_endpoint_credentials(
         config[f"{provider}_api_key"] = ""
         sources[provider] = "none"
         config["_credential_sources"] = sources
+
+
+def resolve_pipeline_credentials(config, supplied, *, primary_role="translate", roles=None):
+    """Resolve each role's own key atomically; generic keys only bind to the primary role.
+
+    Role configurations only allow built-in official endpoints. Do not reuse a
+    primary provider's generic key for a different provider in a hybrid pipeline.
+    """
+    from src.core.pipeline_config import ROLES, validate_pipeline
+
+    pipeline = validate_pipeline(config["pipeline"])
+    selected_roles = ROLES if roles is None else roles
+    primary = pipeline["roles"][primary_role]["provider"]
+    keys = {}
+    sources = dict(config.get("_credential_sources") or {})
+    for provider in {pipeline["roles"][role]["provider"] for role in selected_roles}:
+        field = f"{provider}_api_key"
+        raw = supplied.get(field)
+        if not raw and provider == primary:
+            raw = supplied.get("api_key")
+        source = "explicit"
+        if not raw:
+            raw = config.get(field)
+            source = sources.get(provider, "saved")
+        if not raw or raw == "__USE_ENV__":
+            raw = os.getenv(f"{provider.upper()}_API_KEY", "")
+            source = "environment"
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError(f"Missing {provider} credentials for pipeline roles")
+        keys[field] = raw.strip()
+        sources[provider] = source
+    config.update(keys)
+    config["_credential_sources"] = sources

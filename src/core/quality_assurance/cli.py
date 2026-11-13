@@ -6,9 +6,9 @@ import argparse
 import asyncio
 import json
 import os
-import shutil
 import sys
 import uuid
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -26,13 +26,16 @@ from src.config import (
     OPENROUTER_API_KEY,
     POE_API_KEY,
 )
-from src.core.adapters import translate_file
+from src.core.adapters import refine_file, translate_file
+from src.core.pipeline_cli import add_pipeline_arguments, check_cli_pipeline, configure_cli_pipeline, run_cli_operation
 from src.persistence.checkpoint_manager import CheckpointManager
+from src.persistence.execution_lock import ExecutionLockedError
 from src.utils.file_utils import get_unique_output_path
 
 from .config import QualityAssuranceConfig, config_from_job
 from .extractors import inspect_source
 from .runner import run_quality_assurance
+from .publication import artifact_sha256, require_sha256
 
 COMMANDS = {"inspect", "translate", "resume", "validate", "repair", "export", "report"}
 
@@ -89,7 +92,7 @@ def _add_translation_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output", default="")
     parser.add_argument("--source-language", default=DEFAULT_SOURCE_LANGUAGE)
     parser.add_argument("--target-language", default=DEFAULT_TARGET_LANGUAGE)
-    parser.add_argument("--target-locale", default="es-MX")
+    parser.add_argument("--target-locale", default="")
     parser.add_argument("--provider", default=LLM_PROVIDER)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--api-endpoint", default=API_ENDPOINT)
@@ -97,12 +100,12 @@ def _add_translation_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--reviewer-model", default="")
     parser.add_argument("--auditor-model", default="")
     parser.add_argument("--concurrency", type=int, default=1)
-    parser.add_argument("--max-cost", type=float, default=None)
     parser.add_argument("--glossary", default="")
     parser.add_argument("--strict", action="store_true", default=True)
     parser.add_argument("--allow-warnings", action="store_true", default=False)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--run-id", default="")
+    add_pipeline_arguments(parser)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -122,13 +125,46 @@ def main(argv: list[str] | None = None) -> int:
             return _export(args)
         if args.command == "report":
             return _report(args)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         print("Translation interrupted; checkpoint preserved.", file=sys.stderr)
         return 130
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     return 1
+
+
+def record_cli_failure(manager, run_id, *, interrupted=False, published=False):
+    """Keep explicit stop reasons and approved delivery states intact."""
+    if manager is None or published:
+        return
+    job = manager.get_job(run_id) or {}
+    if job.get("status") in {"running", "processing", "validating", "completed"}:
+        if interrupted:
+            manager.mark_interrupted(run_id)
+        else:
+            manager.mark_error(run_id)
+
+
+@contextmanager
+def _managed_cli_job(run_id, *, resume=False):
+    manager = CheckpointManager()
+    try:
+        if not resume and manager.get_job(run_id):
+            raise RuntimeError(f"Run ID already exists: {run_id}")
+        try:
+            yield manager
+        except ExecutionLockedError:
+            # A refused second worker must not change the current owner's state.
+            raise
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            record_cli_failure(manager, run_id, interrupted=True)
+            raise
+        except Exception:
+            record_cli_failure(manager, run_id)
+            raise
+    finally:
+        manager.close()
 
 
 def _inspect(args: argparse.Namespace) -> int:
@@ -156,10 +192,11 @@ async def _translate(args: argparse.Namespace) -> int:
         raise FileNotFoundError(source)
     run_id = args.run_id or f"run_{uuid.uuid4().hex[:12]}"
     run_root = Path(args.report_root).expanduser().resolve() / _safe_run_id(run_id)
-    staged = run_root / "staging" / _default_output_name(source, args.target_locale)
+    output_locale = args.target_locale or args.target_language
+    staged = run_root / "staging" / _default_output_name(source, output_locale)
     staged.parent.mkdir(parents=True, exist_ok=True)
     desired = Path(args.output).expanduser() if args.output else source.with_name(
-        _default_output_name(source, args.target_locale)
+        _default_output_name(source, output_locale)
     )
     desired = Path(get_unique_output_path(str(desired.resolve())))
     prompt_options: dict[str, Any] = {
@@ -195,7 +232,6 @@ async def _translate(args: argparse.Namespace) -> int:
         "llm_api_endpoint": args.api_endpoint,
         "prompt_options": prompt_options,
         "concurrency": max(1, args.concurrency),
-        "max_cost": args.max_cost,
         "quality_assurance": {
             "strict": True,
             "validation": {"allow_warnings": bool(args.allow_warnings)},
@@ -206,78 +242,83 @@ async def _translate(args: argparse.Namespace) -> int:
             },
         },
     }
-    manager = CheckpointManager()
-    if not manager.start_job(run_id, _file_type(source), job_config, str(source)):
-        raise RuntimeError(f"Run ID already exists: {run_id}")
-    if args.dry_run:
-        manifest = inspect_source(
+    configure_cli_pipeline(args, job_config)
+    if args.preflight_only:
+        report = await check_cli_pipeline(job_config, _credential_arguments())
+        print(json.dumps(report, indent=2))
+        return 0 if report["status"] == "models_visible" else 2
+    with _managed_cli_job(run_id) as manager:
+        if not manager.start_job(run_id, _file_type(source), job_config, str(source)):
+            raise RuntimeError(f"Run ID already exists: {run_id}")
+        if args.dry_run:
+            manifest = inspect_source(
+                source,
+                source_language=args.source_language,
+                target_language=args.target_language,
+                run_id=run_id,
+            )
+            manifest.write_json(run_root / "translation_manifest.json")
+            print(json.dumps({"run_id": run_id, "dry_run": True, "counts": manifest.counts()}, indent=2))
+            return 0
+        success = await _invoke_translation(manager, run_id, job_config, source, staged, resume_from=0)
+        return finalize_cli_run(
+            manager,
+            run_id,
+            job_config,
             source,
-            source_language=args.source_language,
-            target_language=args.target_language,
-            run_id=run_id,
+            staged,
+            desired,
+            processing_success=success,
+            report_root=args.report_root,
         )
-        manifest.write_json(run_root / "translation_manifest.json")
-        print(json.dumps({"run_id": run_id, "dry_run": True, "counts": manifest.counts()}, indent=2))
-        return 0
-    success = await _invoke_translation(manager, run_id, job_config, source, staged, resume_from=0)
-    return _finalize_cli_run(
-        manager,
-        run_id,
-        job_config,
-        source,
-        staged,
-        desired,
-        processing_success=success,
-        report_root=args.report_root,
-    )
 
 
 async def _resume(args: argparse.Namespace, *, repair: bool) -> int:
-    manager = CheckpointManager()
-    checkpoint = manager.load_checkpoint(args.run_id)
-    if not checkpoint:
-        raise RuntimeError(f"No checkpoint found for run {args.run_id}")
-    job_config = dict(checkpoint["job"]["config"])
-    source = Path(
-        job_config.get("preserved_input_path")
-        or job_config.get("file_path")
-        or ""
-    )
-    if not source.exists():
-        raise FileNotFoundError("The preserved source file is unavailable.")
-    staged_value = str(job_config.get("qa_staging_output") or "").strip()
-    if staged_value:
-        staged = Path(staged_value)
-    else:
-        staged = Path(args.report_root) / _safe_run_id(args.run_id) / "staging" / _default_output_name(
-            source, job_config.get("target_locale") or job_config.get("target_language") or "target"
+    with _managed_cli_job(args.run_id, resume=True) as manager:
+        checkpoint = manager.load_checkpoint(args.run_id)
+        if not checkpoint:
+            raise RuntimeError(f"No checkpoint found for run {args.run_id}")
+        job_config = dict(checkpoint["job"]["config"])
+        source = Path(
+            job_config.get("preserved_input_path")
+            or job_config.get("file_path")
+            or ""
         )
-        job_config["qa_staging_output"] = str(staged)
-    desired = Path(args.output or job_config.get("output_filepath") or job_config.get("output_filename") or staged.name)
-    if repair:
-        options = job_config.setdefault("prompt_options", {})
-        options["quality_repair_mode"] = True
-        options["fidelity_supervisor_mode"] = "always"
-    manager.mark_running(args.run_id)
-    manager.update_job_config(args.run_id, job_config)
-    success = await _invoke_translation(
-        manager,
-        args.run_id,
-        job_config,
-        source,
-        staged,
-        resume_from=int(checkpoint.get("resume_from_index") or 0),
-    )
-    return _finalize_cli_run(
-        manager,
-        args.run_id,
-        job_config,
-        source,
-        staged,
-        desired,
-        processing_success=success,
-        report_root=args.report_root,
-    )
+        if not source.is_file():
+            raise FileNotFoundError("The preserved source file is unavailable.")
+        staged_value = str(job_config.get("qa_staging_output") or "").strip()
+        if staged_value:
+            staged = Path(staged_value)
+        else:
+            staged = Path(args.report_root) / _safe_run_id(args.run_id) / "staging" / _default_output_name(
+                source, job_config.get("target_locale") or job_config.get("target_language") or "target"
+            )
+            job_config["qa_staging_output"] = str(staged)
+        desired = Path(args.output or job_config.get("output_filepath") or job_config.get("output_filename") or staged.name)
+        if repair:
+            options = job_config.setdefault("prompt_options", {})
+            options["quality_repair_mode"] = True
+            options["fidelity_supervisor_mode"] = "always"
+        manager.mark_running(args.run_id)
+        manager.update_job_config(args.run_id, job_config)
+        success = await _invoke_translation(
+            manager,
+            args.run_id,
+            job_config,
+            source,
+            staged,
+            resume_from=int(checkpoint.get("resume_from_index") or 0),
+        )
+        return finalize_cli_run(
+            manager,
+            args.run_id,
+            job_config,
+            source,
+            staged,
+            desired,
+            processing_success=success,
+            report_root=args.report_root,
+        )
 
 
 async def _invoke_translation(
@@ -290,10 +331,17 @@ async def _invoke_translation(
     resume_from: int,
 ) -> bool:
     staged.parent.mkdir(parents=True, exist_ok=True)
-    return await translate_file(
+    operation = refine_file if config.get("refine_only") else translate_file
+    language_options = {} if config.get("refine_only") else {
+        "source_language": config.get("source_language") or "auto"
+    }
+    execution_options = {} if config.get("refine_only") else {
+        "concurrency": config.get("concurrency", 1)
+    }
+    return await run_cli_operation(
+        operation, config, run_id, _credential_arguments(),
         input_filepath=str(source),
         output_filepath=str(staged),
-        source_language=config.get("source_language") or "auto",
         target_language=config.get("target_language") or "",
         model_name=config.get("model") or DEFAULT_MODEL,
         llm_provider=config.get("llm_provider") or LLM_PROVIDER,
@@ -309,11 +357,21 @@ async def _invoke_translation(
         poe_api_key=POE_API_KEY,
         nim_api_key=NIM_API_KEY,
         prompt_options=config.get("prompt_options") or {},
-        concurrency=config.get("concurrency", 1),
+        **language_options,
+        **execution_options,
     )
 
 
-def _finalize_cli_run(
+def _credential_arguments():
+    return {
+        "gemini_api_key": GEMINI_API_KEY, "openai_api_key": OPENAI_API_KEY,
+        "openrouter_api_key": OPENROUTER_API_KEY, "mistral_api_key": MISTRAL_API_KEY,
+        "deepseek_api_key": DEEPSEEK_API_KEY, "poe_api_key": POE_API_KEY,
+        "nim_api_key": NIM_API_KEY,
+    }
+
+
+def finalize_cli_run(
     manager: CheckpointManager,
     run_id: str,
     job_config: dict[str, Any],
@@ -324,10 +382,23 @@ def _finalize_cli_run(
     processing_success: bool,
     report_root: str,
 ) -> int:
-    if not staged.exists():
-        manager.mark_partial(run_id)
+    def mark_incomplete():
+        job = manager.get_job(run_id) or {}
+        if job.get("status") in {"running", "processing", "validating", "completed", "partial"}:
+            manager.mark_partial(run_id)
+
+    if not staged.is_file():
+        mark_incomplete()
         raise RuntimeError("Translation produced no staged artifact.")
     checkpoint = manager.load_checkpoint(run_id)
+    job = (checkpoint or {}).get("job") or {}
+    if job.get("status") not in {"running", "processing", "validating", "completed", "partial"}:
+        print(json.dumps({
+            "run_id": run_id, "status": "BLOCKED", "job_status": job.get("status"),
+            "staged_artifact": str(staged), "processing_success": processing_success,
+        }, ensure_ascii=False, indent=2))
+        return 2
+    job_config = {**job_config, **dict((checkpoint or {}).get("job", {}).get("config") or {})}
     quality = run_quality_assurance(
         source_path=source,
         output_path=staged,
@@ -342,8 +413,10 @@ def _finalize_cli_run(
     maximum = job_config.get("max_cost")
     estimated_cost = float(quality.report.model_usage.get("estimated_cost_usd") or 0.0)
     cost_exceeded = maximum is not None and estimated_cost > float(maximum)
-    if not processing_success or not quality.publishable or cost_exceeded:
-        manager.mark_partial(run_id)
+    job = manager.get_job(run_id) or {}
+    stopped = job.get("status") not in {"running", "processing", "validating", "completed", "partial"}
+    if not processing_success or not quality.publishable or cost_exceeded or stopped:
+        mark_incomplete()
         print(json.dumps({
             "run_id": run_id,
             "status": "BLOCKED",
@@ -353,10 +426,11 @@ def _finalize_cli_run(
             "report": str(quality.paths.report_html),
             "staged_artifact": str(staged),
             "max_cost_exceeded": cost_exceeded,
+            "job_status": job.get("status"),
         }, ensure_ascii=False, indent=2))
         return 2
 
-    published = _atomic_publish(staged, desired)
+    published = _atomic_publish(staged, desired, expected_sha256=quality.validated_output_sha256)
     quality.update_output_path(published)
     job_config["output_filepath"] = str(published)
     job_config["quality_assurance_result"] = {
@@ -415,20 +489,39 @@ def _export(args: argparse.Namespace) -> int:
     if not report_path.exists():
         raise FileNotFoundError(report_path)
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    if not report.get("publishable"):
+    if report.get("publishable") is not True:
         raise RuntimeError("The run is not publishable; repair and validate it first.")
-    manager = CheckpointManager()
-    job = manager.get_job(args.run_id) or {}
-    config = dict(job.get("config") or {})
-    staged_value = str(config.get("qa_staging_output") or report.get("output", {}).get("path") or "").strip()
-    if not staged_value:
-        raise FileNotFoundError("The validated staged artifact is unavailable.")
-    staged = Path(staged_value)
-    if not staged.exists():
-        raise FileNotFoundError("The validated staged artifact is unavailable.")
-    desired = Path(args.output or config.get("output_filepath") or staged.name)
-    published = _atomic_publish(staged, desired)
-    print(str(published))
+    proof_path = root / "export_report.json"
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+    artifacts = dict(proof.get("validation_artifacts") or {})
+    if any(
+        item.get("run_id") != args.run_id or item.get("publishable") is not True
+        or item.get("status") not in {"PASSED", "PASSED_WITH_WARNINGS"}
+        for item in (report, proof)
+    ) or any((
+        artifacts != report.get("validation_artifacts"),
+        proof.get("output_sha256") != artifacts.get("output_sha256"),
+        proof.get("status") != report.get("status"),
+        not proof.get("generated_at"),
+        proof.get("generated_at") != report.get("generated_at"),
+    )):
+        raise RuntimeError("The publication reports do not match an approved run; validate again.")
+    expected = require_sha256(artifacts.get("output_sha256"))
+    source_hash = require_sha256(artifacts.get("source_sha256"))
+    if artifact_sha256(report.get("source", {}).get("path") or "") != source_hash:
+        raise RuntimeError("The source no longer matches its validation; validate again.")
+    with closing(CheckpointManager()) as manager:
+        job = manager.get_job(args.run_id) or {}
+        config = dict(job.get("config") or {})
+        if job and (job.get("status") != "completed" or not manager._quality_assurance_passed(config)):
+            raise RuntimeError("The job has not completed publication; resume it before exporting.")
+        staged_value = str(config.get("qa_staging_output") or report.get("output", {}).get("path") or "").strip()
+        if not staged_value or not Path(staged_value).is_file():
+            raise FileNotFoundError("The validated staged artifact is unavailable.")
+        staged = Path(staged_value)
+        desired = Path(args.output or config.get("output_filepath") or staged.name)
+        published = _atomic_publish(staged, desired, expected_sha256=expected)
+        print(str(published))
     return 0
 
 
@@ -448,13 +541,10 @@ def _report(args: argparse.Namespace) -> int:
     return 0
 
 
-def _atomic_publish(source: Path, destination: Path) -> Path:
-    destination = Path(get_unique_output_path(str(destination.expanduser().resolve()))) if destination.exists() else destination.expanduser().resolve()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(f".{destination.name}.publishing")
-    shutil.copy2(source, temporary)
-    temporary.replace(destination)
-    return destination
+def _atomic_publish(source: Path, destination: Path, *, expected_sha256: str | None = None) -> Path:
+    from .publication import atomic_publish
+
+    return atomic_publish(source, destination, expected_sha256=expected_sha256)
 
 
 def _default_output_name(source: Path, target_locale: str) -> str:

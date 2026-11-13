@@ -13,7 +13,7 @@ This module provides a simplified approach to EPUB translation that:
 Translation flow with multi-phase fallback:
 1. Phase 1: Normal translation (with retry attempts)
 2. Phase 2: Token alignment fallback (translate without placeholders, then reinsert)
-3. Phase 3: Return untranslated text if all phases fail
+3. Phase 3: Record explicit failure; never publish untranslated source as a fallback
 
 Placeholder Indexing Architecture:
 ===================================
@@ -40,6 +40,9 @@ import re
 from collections import Counter
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from lxml import etree
+from src.core.llm.exceptions import ProviderActionRequiredError, RateLimitError
+from src.core.pipeline_runtime import active_pipeline
+from src.core.review_strategy import bind_runtime_strategy, needs_final_unit_audit, skip_universal_refinement
 
 from .body_serializer import extract_body_html, replace_body_content
 from .html_chunker import HtmlChunker
@@ -69,6 +72,7 @@ from .unit_contract import (
     mark_translated,
     prompt_versions as epub_prompt_versions,
     stage_fingerprints as build_epub_stage_fingerprints,
+    with_profile_dependency,
     text_sha256,
     validate_publishable_units,
 )
@@ -990,6 +994,7 @@ async def attempt_placeholder_correction(
                 llm_client.make_request,
                 prompt_pair.user,
                 provider=llm_client,
+                role="structure_repair",
                 system_prompt=prompt_pair.system,
             )
 
@@ -1603,6 +1608,8 @@ async def translate_chunk_with_fallback(
                 _log_error(log_callback, "phase2_validation_failed", "✗ Phase 2 validation failed")
 
         except Exception as e:
+            if isinstance(e, RateLimitError):
+                raise
             _log_error(log_callback, "phase2_error", f"✗ Phase 2 error: {str(e)}")
 
     # ==========================================================================
@@ -2490,6 +2497,7 @@ async def _refine_epub_chunks(
                 prompt_pair.user,
                 model_name,
                 provider=llm_client,
+                role="refine",
                 system_prompt=prompt_pair.system,
             )
             execution_time = time.time() - start_time
@@ -2993,6 +3001,8 @@ async def _repair_audited_candidate(
     prompt_options: Optional[Dict],
     placeholder_format: Tuple[str, str],
     log_callback: Optional[Callable] = None,
+    patch_callback: Optional[Callable] = None,
+    saved_patch: Optional[Dict] = None,
 ) -> Optional[str]:
     """Repair only audited defects in an otherwise usable EPUB candidate.
 
@@ -3001,6 +3011,7 @@ async def _repair_audited_candidate(
     rest of the EPUB assembly pipeline.
     """
     options = dict(prompt_options or {})
+    localized = options.get("fidelity_repair_policy") == "localized_v1" or saved_patch is not None
     glossary_block = build_profile_glossary_block(
         source_text,
         options,
@@ -3113,43 +3124,137 @@ Return only the complete repaired candidate between {TRANSLATE_TAG_IN} and
 Repair only the objective defects supported by SOURCE, then return the complete
 candidate with every placeholder preserved."""
 
+    patch_contract = None
+    if localized:
+        from src.core.localized_repair import (
+            InvalidRepairPatch, apply_repair_patch, build_repair_contract,
+            findings_from_assessment, repair_patch_instructions,
+        )
+
+        try:
+            patch_contract = build_repair_contract(
+                source_text, candidate_for_repair,
+                unit_id=str((chunk.get("unit") or {}).get("unit_id") or ""),
+                findings=findings_from_assessment(decision.to_dict()),
+                protected_tokens=list((chunk.get("local_tag_map") or {}).keys()),
+                context={
+                    "source_language": source_language, "target_language": target_language,
+                    "approved_glossary": glossary_block,
+                    "document_context": str(options.get("_document_block_context") or ""),
+                    "stage_fingerprints": (chunk.get("unit") or {}).get("stage_fingerprints") or {},
+                    "profile_content_hash": options.get("_profile_content_hash") or "",
+                },
+            )
+        except InvalidRepairPatch as exc:
+            if log_callback:
+                log_callback("epub_repair_patch_unavailable", str(exc))
+            return None
+        system_prompt = system_prompt[:system_prompt.index("Return only the complete repaired candidate")]
+        system_prompt += repair_patch_instructions()
+        user_prompt = "# REPAIR CONTRACT\n" + json.dumps(patch_contract, ensure_ascii=False)
+
     if log_callback:
         log_callback(
             "epub_audit_local_repair_start",
-            "Applying issue-local fidelity repair before considering a full retranslation",
+            "Applying issue-local fidelity repair to the current candidate",
         )
-    response = await _generate_alert_repair(
-        llm_client,
-        user_prompt,
-        system_prompt,
-        primary_model=model_name,
-        alert_model=repair_model,
-        phase="repair",
-    )
+    if saved_patch is not None:
+        from src.core.llm.base import LLMResponse
+
+        if patch_contract is None or saved_patch.get("contract") != patch_contract:
+            raise ProviderActionRequiredError(
+                "Saved repair response does not match the current contract.",
+                reason="repair_checkpoint_invalid", provider=getattr(llm_client, "provider_type", ""),
+            )
+        response = LLMResponse(content=saved_patch["raw_response"], **saved_patch["response_state"])
+    else:
+        response = await _generate_alert_repair(
+            llm_client,
+            user_prompt,
+            system_prompt,
+            primary_model=model_name,
+            alert_model=repair_model,
+            phase="repair",
+        )
     if not response:
         return None
 
-    extractor = getattr(llm_client, "extract_translation", None)
-    repaired_local = extractor(response.content) if callable(extractor) else None
-    if not repaired_local:
-        repaired_local = TranslationExtractor(
-            TRANSLATE_TAG_IN,
-            TRANSLATE_TAG_OUT,
-        ).extract(response.content)
-    repaired_local = clean_text_artifacts(str(repaired_local or "")).strip()
-    if not repaired_local:
+    patch_result = None
+    patch_error = ""
+    if patch_contract is not None:
+        complete = (
+            not getattr(response, "was_truncated", False)
+            and not getattr(response, "refusal", "")
+            and getattr(response, "status", "completed") == "completed"
+            and getattr(response, "finish_reason", "") not in {"length", "max_tokens", "content_filter"}
+        )
+        if complete:
+            try:
+                patch_result = apply_repair_patch(
+                    patch_contract, response.content, source_text=source_text,
+                    candidate_text=candidate_for_repair, unit_id=patch_contract["unit_id"],
+                )
+            except InvalidRepairPatch as exc:
+                patch_error = str(exc)
+        else:
+            patch_error = "incomplete_or_refused_response"
+        if patch_callback and saved_patch is None:
+            patch_callback({
+                "contract": patch_contract,
+                "raw_response": response.content,
+                "response_state": {
+                    "status": getattr(response, "status", "completed"),
+                    "was_truncated": getattr(response, "was_truncated", False),
+                    "refusal": getattr(response, "refusal", None),
+                    "finish_reason": getattr(response, "finish_reason", ""),
+                    "request_id": getattr(response, "request_id", None),
+                },
+                "valid": patch_result is not None, "error": patch_error,
+                "edits": patch_result.edits if patch_result else [],
+                "candidate_sha256": patch_result.candidate_sha256 if patch_result else None,
+                "deterministic_base_sha256": text_sha256(candidate_for_repair),
+            })
+
+    if (getattr(response, "refusal", "") or getattr(response, "status", "") == "refused"
+            or getattr(response, "finish_reason", "") == "content_filter"):
+        raise ProviderActionRequiredError(
+            "The provider refused the fidelity repair; the candidate was preserved.",
+            reason="provider_refusal", provider=getattr(llm_client, "provider_type", ""),
+            response=response,
+        )
+    if (getattr(response, "was_truncated", False)
+            or getattr(response, "status", "completed") != "completed"
+            or getattr(response, "finish_reason", "") in {"length", "max_tokens"}):
         return None
 
-    repaired_local = apply_profile_glossary_corrections(
-        repaired_local,
-        options,
-        source_text=source_text,
-    )
-    repaired_local, _ = _strip_audited_duplicate_domain_labels(
-        source_text,
-        repaired_local,
-        decision,
-    )
+    if patch_contract is not None:
+        if patch_result is None:
+            if log_callback:
+                log_callback("epub_repair_patch_rejected", patch_error)
+            return None
+        # No global cleanup or glossary rewrite may change untouched spans.
+        repaired_local = patch_result.text
+    else:
+        extractor = getattr(llm_client, "extract_translation", None)
+        repaired_local = extractor(response.content) if callable(extractor) else None
+        if not repaired_local:
+            repaired_local = TranslationExtractor(
+                TRANSLATE_TAG_IN,
+                TRANSLATE_TAG_OUT,
+            ).extract(response.content)
+        repaired_local = clean_text_artifacts(str(repaired_local or "")).strip()
+        if not repaired_local:
+            return None
+        repaired_local = apply_profile_glossary_corrections(
+            repaired_local,
+            options,
+            source_text=source_text,
+        )
+        repaired_local, _ = _strip_audited_duplicate_domain_labels(
+            source_text,
+            repaired_local,
+            decision,
+        )
     if not validate_placeholders(
         repaired_local,
         dict(chunk.get("local_tag_map") or {}),
@@ -3182,9 +3287,9 @@ candidate with every placeholder preserved."""
         if log_callback:
             log_callback(
                 "epub_audit_local_repair_unchanged",
-                "Issue-local repair returned the same candidate; using the independent fallback",
+                "Issue-local repair returned the same candidate; stopping without a rewrite",
             )
-        return None
+        return PlaceholderManager.restore_to_global(candidate_text, list(chunk.get("global_indices") or []))
     repaired_global = PlaceholderManager.restore_to_global(
         repaired_local,
         list(chunk.get("global_indices") or []),
@@ -3195,6 +3300,325 @@ candidate with every placeholder preserved."""
             "Issue-local fidelity repair produced a structurally valid target-language candidate",
         )
     return repaired_global
+
+
+async def _audit_epub_unit(
+    idx, candidate_chunks, chunk, *, source_language, target_language, model_name,
+    llm_client, placeholder_format, options, require_full_audit,
+    log_callback, check_interruption_callback, checkpoint_callback,
+):
+    """Resume the existing unit contract with a durable candidate/decision journal."""
+    from copy import deepcopy
+    from .audit_repair import bounded_count, contract_hash, new_candidate, repair_limit, strictly_better
+    from src.core.fidelity_supervisor import FidelityDecision
+
+    record = chunk.get("unit")
+    if not isinstance(record, dict):
+        raise ChunkTranslationFailedError("Audit unit record is missing.", chunk_index=idx,
+                                          reason="audit_unit_record_missing")
+    source_text = str(chunk.get("text") or "")
+    expected_hash = text_sha256(candidate_chunks[idx])
+    indices = list(chunk.get("global_indices") or [])
+    local_tag_map = dict(chunk.get("local_tag_map") or {})
+    audit_options = dict(options)
+    context = _structure_recovery_document_context(
+        local_tag_map, source_text, str(record.get("source_document") or ""),
+    )
+    if context:
+        audit_options["_document_block_context"] = context
+    source_semantic = _semantic_text_from_placeholder_stream(source_text, local_tag_map)
+    repair_rounds = repair_limit(options)
+
+    def dependency_hash():
+        return contract_hash(
+            record, chunk, audit_options, source_language=source_language,
+            target_language=target_language, model_name=model_name,
+            provider=getattr(llm_client, "provider_type", ""),
+            placeholder_format=placeholder_format,
+        )
+
+    contract = dependency_hash()
+
+    def check_version():
+        if (chunk.get("unit") is not record or str(chunk.get("text") or "") != source_text
+                or record.get("source_hash") != text_sha256(source_text)
+                or record.get("translation_hash") != expected_hash
+                or text_sha256(candidate_chunks[idx]) != expected_hash
+                or dependency_hash() != contract):
+            raise ChunkTranslationFailedError(
+                "Audit candidate or dependencies changed; stale result was not applied.",
+                chunk_index=idx, reason="audit_version_conflict",
+            )
+
+    check_version()
+    journal = record.get("audit_repair")
+    same_contract = isinstance(journal, dict) and journal.get("contract") == contract
+    migration = record.get("cache_identity_migration") or {}
+    if (not same_contract and isinstance(journal, dict)
+            and not migration.get("invalidated")
+            and migration.get("to") == record.get("stage_fingerprints")
+            and migration.get("from")):
+        prior_record = {**record, "stage_fingerprints": migration["from"]}
+        prior_contract = contract_hash(
+            prior_record, chunk, audit_options, source_language=source_language,
+            target_language=target_language, model_name=model_name,
+            provider=getattr(llm_client, "provider_type", ""),
+            placeholder_format=placeholder_format,
+        )
+        if journal.get("contract") == prior_contract:
+            journal.setdefault("contract_migrations", []).append({
+                "from": prior_contract, "to": contract, "reason": migration.get("reason"),
+            })
+            journal["contract"] = contract
+            same_contract = True
+    # New journals must verify the saved decision checksum even when the unit
+    # status says COMPLETED. Legacy approvals have no decision envelope to read.
+    if record.get("audit_status") == "COMPLETED" and journal is None:
+        if checkpoint_callback:
+            checkpoint_callback(idx, candidate_chunks[idx], {"status": "cached"})
+        return candidate_chunks[idx]
+    if not same_contract or journal.get("selected_hash") != expected_hash:
+        if journal:
+            record.setdefault("audit_repair_history", []).append(deepcopy(journal))
+        journal = {
+            "version": 1, "contract": contract, "selected": 0, "selected_hash": expected_hash,
+            "pending": 0, "candidates": [new_candidate(candidate_chunks[idx], origin="reviewed")],
+            "stop_reason": "",
+        }
+        record["audit_repair"] = journal
+
+    def save(status, **metadata):
+        check_version()
+        if checkpoint_callback:
+            checkpoint_callback(idx, candidate_chunks[idx], {"status": status, **metadata})
+
+    def fail(reason, *, stop=False):
+        if stop:
+            journal["stop_reason"] = reason
+        mark_failed(record, "audit_rejected", stage="audit")
+        record["audit"]["detail"] = reason
+        save("failed", reason=reason)
+        raise ChunkTranslationFailedError(
+            f"Semantic audit rejected or could not approve this unit ({reason}); publication is blocked.",
+            chunk_index=idx, attempts=bounded_count(record.get("audit_attempts", 0)),
+            reason="audit_rejected",
+        )
+
+    def interrupted():
+        return bool(check_interruption_callback and check_interruption_callback())
+
+    def local_text(entry):
+        if entry.get("hash") != text_sha256(entry.get("text", "")):
+            fail("audit_checkpoint_invalid", stop=True)
+        return _global_to_local_placeholders(entry["text"], indices, placeholder_format)
+
+    def semantic(entry):
+        return _semantic_text_from_placeholder_stream(local_text(entry), local_tag_map)
+
+    def decision_hash(data):
+        return text_sha256(json.dumps(data, sort_keys=True, ensure_ascii=False))
+
+    def restore_decision(entry, phase):
+        envelope = entry["assessments"].get(phase)
+        if envelope is None:
+            return None
+        data = envelope.get("decision", {})
+        if (envelope.get("candidate_hash") != entry["hash"]
+                or envelope.get("checksum") != decision_hash(data)
+                or not isinstance(data.get("accepted"), bool)):
+            fail("audit_checkpoint_invalid", stop=True)
+        return FidelityDecision.from_dict(data)
+
+    def request_failed(exc):
+        check_version()
+        reason = getattr(exc, "reason", None) or f"audit_error:{type(exc).__name__}"
+        journal["last_error"] = reason
+        # An explicit refusal is not a new invitation to rewrite or split on resume.
+        if reason in {"provider_refusal", "repair_checkpoint_invalid"}:
+            journal["stop_reason"] = reason
+        mark_failed(record, reason, stage="audit")
+        save("review_required" if isinstance(exc, ProviderActionRequiredError) else "waiting",
+             reason=reason)
+        if isinstance(exc, RateLimitError):
+            raise exc
+        raise ChunkTranslationFailedError(
+            f"Semantic audit request failed: {type(exc).__name__}: {exc}",
+            chunk_index=idx, attempts=bounded_count(record.get("audit_attempts", 0)),
+            reason="audit_error",
+        ) from exc
+
+    async def judge(entry, phase, preceding=None):
+        restored = restore_decision(entry, phase)
+        if restored is not None:
+            return restored
+        calls = bounded_count(entry["audit_calls"].get(phase, 0))
+        total_limit = options.get("epub_audit_max_attempts", 3 * (repair_rounds + 2))
+        if isinstance(total_limit, bool) or not isinstance(total_limit, int) or total_limit < 0:
+            total_limit = 0
+        if (calls >= 3 or bounded_count(record.get("audit_attempts", 0)) >= total_limit):
+            fail("audit_attempts_exhausted", stop=True)
+        entry["audit_calls"][phase] = calls + 1
+        mark_attempt(record, "audit")
+        save("audit_pending", phase=phase, candidate_hash=entry["hash"])
+        request_options = dict(audit_options)
+        if preceding is not None:
+            request_options["_fidelity_adjudication_context"] = preceding.to_dict()
+            request_options["fidelity_supervisor_mode"] = "strict_full"
+        try:
+            decision, response = await supervise_fidelity(
+                source_semantic, semantic(entry), chunk_index=idx + 1,
+                phase=("final_epub_unit_adjudication" if phase == "adjudication"
+                       else "final_epub_unit_audit"),
+                section=str(record.get("source_document") or "EPUB"),
+                source_language=source_language, target_language=target_language,
+                primary_model=model_name, primary_provider=getattr(llm_client, "provider_type", ""),
+                client=llm_client, prompt_options=request_options, log_callback=log_callback,
+            )
+        except Exception as exc:
+            request_failed(exc)
+        check_version()
+        structural_only = not (source_semantic.strip() or semantic(entry).strip())
+        if require_full_audit and not structural_only and (response is None or not decision.judge_decision):
+            fail("audit_response_invalid")
+        data = decision.to_dict()
+        entry["assessments"][phase] = {
+            "candidate_hash": entry["hash"], "decision": data, "checksum": decision_hash(data),
+        }
+        journal.pop("last_error", None)
+        save("judged", phase=phase, candidate_hash=entry["hash"], accepted=decision.accepted)
+        return decision
+
+    async def evaluate(entry):
+        if not validate_placeholders(local_text(entry), local_tag_map):
+            fail("audit_structure_invalid", stop=True)
+        decision = await judge(entry, "audit")
+        if (entry["origin"] == "reviewed" and not decision.accepted
+                and options.get("fidelity_adjudicate_rejections") is not False
+                and any(issue.code == "fidelity_judge_reject" for issue in decision.rejections)):
+            if interrupted():
+                return None
+            decision = await judge(entry, "adjudication", decision)
+        return decision
+
+    if journal.get("stop_reason") == "provider_refusal":
+        raise ProviderActionRequiredError(
+            "Saved provider refusal requires review; the request was not repeated.",
+            reason="provider_refusal", provider=getattr(llm_client, "provider_type", ""),
+        )
+    if (journal.get("stop_reason") == "repair_attempts_exhausted"
+            and bounded_count(record.get("audit_repair_attempts", 0)) < repair_rounds):
+        journal["stop_reason"] = ""
+    if journal.get("stop_reason") == "audit_attempts_exhausted":
+        # Re-evaluate the saved counters against an explicitly larger allowance.
+        # judge() still enforces both per-phase and cumulative limits before I/O.
+        journal["stop_reason"] = ""
+    if journal.get("stop_reason"):
+        fail(journal["stop_reason"])
+    entries = journal["candidates"]
+    best = entries[journal["selected"]]
+    if best["hash"] != expected_hash:
+        fail("audit_checkpoint_invalid", stop=True)
+    best_decision = await evaluate(best)
+    if best_decision is None or interrupted():
+        return None
+
+    while True:
+        pending_index = journal.get("pending")
+        if pending_index is not None and pending_index != journal["selected"]:
+            pending = entries[pending_index]
+            decision = await evaluate(pending)
+            if decision is None or interrupted():
+                return None
+            journal["pending"] = None
+            if strictly_better(best_decision, decision):
+                base_hash = best["hash"]
+                best, best_decision = pending, decision
+                journal["selected"] = pending_index
+                expected_hash = journal["selected_hash"] = best["hash"]
+                candidate_chunks[idx] = best["text"]
+                review = dict(record.get("review") or {})
+                review["fidelity_repair_base_hash"] = base_hash
+                mark_reviewed(record, best["text"], review=review)
+                save("repaired", accepted=decision.accepted)
+            else:
+                fail("repair_no_improvement", stop=True)
+
+        if best_decision.accepted:
+            journal["pending"] = None
+            mark_audited(record, best["text"], review=record.get("review"),
+                         audit=best_decision.to_dict())
+            save("audited")
+            return best["text"]
+        if interrupted():
+            return None
+        attempts = bounded_count(record.get("audit_repair_attempts", 0))
+        saved_patch = next((
+            entry for entry in reversed(journal.get("localized_patches", []))
+            if not entry.get("processed") and entry.get("attempt") == attempts
+            and entry.get("selected_base_hash") == best["hash"]
+        ), None)
+        if saved_patch is not None:
+            payload = {k: v for k, v in saved_patch.items() if k not in {"checksum", "processed"}}
+            if saved_patch.get("checksum") != decision_hash(payload):
+                fail("repair_checkpoint_invalid", stop=True)
+        current_attempt = attempts if saved_patch is not None else attempts + 1
+        if saved_patch is None and attempts >= repair_rounds:
+            fail("repair_attempts_exhausted", stop=True)
+
+        repair_options = build_fidelity_retry_prompt_options(audit_options, best_decision)
+        repair_options["repair_until_pass"] = False
+        if saved_patch is None:
+            mark_attempt(record, "audit_repair")
+            save("repair_pending", round=current_attempt, base_hash=best["hash"])
+        if log_callback:
+            log_callback(
+                "epub_audit_repair_resume" if saved_patch else "epub_audit_repair_start",
+                f"{'Resuming saved repair for' if saved_patch else 'Repairing'} audit unit {idx + 1}",
+            )
+
+        def save_patch(evidence):
+            check_version()
+            envelope = {
+                "attempt": current_attempt, "selected_base_hash": best["hash"], **evidence,
+            }
+            envelope["checksum"] = decision_hash(envelope)
+            envelope["processed"] = False
+            journal.setdefault("localized_patches", []).append(envelope)
+            save("repair_patch_received", valid=evidence["valid"])
+
+        try:
+            repaired = await _repair_audited_candidate(
+                source_text=source_text, candidate_text=local_text(best), decision=best_decision,
+                chunk=chunk, source_language=source_language, target_language=target_language,
+                model_name=model_name, llm_client=llm_client, prompt_options=repair_options,
+                placeholder_format=placeholder_format, log_callback=log_callback,
+                patch_callback=save_patch,
+                saved_patch=saved_patch,
+            )
+        except Exception as exc:
+            request_failed(exc)
+        check_version()
+        if journal.get("localized_patches"):
+            latest_patch = journal["localized_patches"][-1]
+            if latest_patch.get("selected_base_hash") == best["hash"]:
+                latest_patch["processed"] = True
+        if not repaired:
+            journal.setdefault("repair_failures", []).append({
+                "attempt": current_attempt, "base_hash": best["hash"],
+                "reason": "repair_invalid_candidate",
+            })
+            save("repair_invalid", reason="repair_invalid_candidate")
+            continue
+        entry = new_candidate(repaired, origin="fidelity_repair", base_hash=best["hash"])
+        if any(prior["hash"] == entry["hash"] for prior in entries):
+            fail("repair_repeated_candidate", stop=True)
+        entries.append(entry)
+        journal["pending"] = len(entries) - 1
+        # Keep the selected reviewed text in the translation prefix. The paid
+        # candidate is separately durable before its next semantic request.
+        save("candidate_saved", candidate_hash=entry["hash"])
+        if interrupted():
+            return None
 
 
 async def _audit_epub_chunks(
@@ -3211,394 +3635,42 @@ async def _audit_epub_chunks(
     check_interruption_callback: Optional[Callable] = None,
     checkpoint_callback: Optional[Callable[[int, str, Dict[str, Any]], None]] = None,
 ) -> List[str]:
-    """Audit every reviewed candidate against its exact source unit.
-
-    Rejected units may be repaired source-first and re-audited when the job
-    enables bounded repair. A missing, malformed, or still-rejecting verdict
-    remains an explicit FAILED audit under the strict publication contract.
-    """
+    """Audit independent reviewed units, retaining all progress before blocking publication."""
+    if len(candidate_chunks) != len(chunks):
+        raise ChunkTranslationFailedError("Audit input does not cover every EPUB unit.",
+                                          reason="audit_coverage_incomplete")
     options = dict(prompt_options or {})
     require_full_audit = bool(
-        options.get("audit_entire_book")
-        or options.get("strict_stage_contract")
+        options.get("audit_entire_book") or options.get("strict_stage_contract")
         or options.get("permit_unaudited_segments") is False
+        or needs_final_unit_audit(options)
     )
     if require_full_audit:
         options["fidelity_supervisor"] = True
         options["fidelity_supervisor_mode"] = "strict_full"
         options.setdefault("fidelity_supervisor_model", model_name)
-
-    audited: List[str] = []
-    for idx, (candidate, chunk) in enumerate(zip(candidate_chunks, chunks)):
+    audited, failures = [], []
+    for idx, chunk in enumerate(chunks):
         if check_interruption_callback and check_interruption_callback():
-            if log_callback:
-                log_callback(
-                    "epub_audit_interrupted",
-                    f"Audit interrupted before chunk {idx + 1}/{len(candidate_chunks)}",
-                )
-            break
-
-        record = chunk.get("unit") if isinstance(chunk, dict) else None
-        if (
-            isinstance(record, dict)
-            and record.get("audit_status") == "COMPLETED"
-            and record.get("translation_hash") == text_sha256(candidate)
-        ):
-            audited.append(candidate)
-            if checkpoint_callback:
-                checkpoint_callback(idx, candidate, {"status": "cached"})
-            if log_callback:
-                log_callback(
-                    "epub_audit_checkpoint_reused",
-                    f"Audit checkpoint reused for chunk {idx + 1}/{len(candidate_chunks)}",
-                )
-            continue
-
-        if record is not None:
-            mark_attempt(record, "audit")
-        source_text = str(chunk.get("text") or "")
-        candidate_for_audit = _global_to_local_placeholders(
-            candidate,
-            list(chunk.get("global_indices") or []),
-            placeholder_format,
-        )
-        local_tag_map = dict(chunk.get("local_tag_map") or {})
-        audit_options = dict(options)
-        document_context = _structure_recovery_document_context(
-            local_tag_map,
-            source_text,
-            str((record or {}).get("source_document") or ""),
-        )
-        if document_context:
-            audit_options["_document_block_context"] = document_context
-        source_for_audit = _semantic_text_from_placeholder_stream(
-            source_text,
-            local_tag_map,
-        )
-        candidate_semantic = _semantic_text_from_placeholder_stream(
-            candidate_for_audit,
-            local_tag_map,
-        )
-        structural_only_unit = not (
-            source_for_audit.strip() or candidate_semantic.strip()
-        )
+            return audited
         try:
-            decision, response = await supervise_fidelity(
-                source_for_audit,
-                candidate_semantic,
-                chunk_index=idx + 1,
-                phase="final_epub_unit_audit",
-                section=str((record or {}).get("source_document") or "EPUB"),
-                source_language=source_language,
-                target_language=target_language,
-                primary_model=model_name,
-                primary_provider=getattr(llm_client, "provider_type", ""),
-                client=llm_client,
-                prompt_options=audit_options,
-                log_callback=log_callback,
+            candidate = await _audit_epub_unit(
+                idx, candidate_chunks, chunk, source_language=source_language,
+                target_language=target_language, model_name=model_name, llm_client=llm_client,
+                placeholder_format=placeholder_format, options=options,
+                require_full_audit=require_full_audit, log_callback=log_callback,
+                check_interruption_callback=check_interruption_callback,
+                checkpoint_callback=checkpoint_callback,
             )
-        except Exception as exc:
-            from src.core.llm.exceptions import RateLimitError as _RateLimitError
-            if isinstance(exc, _RateLimitError):
-                raise
-            if record is not None:
-                mark_failed(record, f"audit_error:{type(exc).__name__}", stage="audit")
-            if checkpoint_callback:
-                checkpoint_callback(
-                    idx,
-                    candidate,
-                    {"status": "failed", "reason": f"audit_error:{type(exc).__name__}"},
-                )
-            raise ChunkTranslationFailedError(
-                f"Semantic audit failed: {type(exc).__name__}: {exc}",
-                chunk_index=idx,
-                attempts=int((record or {}).get("audit_attempts") or 1),
-                reason="audit_error",
-            ) from exc
-
-        content_filter_local_fallback = bool(
-            decision.accepted
-            and options.get("content_filter_local_audit_fallback") is not False
-            and any(
-                issue.code == "fidelity_auditor_content_filter"
-                for issue in decision.issues
-            )
-        )
-        if (
-            require_full_audit
-            and (response is None or not decision.judge_decision)
-            and not structural_only_unit
-            and not content_filter_local_fallback
-        ):
-            if record is not None:
-                mark_failed(record, "audit_response_invalid", stage="audit")
-            if checkpoint_callback:
-                checkpoint_callback(idx, candidate, {"status": "failed", "reason": "audit_response_invalid"})
-            raise ChunkTranslationFailedError(
-                "Semantic audit returned no valid structured verdict; publication is blocked.",
-                chunk_index=idx,
-                attempts=int((record or {}).get("audit_attempts") or 1),
-                reason="audit_response_invalid",
-            )
-        if structural_only_unit and log_callback:
-            log_callback(
-                "epub_audit_structural_only",
-                f"Audit chunk {idx + 1}/{len(candidate_chunks)} contains no readable "
-                "prose; placeholder and DOM invariants passed without spending a "
-                "semantic-judge request.",
-            )
-        if content_filter_local_fallback and log_callback:
-            log_callback(
-                "epub_audit_content_filter_local_fallback",
-                f"Audit chunk {idx + 1}/{len(candidate_chunks)} passed deterministic "
-                "fidelity checks; remote judge was unavailable because of provider filtering.",
-            )
-
-        should_adjudicate = bool(
-            not decision.accepted
-            and options.get("fidelity_adjudicate_rejections") is not False
-            and any(issue.code == "fidelity_judge_reject" for issue in decision.rejections)
-        )
-        if should_adjudicate:
-            if log_callback:
-                log_callback(
-                    "epub_audit_adjudication_start",
-                    f"Adjudicating rejected audit chunk {idx + 1}/{len(candidate_chunks)} "
-                    "before spending tokens on a rewrite",
-                )
-            adjudication_options = dict(audit_options)
-            adjudication_options["_fidelity_adjudication_context"] = decision.to_dict()
-            adjudication_options["fidelity_supervisor_mode"] = "strict_full"
-            if record is not None:
-                mark_attempt(record, "audit")
-            try:
-                adjudicated_decision, adjudication_response = await supervise_fidelity(
-                    source_for_audit,
-                    candidate_semantic,
-                    chunk_index=idx + 1,
-                    phase="final_epub_unit_adjudication",
-                    section=str((record or {}).get("source_document") or "EPUB"),
-                    source_language=source_language,
-                    target_language=target_language,
-                    primary_model=model_name,
-                    primary_provider=getattr(llm_client, "provider_type", ""),
-                    client=llm_client,
-                    prompt_options=adjudication_options,
-                    log_callback=log_callback,
-                )
-                if adjudication_response is not None and adjudicated_decision.judge_decision:
-                    decision = adjudicated_decision
-                    response = adjudication_response
-            except Exception as adjudication_error:
-                from src.core.llm.exceptions import RateLimitError as _RateLimitError
-                if isinstance(adjudication_error, _RateLimitError):
-                    raise
-                if log_callback:
-                    log_callback(
-                        "epub_audit_adjudication_failed",
-                        f"Audit adjudication could not complete for chunk {idx + 1}: "
-                        f"{type(adjudication_error).__name__}: {adjudication_error}",
-                    )
-            if log_callback:
-                log_callback(
-                    "epub_audit_adjudication_result",
-                    f"Audit adjudication chunk {idx + 1}: "
-                    f"{'accepted' if decision.accepted else 'confirmed rejection'}",
-                )
-
-        repair_rounds = 0
-        if options.get("repair_until_pass") is not False:
-            try:
-                repair_rounds = max(0, int(options.get("max_repair_rounds") or 0))
-            except (TypeError, ValueError):
-                repair_rounds = 0
-            # EPUB publication is expensive to restart. Give genuine material
-            # audit failures two independent source-first repairs before
-            # pausing, without adding calls to clean chunks.
-            try:
-                repair_rounds = max(
-                    repair_rounds,
-                    int(options.get("epub_audit_repair_rounds") or 2),
-                )
-            except (TypeError, ValueError):
-                repair_rounds = max(repair_rounds, 2)
-
-        for repair_round in range(repair_rounds):
-            if decision.accepted:
-                break
-            if check_interruption_callback and check_interruption_callback():
-                break
-            if log_callback:
-                reasons = "; ".join(issue.code for issue in decision.rejections) or "semantic_audit"
-                log_callback(
-                    "epub_audit_repair_start",
-                    f"Repairing rejected audit chunk {idx + 1}/{len(candidate_chunks)} "
-                    f"(round {repair_round + 1}/{repair_rounds}: {reasons})",
-                )
-
-            repair_options = build_fidelity_retry_prompt_options(
-                audit_options,
-                decision,
-            )
-            repair_options["custom_instructions"] = (
-                str(repair_options.get("custom_instructions") or "").strip()
-                + "\n\n"
-                + (
-                    "Produce an independent source-first translation. Resolve only the "
-                    "audited fidelity defects and preserve every accepted fact and placeholder."
-                    if repair_round == 0
-                    else
-                    "Use a conservative clause-by-clause reconstruction from the source. "
-                    "Verify every omission, addition, fact, sensitive expression, and placeholder "
-                    "before returning the complete target-language passage."
-                )
-            ).strip()
-            repair_options["fidelity_supervisor_mode"] = "strict_full"
-            repair_options["repair_until_pass"] = False
-            repaired_candidate = None
-            if repair_round == 0:
-                try:
-                    repaired_candidate = await _repair_audited_candidate(
-                        source_text=source_text,
-                        candidate_text=_global_to_local_placeholders(
-                            candidate,
-                            list(chunk.get("global_indices") or []),
-                            placeholder_format,
-                        ),
-                        decision=decision,
-                        chunk=chunk,
-                        source_language=source_language,
-                        target_language=target_language,
-                        model_name=model_name,
-                        llm_client=llm_client,
-                        prompt_options=repair_options,
-                        placeholder_format=placeholder_format,
-                        log_callback=log_callback,
-                    )
-                except Exception as local_repair_error:
-                    from src.core.llm.exceptions import RateLimitError as _RateLimitError
-                    if isinstance(local_repair_error, _RateLimitError):
-                        raise
-                    if log_callback:
-                        log_callback(
-                            "epub_audit_local_repair_failed",
-                            "Issue-local fidelity repair could not complete; "
-                            f"using the independent source-first fallback "
-                            f"({type(local_repair_error).__name__}: {local_repair_error})",
-                        )
-
-            try:
-                if repaired_candidate is None:
-                    repair_stats = TranslationMetrics()
-                    repair_stats.total_chunks = 1
-                    repaired_candidate = await translate_chunk_with_fallback(
-                        chunk_text=source_text,
-                        local_tag_map=dict(chunk.get("local_tag_map") or {}),
-                        global_indices=list(chunk.get("global_indices") or []),
-                        source_language=source_language,
-                        target_language=target_language,
-                        model_name=model_name,
-                        llm_client=llm_client,
-                        stats=repair_stats,
-                        log_callback=log_callback,
-                        max_retries=max(1, int(options.get("audit_repair_translation_attempts") or 2)),
-                        context_manager=None,
-                        placeholder_format=placeholder_format,
-                        prompt_options=repair_options,
-                        runtime_state=None,
-                        chunk_index=idx + 1,
-                        section=str((record or {}).get("source_document") or "EPUB"),
-                        unit_record=None,
-                    )
-            except Exception as repair_error:
-                from src.core.llm.exceptions import RateLimitError as _RateLimitError
-                if isinstance(repair_error, _RateLimitError):
-                    raise
-                if log_callback:
-                    log_callback(
-                        "epub_audit_repair_failed",
-                        f"Audit repair failed for chunk {idx + 1}: "
-                        f"{type(repair_error).__name__}: {repair_error}",
-                    )
-                break
-
-            repaired_for_audit = _global_to_local_placeholders(
-                repaired_candidate,
-                list(chunk.get("global_indices") or []),
-                placeholder_format,
-            )
-            repaired_semantic = _semantic_text_from_placeholder_stream(
-                repaired_for_audit,
-                local_tag_map,
-            )
-            if record is not None:
-                mark_attempt(record, "audit")
-            decision, response = await supervise_fidelity(
-                source_for_audit,
-                repaired_semantic,
-                chunk_index=idx + 1,
-                phase="final_epub_unit_audit",
-                section=str((record or {}).get("source_document") or "EPUB"),
-                source_language=source_language,
-                target_language=target_language,
-                primary_model=model_name,
-                primary_provider=getattr(llm_client, "provider_type", ""),
-                client=llm_client,
-                prompt_options=audit_options,
-                log_callback=log_callback,
-            )
-            if require_full_audit and (response is None or not decision.judge_decision):
-                break
-            candidate = repaired_candidate
-            candidate_chunks[idx] = candidate
-            if checkpoint_callback:
-                checkpoint_callback(
-                    idx,
-                    candidate,
-                    {
-                        "status": "repaired",
-                        "round": repair_round + 1,
-                        "accepted": bool(decision.accepted),
-                    },
-                )
-            if log_callback:
-                log_callback(
-                    "epub_audit_repair_result",
-                    f"Audit repair chunk {idx + 1}: "
-                    f"{'accepted' if decision.accepted else 'still rejected'}",
-                )
-
-        if not decision.accepted:
-            if record is not None:
-                # A repair may have changed ``candidate`` after the last
-                # reviewed version. Persist the exact resumable candidate and
-                # invalidate its later stages before marking the audit failure;
-                # otherwise the next process start sees a hash mismatch and
-                # incorrectly discards the whole XHTML checkpoint.
-                if record.get("translation_hash") != text_sha256(candidate):
-                    mark_translated(record, candidate)
-                mark_failed(record, "audit_rejected", stage="audit")
-                record["audit"] = decision.to_dict()
-            if checkpoint_callback:
-                checkpoint_callback(idx, candidate, {"status": "failed", "reason": "audit_rejected"})
-            raise ChunkTranslationFailedError(
-                "Semantic audit rejected the candidate after its configured repair rounds; "
-                "publication is blocked.",
-                chunk_index=idx,
-                attempts=int((record or {}).get("audit_attempts") or 1),
-                reason="audit_rejected",
-            )
-
-        if record is not None:
-            mark_audited(
-                record,
-                candidate,
-                review=record.get("review") or {"status": "pass", "scope": "full_chunk"},
-                audit=decision.to_dict(),
-            )
-        audited.append(candidate)
-        if checkpoint_callback:
-            checkpoint_callback(idx, candidate, {"status": "audited"})
+            if candidate is None:
+                return audited
+            audited.append(candidate)
+        except ChunkTranslationFailedError as exc:
+            failures.append(exc)
+    if failures:
+        error = failures[0]
+        error.failed_unit_indices = [exc.chunk_index for exc in failures]
+        raise error
     return audited
 
 
@@ -3671,6 +3743,22 @@ async def translate_xhtml_simplified(
     if runtime_state is None:
         runtime_state = {}
 
+    pipeline = active_pipeline.get()
+    if pipeline is not None:
+        prompt_options = bind_runtime_strategy(prompt_options, file_type="epub")
+    if pipeline is not None or (prompt_options or {}).get('_pipeline_roles'):
+        prompt_options = dict(prompt_options or {})
+        prompt_options.pop('_pipeline_roles', None)
+        if pipeline is not None:
+            prompt_options['_pipeline_roles'] = {
+                name: dict(role) for name, role in pipeline.config['roles'].items()
+            }
+            if pipeline.config.get('epub_repair_policy', 'compatible') == 'localized_v1':
+                prompt_options['fidelity_repair_policy'] = 'localized_v1'
+            else:
+                prompt_options.pop('fidelity_repair_policy', None)
+
+    prompt_options = with_profile_dependency(prompt_options)
     current_body_html, _current_body = extract_body_html(doc_root)
     current_source_document_hash = text_sha256(current_body_html or "")
     current_stage_fingerprints = build_epub_stage_fingerprints(
@@ -3682,14 +3770,28 @@ async def translate_xhtml_simplified(
         prompt_options=prompt_options,
     )
     current_unit_config_fingerprint = current_stage_fingerprints['translation']
+    if resume_state and (
+        (translation_id is not None and resume_state.translation_id != translation_id)
+        or (file_href is not None and resume_state.file_href != file_href)
+    ):
+        if log_callback:
+            log_callback("xhtml_checkpoint_scope_mismatch",
+                         "Checkpoint belongs to another job or document and was not reused.")
+        resume_state = None
     if resume_state and not resume_state.compatible_with(
         config_fingerprint=current_unit_config_fingerprint,
         source_document_hash=current_source_document_hash,
         stage_fingerprints=current_stage_fingerprints,
     ):
         checkpoint_prompt_options = _checkpoint_prompt_options(prompt_options)
+        migrated_cache_identity = resume_state.migrate_runtime_cache_identity(
+            prompt_options=checkpoint_prompt_options,
+            current_stage_fingerprints=current_stage_fingerprints,
+            source_document_hash=current_source_document_hash,
+            current_max_retries=max_retries,
+        )
         migrated_runtime_recovery = (
-            resume_state.migrate_legacy_automatic_recovery_metadata(
+            not migrated_cache_identity and resume_state.migrate_legacy_automatic_recovery_metadata(
                 prompt_options=checkpoint_prompt_options,
                 current_stage_fingerprints=current_stage_fingerprints,
                 source_document_hash=current_source_document_hash,
@@ -3697,21 +3799,38 @@ async def translate_xhtml_simplified(
             )
         )
         migrated_profile_scope = False
-        if not migrated_runtime_recovery:
+        if not migrated_cache_identity and not migrated_runtime_recovery:
             migrated_profile_scope = resume_state.migrate_corrected_profile_scope(
                 prompt_options=checkpoint_prompt_options,
                 current_stage_fingerprints=current_stage_fingerprints,
                 source_document_hash=current_source_document_hash,
             )
-        if migrated_runtime_recovery or migrated_profile_scope:
+        if migrated_cache_identity or migrated_runtime_recovery or migrated_profile_scope:
             if checkpoint_manager and translation_id and file_href:
-                checkpoint_manager.save_xhtml_partial_state(
+                saved = checkpoint_manager.save_xhtml_partial_state(
                     translation_id,
                     file_href,
                     resume_state,
                 )
+                if not saved:
+                    raise ProviderActionRequiredError(
+                        "Could not persist the checkpoint migration; no further request was started.",
+                        reason="checkpoint_write_failed", provider="local",
+                    )
             if log_callback:
-                if migrated_runtime_recovery:
+                if migrated_cache_identity:
+                    migration = resume_state.doc_metadata.get("cache_identity_migration") or {}
+                    message = "Verified checkpoint identities migrated without resetting request counters."
+                    if migration.get("reason") == "profile_content_changed_or_previously_unrecorded":
+                        message = ("Profile content changed or was not recorded in the old checkpoint; "
+                                   "retained translations require new editorial review and audit.")
+                    elif migration.get("invalidated"):
+                        message += " Invalidated stages: " + ", ".join(migration["invalidated"])
+                    log_callback(
+                        "xhtml_cache_identity_migrated",
+                        message,
+                    )
+                elif migrated_runtime_recovery:
                     log_callback(
                         "xhtml_runtime_recovery_checkpoint_migrated",
                         "Checkpoint translations reused after removing legacy "
@@ -3913,6 +4032,10 @@ async def translate_xhtml_simplified(
                 "epub_quality_checkpoint_failed",
                 f"Could not persist XHTML {stage} checkpoint.",
             )
+            raise ProviderActionRequiredError(
+                f"Could not persist XHTML {stage}; no further quality request was started.",
+                reason="checkpoint_write_failed", provider="local",
+            )
         return bool(saved)
 
     # At this point, whether resuming or starting fresh:
@@ -3928,9 +4051,21 @@ async def translate_xhtml_simplified(
 
     # Check if refinement is enabled
     enable_refinement = prompt_options and prompt_options.get('refine')
+    final_unit_audit = needs_final_unit_audit(prompt_options)
+    deferred_review = final_unit_audit and skip_universal_refinement(prompt_options)
+    if not enable_refinement and not final_unit_audit and any(
+        (record.get("cache_identity_migration") or {}).get("reason")
+        == "profile_content_changed_or_previously_unrecorded"
+        and record.get("review_status") != "COMPLETED"
+        for record in unit_records
+    ):
+        raise ChunkTranslationFailedError(
+            "The profile changed; retained candidates require editorial review before publication.",
+            reason="profile_change_requires_review",
+        )
 
     # Configure stats for refinement tracking
-    stats.enable_refinement = enable_refinement
+    stats.enable_refinement = bool(enable_refinement and not deferred_review)
     stats.refinement_phase = False  # Start in translation phase
 
     if log_callback:
@@ -3987,7 +4122,17 @@ async def translate_xhtml_simplified(
         return False, stats  # success=False because incomplete
 
     # 4.5. Refinement (optional - only if not interrupted)
-    if enable_refinement and translated_chunks:
+    if deferred_review and translated_chunks:
+        for chunk, candidate in zip(chunks, translated_chunks):
+            if chunk["unit"].get("review_status") != "COMPLETED":
+                mark_reviewed(chunk["unit"], candidate, review={
+                    "status": "no_rewrite", "scope": "source_audited_v1",
+                    "reason": "Universal rewrite omitted; full source-aware audit required before publication.",
+                })
+        persist_quality_checkpoint(translated_chunks, stage="review_deferred_to_final_audit")
+        if log_callback:
+            log_callback("review_strategy_no_rewrite", "Experimental strategy retained the draft for full source-aware audit.")
+    elif enable_refinement and translated_chunks:
         # Switch stats to refinement phase
         stats.refinement_phase = True
         stats.refinement_chunks_completed = 0
@@ -4053,7 +4198,7 @@ async def translate_xhtml_simplified(
         if log_callback:
             log_callback("epub_refinement_skipped", "Refinement skipped: no translated chunks available")
 
-    if translated_chunks and not enable_refinement:
+    if translated_chunks and not enable_refinement and not final_unit_audit:
         strict_stage_contract = bool(
             (prompt_options or {}).get('strict_stage_contract')
             or (prompt_options or {}).get('review_entire_book')
@@ -4072,7 +4217,7 @@ async def translate_xhtml_simplified(
                     audit={"status": "pass", "scope": "translation_fidelity_gate"},
                 )
 
-    if translated_chunks and enable_refinement:
+    if translated_chunks and (enable_refinement or final_unit_audit):
         audit_checkpoint_candidates = list(translated_chunks)
 
         def save_audit_checkpoint(
@@ -4085,7 +4230,7 @@ async def translate_xhtml_simplified(
                 persist_quality_checkpoint(
                     audit_checkpoint_candidates,
                     stage=f"audit_{metadata.get('status') or 'progress'}",
-                    failed_chunks=(1 if metadata.get("status") == "failed" else None),
+                    failed_chunks=sum(c["unit"].get("audit_status") == "FAILED" for c in chunks),
                 )
 
         try:
@@ -4103,8 +4248,10 @@ async def translate_xhtml_simplified(
                 checkpoint_callback=save_audit_checkpoint,
             )
         except ChunkTranslationFailedError as exc:
-            if int(stats.failed_chunks or 0) == 0:
-                stats.record_failure(1)
+            failed_count = len(getattr(exc, "failed_unit_indices", [exc.chunk_index]))
+            # Translation sizes were already counted; these are unresolved
+            # audit units, not additional translated chunks.
+            stats.failed_chunks = failed_count
             persist_quality_checkpoint(
                 audit_checkpoint_candidates,
                 stage="audit_failed",

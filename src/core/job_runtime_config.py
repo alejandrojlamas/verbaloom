@@ -21,6 +21,7 @@ from src.core.layout_sanitizer import (
     should_use_sanitized_text_pipeline,
 )
 from src.core.text_transform import apply_faithful_modernize_defaults
+from src.core.review_strategy import refinement_plan
 
 
 def usage_process_type(config: Dict[str, Any]) -> str:
@@ -30,7 +31,7 @@ def usage_process_type(config: Dict[str, Any]) -> str:
     transform_mode = str(prompt_options.get('text_transform_mode') or '').strip().lower()
     if transform_mode:
         return f'transform_{transform_mode}'
-    if config.get('refine_after'):
+    if config.get('refine_after') and any(refinement_plan(config).values()):
         return 'translation_with_refinement'
     return 'translation'
 
@@ -75,7 +76,11 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
     activate_inferred_book_profile(config, prompt_options)
     apply_faithful_modernize_defaults(prompt_options)
 
-    if (config.get('llm_provider') or '').lower() == 'deepseek':
+    # Model substitution must not silently change the baseline review policy.
+    # This reference is persisted independently from the actual request roles.
+    reference = (config.get('pipeline') or {}).get('review_reference') or {}
+    policy_provider = reference.get('provider', config.get('llm_provider')) or ''
+    if policy_provider.lower() == 'deepseek':
         uses_profile = (
             (prompt_options.get('editorial_mode') or '').lower() == 'book_profile'
             and bool(str(prompt_options.get('profile_id') or '').strip())
@@ -92,7 +97,7 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
                 and strength != 'strict'
             ):
                 prompt_options['profile_audit_enabled'] = False
-        primary_model = str(config.get('model') or '').strip()
+        primary_model = str(reference.get('model', config.get('model')) or '').strip()
         if has_strict_final_audit:
             # Strict EPUB jobs already run a source-aware Pro audit over every
             # final candidate. Keep deterministic checks at every earlier
@@ -139,7 +144,9 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
                 prompt_options.setdefault('profile_audit_enabled', False)
                 prompt_options.setdefault('profile_repair_model', 'deepseek-v4-pro')
         prompt_options.setdefault('fidelity_supervisor_retry', True)
-    return prompt_options
+    from src.core.review_strategy import apply_review_strategy
+
+    return apply_review_strategy(config)
 
 
 def validate_active_profile_scope(

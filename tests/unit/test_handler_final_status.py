@@ -231,7 +231,7 @@ def test_exhausted_recovery_does_not_leave_dashboard_marked_active():
     assert stats["last_activity_at"] == 123.0
 
 
-def test_legacy_recovery_prompt_is_removed_and_budget_is_reset_once():
+def test_legacy_recovery_prompt_is_removed_without_replenishing_budget():
     config = {
         "_failure_recovery_cycle": 58,
         "_failure_recovery_stuck_count": 2,
@@ -253,7 +253,8 @@ def test_legacy_recovery_prompt_is_removed_and_budget_is_reset_once():
     assert changed is True
     assert cleaned["prompt_options"]["custom_instructions"] == "Keep the voice."
     assert "automatic_failure_recovery" not in cleaned["prompt_options"]
-    assert "_failure_recovery_cycle" not in cleaned
+    assert cleaned["_failure_recovery_cycle"] == 58
+    assert cleaned["_failure_recovery_stuck_count"] == 2
 
 
 def test_legacy_migration_notice_runs_after_live_activity_publisher_exists():
@@ -454,7 +455,7 @@ def test_worker_exception_budget_resets_after_checkpoint_progress():
     assert progressed["stuck_count"] == 1
 
 
-def test_rate_limit_auto_resume_uses_unbounded_capped_backoff():
+def test_rate_limit_auto_resume_obeys_saved_ceiling():
     config = {"max_rate_limit_auto_resumes": 2}
     first = _build_rate_limit_auto_resume_plan(config, resume_index=7)
     second = _build_rate_limit_auto_resume_plan(first["config"], resume_index=7)
@@ -462,13 +463,13 @@ def test_rate_limit_auto_resume_uses_unbounded_capped_backoff():
 
     assert first["allowed"] is True
     assert second["allowed"] is True
-    assert third["allowed"] is True
+    assert third["allowed"] is False
     assert third["stuck_count"] == 3
-    assert third["max_resumes"] is None
-    assert first["delay_seconds"] == 60
-    assert second["delay_seconds"] == 180
-    assert third["delay_seconds"] == 600
-    assert "max_rate_limit_auto_resumes" not in third["config"]
+    assert third["max_resumes"] == 2
+    assert 60 <= first["delay_seconds"] <= 72
+    assert 180 <= second["delay_seconds"] <= 216
+    assert third["config"] == second["config"]
+    assert third["config"]["max_rate_limit_auto_resumes"] == 2
 
 
 def test_rate_limit_progress_resets_stuck_counter():
@@ -483,10 +484,10 @@ def test_rate_limit_progress_resets_stuck_counter():
 
 
 def test_provider_wait_honors_suggested_delay_and_caps_automatic_backoff():
-    assert _provider_wait_seconds({}, 5) == 60
+    assert 60 <= _provider_wait_seconds({}, 5) <= 72
     assert _provider_wait_seconds({"_auto_resume_stuck_count": 1}, 240) == 240
     assert _provider_wait_seconds({"_auto_resume_stuck_count": 99}, None) == 1800
-    assert _provider_wait_seconds({}, 86_400) == 1800
+    assert _provider_wait_seconds({}, 86_400) == 86_400
 
 
 def test_explicit_resume_claims_interrupt_fence_and_refreshes_checkpoint():
@@ -641,7 +642,7 @@ def test_recovered_worker_honors_and_clears_durable_schedule(monkeypatch):
     assert state.checkpoints.configs[-1] == ready_config
 
 
-def test_transient_worker_failures_keep_recovering_after_deterministic_budget():
+def test_transient_worker_failures_have_a_separate_finite_budget():
     checkpoint = {
         "resume_from_index": 4,
         "job": {"progress": {"total_chunks": 10, "completed_chunks": 4}},
@@ -660,8 +661,11 @@ def test_transient_worker_failures_keep_recovering_after_deterministic_budget():
         config = plan["config"]
 
     assert plans[-1]["transient"] is True
-    assert plans[-1]["max_stuck_recoveries"] is None
+    assert plans[-1]["max_stuck_recoveries"] == 5
     assert plans[-1]["delay_seconds"] == 600
+    assert _build_worker_exception_recovery_plan(
+        config, checkpoint, TimeoutError("provider operation timed out")
+    ) is None
     assert _is_transient_worker_failure(RuntimeError("server disconnected"))
     assert not _is_transient_worker_failure(ValueError("bad local config"))
 

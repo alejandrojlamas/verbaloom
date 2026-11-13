@@ -1,46 +1,52 @@
 """
 Translation job management routes
 """
+import copy
+import hashlib
+import json
 import os
 import time
-import copy
+import uuid
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from flask import Blueprint, request, jsonify
 
-from src.api.safe_payloads import client_safe_config, client_safe_logs
+from flask import Blueprint, jsonify, request
+
 from src.api.resume_schedule import clear_resume_schedule, resume_schedule_from_config
+from src.api.safe_payloads import client_safe_config, client_safe_logs
+from src.api.services.path_validator import PathValidator
+from src.api.socket_events import EVENT_TRANSLATION_UPDATE
 from src.api.translation_state import translation_lifecycle_guard
-from src.core.job_runtime_config import configure_editorial_guard_options
+from src.config import (
+    AUTO_PAUSE_ON_RATE_LIMIT,
+    DEEPSEEK_API_ENDPOINT,
+    MAX_TRANSLATION_ATTEMPTS,
+    MISTRAL_API_ENDPOINT,
+    NIM_API_ENDPOINT,
+    OLLAMA_API_ENDPOINT,
+    OLLAMA_NUM_CTX,
+    OPENAI_API_ENDPOINT,
+    OUTPUT_DIR,
+    POE_API_ENDPOINT,
+    REQUEST_TIMEOUT,
+)
 from src.core.deepseek_pricing import (
     get_deepseek_pricing_status,
     is_official_deepseek_endpoint,
 )
+from src.core.job_runtime_config import configure_editorial_guard_options
+from src.core.pipeline_config import apply_pipeline, validate_pipeline
 from src.core.progress import apply_active_timing
 from src.persistence.checkpoint_reconcile import checkpoint_progress_snapshot
-from src.config import (
-    REQUEST_TIMEOUT,
-    MAX_TRANSLATION_ATTEMPTS,
-    OLLAMA_NUM_CTX,
-    AUTO_PAUSE_ON_RATE_LIMIT,
-    OLLAMA_API_ENDPOINT,
-    OPENAI_API_ENDPOINT,
-    MISTRAL_API_ENDPOINT,
-    DEEPSEEK_API_ENDPOINT,
-    POE_API_ENDPOINT,
-    NIM_API_ENDPOINT,
-    OUTPUT_DIR,
-)
-from src.api.services.path_validator import PathValidator
+from src.tts.tts_config import TTSConfig
 from src.utils.provider_security import (
     EndpointCredentialError,
     endpoint_allows_saved_key,
     endpoint_origin,
     resolve_api_key_for_endpoint,
+    resolve_pipeline_credentials,
     sanitize_restored_endpoint_credentials,
 )
-from src.api.socket_events import EVENT_TRANSLATION_UPDATE
-from src.tts.tts_config import TTSConfig
 
 
 def _resolve_api_key(value, env_var_name):
@@ -85,6 +91,22 @@ def _client_safe_config(config):
 
 def _client_safe_logs(logs, limit=100):
     return client_safe_logs(logs, limit=limit)
+
+
+def _submission_replay(state_manager, translation_id, fingerprint):
+    """Return the existing receipt without changing work, credentials or pause."""
+    job = state_manager.get_translation(translation_id)
+    if not job:
+        job = state_manager.checkpoint_manager.get_job(translation_id)
+    if not job:
+        return None
+    config = job.get('config') or {}
+    if config.get('_submission_fingerprint') != fingerprint:
+        return jsonify({'error': 'Submission ID already belongs to another request',
+                        'code': 'submission_conflict'}), 409
+    return jsonify({'translation_id': translation_id, 'reused': True,
+                    'status': job.get('status'),
+                    'config_received': _client_safe_config(config)})
 
 
 def _json_safe(value):
@@ -307,6 +329,34 @@ def _apply_resume_overrides(config, overrides):
     Returns a Flask (response, status) tuple to abort with on validation failure,
     or None on success.
     """
+    if config.get("pipeline") is not None or (isinstance(overrides, dict) and overrides.get("pipeline") is not None):
+        try:
+            if overrides is not None and not isinstance(overrides, dict):
+                raise ValueError("Resume overrides must be an object")
+            overrides = dict(overrides or {})
+            saved = validate_pipeline(config["pipeline"]) if config.get("pipeline") is not None else None
+            selected = validate_pipeline(overrides.get("pipeline", saved))
+            if saved is not None and selected["budget"] != saved["budget"]:
+                raise ValueError("Resume cannot reset or implicitly change the saved budget")
+            primary = selected["roles"]["translate"]
+            if ((overrides.get("model") and overrides["model"] != primary["model"])
+                    or (overrides.get("llm_provider") and overrides["llm_provider"] != primary["provider"])):
+                raise ValueError("Update pipeline roles explicitly when changing a saved pipeline model")
+            candidate = copy.deepcopy(config)
+            apply_pipeline(candidate, selected)
+            if (overrides.get("llm_api_endpoint")
+                    and overrides["llm_api_endpoint"] != candidate["llm_api_endpoint"]):
+                raise ValueError("Pipeline roles require their official provider endpoints")
+            resolve_pipeline_credentials(candidate, overrides)
+            if overrides.get("context_window") is not None:
+                candidate["context_window"] = int(overrides["context_window"])
+            if isinstance(overrides.get("prompt_options"), dict):
+                candidate.setdefault("prompt_options", {}).update(overrides["prompt_options"])
+        except (ValueError, TypeError) as exc:
+            return jsonify({"error": "Invalid pipeline configuration", "message": str(exc)}), 400
+        config.clear()
+        config.update(candidate)
+        return None
     if not isinstance(overrides, dict) or not overrides:
         return None
 
@@ -470,6 +520,31 @@ def create_translation_blueprint(
     def start_translation_request():
         """Start a new translation job"""
         data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Expected a JSON object'}), 400
+        submission_id = None
+        fingerprint = None
+        if 'submission_id' in data:
+            try:
+                submission_id = uuid.UUID(data['submission_id'])
+            except (ValueError, TypeError, AttributeError):
+                return jsonify({'error': 'Invalid submission_id; expected a UUID'}), 400
+            # API credentials are not part of request identity and are never
+            # echoed in the receipt. A replay cannot replace saved credentials.
+            identity = {key: value for key, value in data.items()
+                        if key != 'submission_id' and not key.endswith('api_key')}
+            fingerprint = hashlib.sha256(json.dumps(
+                identity, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
+            ).encode()).hexdigest()
+            translation_id = f'trans_{submission_id.hex}'
+            replay = _submission_replay(state_manager, translation_id, fingerprint)
+            if replay is not None:
+                return replay
+        if data.get("pipeline") is not None:
+            try:
+                apply_pipeline(data, data["pipeline"])
+            except (ValueError, TypeError) as exc:
+                return jsonify({"error": "Invalid pipeline configuration", "message": str(exc)}), 400
         provider = str(data.get('llm_provider') or 'ollama').lower()
         llm_api_endpoint = str(data.get('llm_api_endpoint') or '').strip()
         if not llm_api_endpoint:
@@ -610,7 +685,7 @@ def create_translation_blueprint(
             original_filename = input_filename
 
         # Generate unique translation ID
-        translation_id = f"trans_{int(time.time() * 1000)}"
+        translation_id = f"trans_{(submission_id or uuid.uuid4()).hex}"
 
         # Build configuration
         config = {
@@ -651,6 +726,12 @@ def create_translation_blueprint(
             'tts_enabled': data.get('tts_enabled', False),
             'tts_config': TTSConfig.from_web_request(data).to_dict() if data.get('tts_enabled') else None
         }
+        if data.get("pipeline") is not None:
+            config["pipeline"] = data["pipeline"]
+            try:
+                resolve_pipeline_credentials(config, data)
+            except ValueError as exc:
+                return jsonify({"error": "Invalid pipeline credentials", "message": str(exc)}), 400
 
         if config['operation'] == 'translate':
             # Translation is one integrated publishable workflow: draft,
@@ -677,11 +758,37 @@ def create_translation_blueprint(
 
         configure_editorial_guard_options(config)
 
-        # Create translation in state manager
-        state_manager.create_translation(translation_id, config)
+        if submission_id:
+            config['_submission_fingerprint'] = fingerprint
+            config['submission_id'] = str(submission_id)
+            with translation_lifecycle_guard(state_manager):
+                replay = _submission_replay(state_manager, translation_id, fingerprint)
+                if replay is not None:
+                    return replay
+                if not state_manager.checkpoint_manager.start_job(
+                    translation_id, config['file_type'], config,
+                    config.get('file_path'), status='queued',
+                ):
+                    # The database primary key also fences competing processes.
+                    replay = _submission_replay(state_manager, translation_id, fingerprint)
+                    if replay is not None:
+                        return replay
+                    return jsonify({'error': 'Could not persist submission'}), 503
+                state_manager.create_translation(translation_id, config)
+        else:
+            state_manager.create_translation(translation_id, config)
 
-        # Start translation job
-        start_translation_job(translation_id, config)
+        try:
+            started = start_translation_job(translation_id, config)
+            if started is False:
+                raise RuntimeError('Worker dispatch was not accepted')
+        except Exception:  # noqa: BLE001 - dispatch boundary must preserve the accepted job.
+            state_manager.update_translation(translation_id, {
+                'status': 'error', 'error': 'Worker could not start. Resume the saved job.',
+            })
+            state_manager.checkpoint_manager.mark_error(translation_id)
+            return jsonify({'error': 'Worker could not start. Resume the saved job.',
+                            'translation_id': translation_id}), 503
 
         return jsonify({
             "translation_id": translation_id,
@@ -693,6 +800,15 @@ def create_translation_blueprint(
     def get_translation_job_status(translation_id):
         """Get status of a translation job"""
         job_data = state_manager.get_translation(translation_id)
+        persisted_only = False
+        if not job_data:
+            saved = state_manager.checkpoint_manager.get_job(translation_id)
+            if saved:
+                persisted_only = True
+                config = saved.get('config') or {}
+                job_data = {**saved, 'stats': saved.get('progress') or {}, 'progress': None,
+                            'pause_reason': 'manual' if config.get('_manual_pause_requested') else None,
+                            'output_filepath': config.get('output_filepath')}
         if not job_data:
             # Include the status code in the message for already-loaded mobile
             # clients that predate structured API error metadata.
@@ -714,6 +830,7 @@ def create_translation_blueprint(
 
         return jsonify({
             "translation_id": translation_id,
+            "persisted_only": persisted_only,
             "status": job_data.get('status'),
             "pause_reason": job_data.get('pause_reason'),
             "resume_at_utc": job_data.get('resume_at_utc'),
@@ -964,7 +1081,7 @@ def create_translation_blueprint(
                 except (ValueError, FileNotFoundError):
                     return jsonify({"error": "Preserved input file is unavailable"}), 404
                 config['file_path'] = str(managed_preserved)
-            else:
+            elif not (config.get('file_type') == 'txt' and isinstance(config.get('text'), str)):
                 return jsonify({
                     "error": "No preserved input file",
                     "message": "This job has no preserved input file and cannot be resumed.",
@@ -976,6 +1093,9 @@ def create_translation_blueprint(
         config['is_resume'] = True
         config.pop('_manual_pause_requested', None)
         config.pop('_manual_pause_requested_at', None)
+        # Clear the resolved notice, not cumulative retry/cost accounting.
+        config.pop('_provider_action_required', None)
+        config.pop('_automatic_recovery_stop', None)
         # An explicit user action starts a fresh provider attempt. DeepSeek's
         # current peak-price gate above still prevents bypassing the cost policy.
         config = clear_resume_schedule(config)

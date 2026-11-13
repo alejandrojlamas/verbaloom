@@ -26,7 +26,8 @@ from src.core.document_structure import (
     is_locator_index_identity_block,
 )
 from src.core.language_evidence import untranslated_source_pronouns
-from src.core.llm.exceptions import ContentRiskError
+from src.core.llm.exceptions import ProviderActionRequiredError
+from src.core.pipeline_runtime import selected_role
 from src.core.llm.request_deadline import await_llm_call
 from src.prompts.security import UNTRUSTED_BOOK_CONTENT_SECTION
 from src.utils.json_extraction import extract_tagged_payload, loads_first_json_object
@@ -306,6 +307,7 @@ class FidelityDecision:
     judge_evidence_source: list[str] = field(default_factory=list)
     judge_evidence_candidate: list[str] = field(default_factory=list)
     independence: str = "none"
+    review_reason: str = ""
 
     @property
     def warnings(self) -> list[FidelityIssue]:
@@ -316,7 +318,7 @@ class FidelityDecision:
         return [issue for issue in self.issues if issue.severity == "reject"]
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "chunk_index": self.chunk_index,
             "phase": self.phase,
             "section": self.section,
@@ -345,6 +347,9 @@ class FidelityDecision:
             "judge_evidence_candidate": self.judge_evidence_candidate,
             "independence": self.independence,
         }
+        if self.review_reason:
+            data["review_reason"] = self.review_reason
+        return data
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "FidelityDecision":
@@ -385,6 +390,7 @@ class FidelityDecision:
             judge_evidence_source=_list_of_str(data.get("judge_evidence_source")),
             judge_evidence_candidate=_list_of_str(data.get("judge_evidence_candidate")),
             independence=str(data.get("independence") or "none"),
+            review_reason=str(data.get("review_reason") or ""),
         )
 
 
@@ -574,6 +580,10 @@ def ensure_fidelity_report(
 
 
 def fidelity_supervisor_enabled(prompt_options: Optional[Mapping[str, Any]]) -> bool:
+    from src.core.review_strategy import source_audited
+
+    if source_audited(prompt_options):
+        return True
     options = prompt_options or {}
     explicit_flag = options.get("fidelity_supervisor")
     if explicit_flag is False:
@@ -603,6 +613,9 @@ def resolve_fidelity_auditor_model(
     primary_model: str,
     prompt_options: Optional[Mapping[str, Any]],
 ) -> str:
+    role = selected_role("audit")
+    if role:
+        return role["model"]
     options = prompt_options or {}
     configured = (
         options.get("fidelity_supervisor_model")
@@ -3328,10 +3341,18 @@ def parse_fidelity_audit_response(text: str) -> Optional[dict[str, Any]]:
     if verdict not in {"pass", "warn", "fail", "repair_needed"}:
         return None
     parsed["verdict"] = verdict
-    try:
-        parsed["confidence"] = float(parsed.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        parsed["confidence"] = 0.0
+    confidence = parsed.get("confidence")
+    if type(confidence) not in (int, float) or not 0 <= confidence <= 1:
+        return None
+    if not isinstance(parsed.get("reason"), str) or not parsed["reason"].strip():
+        return None
+    for field in (
+        "issues", "missing_from_source", "added_not_in_source", "changed_facts",
+        "censored_or_softened", "structure_issues", "evidence_source", "evidence_candidate",
+    ):
+        values = parsed.get(field)
+        if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+            return None
     return parsed
 
 
@@ -3526,9 +3547,17 @@ async def supervise_fidelity(
     )
 
     audit_response = None
-    if _should_run_llm_audit(decision, prompt_options) and client is not None:
+    from src.core.review_strategy import semantic_audit_reason
+
+    decision.review_reason = semantic_audit_reason(decision, prompt_options)
+    if _should_run_llm_audit(decision, prompt_options):
+        if client is None:
+            raise ProviderActionRequiredError(
+                "A required fidelity audit has no configured client.",
+                reason="audit_unavailable", provider=primary_provider,
+            )
         auditor_model = resolve_fidelity_auditor_model(primary_model, prompt_options)
-        auditor_provider = str((prompt_options or {}).get("fidelity_supervisor_provider") or primary_provider or "")
+        auditor_provider = str(selected_role("audit").get("provider") or (prompt_options or {}).get("fidelity_supervisor_provider") or primary_provider or "")
         profile_context = _profile_fidelity_audit_context(
             source_text,
             candidate_text,
@@ -3559,6 +3588,7 @@ async def supervise_fidelity(
                     "model": auditor_model,
                     "primary_model": primary_model,
                     "phase": phase,
+                    "review_reason": decision.review_reason,
                 },
             )
         mode = str((prompt_options or {}).get("fidelity_supervisor_mode") or "").strip().lower()
@@ -3573,7 +3603,6 @@ async def supervise_fidelity(
         parse_retries = max(0, min(parse_retries, 2))
 
         assessment = None
-        content_filter_unavailable = False
         for parse_attempt in range(parse_retries + 1):
             if parse_attempt and log_callback:
                 log_callback(
@@ -3589,31 +3618,24 @@ async def supervise_fidelity(
                     "JSON keys and strings, no trailing commas, no markdown, and no prose outside "
                     "the tags. Keep reason and evidence concise so the object cannot be truncated."
                 )
-            try:
-                audit_response = await _request_with_temporary_model(
-                    client,
-                    prompt_pair.user,
-                    retry_system,
-                    primary_model=primary_model,
-                    auditor_model=auditor_model,
-                    temperature=temperature_for_phase("fidelity_audit"),
+            audit_response = await _request_with_temporary_model(
+                client,
+                prompt_pair.user,
+                retry_system,
+                primary_model=primary_model,
+                auditor_model=auditor_model,
+                temperature=temperature_for_phase("fidelity_audit"),
+            )
+            if audit_response and (
+                getattr(audit_response, "status", "completed") == "refused"
+                or getattr(audit_response, "refusal", None)
+            ):
+                raise ProviderActionRequiredError(
+                    "The provider refused the fidelity audit; review is required.",
+                    reason="provider_refusal", provider=auditor_provider, response=audit_response,
                 )
-            except ContentRiskError:
-                content_filter_unavailable = True
-                decision.issues.append(FidelityIssue(
-                    "fidelity_auditor_content_filter",
-                    "warning",
-                    "El proveedor impidio la auditoria LLM por su filtro de contenido",
-                    "Se conservaron los guards deterministas y se registro la falta de juicio remoto.",
-                ))
-                if log_callback:
-                    log_callback(
-                        "fidelity_supervisor_content_filter",
-                        f"Fidelity auditor unavailable for {phase} chunk {chunk_index}: "
-                        "provider content filter; using deterministic checks.",
-                    )
-                break
-            if audit_response:
+            if (audit_response and not audit_response.was_truncated
+                    and getattr(audit_response, "status", "completed") == "completed"):
                 assessment = parse_fidelity_audit_response(audit_response.content)
             if assessment:
                 break
@@ -3635,11 +3657,11 @@ async def supervise_fidelity(
                 primary_model=primary_model,
                 primary_provider=primary_provider,
             )
-        elif log_callback and not content_filter_unavailable:
-            log_callback(
-                "fidelity_supervisor_parse_failed",
-                f"Fidelity supervisor returned invalid JSON for {phase} chunk {chunk_index} "
-                f"after {parse_retries + 1} attempt(s); using local checks.",
+        else:
+            raise ProviderActionRequiredError(
+                f"Required fidelity audit for {phase} chunk {chunk_index} returned no valid "
+                f"judgment after {parse_retries + 1} attempt(s). Review is required.",
+                reason="audit_invalid_response", provider=auditor_provider, response=audit_response,
             )
         if log_callback:
             log_callback(
@@ -3745,6 +3767,11 @@ def _should_run_llm_audit(
     decision: FidelityDecision,
     prompt_options: Optional[Mapping[str, Any]],
 ) -> bool:
+    from src.core.review_strategy import semantic_audit_reason
+
+    reason = semantic_audit_reason(decision, prompt_options)
+    if reason:
+        return reason in {"source_audited:complete_semantic_coverage", "source_audited:hard_check_escalation"}
     if not fidelity_supervisor_enabled(prompt_options):
         return False
     mode = fidelity_supervisor_mode(prompt_options)
@@ -3797,6 +3824,7 @@ async def _request_with_temporary_model(
                 client.generate,
                 prompt,
                 provider=client,
+                role="audit",
                 system_prompt=system_prompt,
                 temperature=temperature,
             )
@@ -3804,6 +3832,7 @@ async def _request_with_temporary_model(
             client.make_request,
             prompt,
             provider=client,
+            role="audit",
             system_prompt=system_prompt,
             temperature=temperature,
         )
@@ -3819,6 +3848,7 @@ async def _request_with_temporary_model(
             prompt,
             auditor_model,
             provider=client,
+            role="audit",
             system_prompt=system_prompt,
             temperature=temperature,
         )

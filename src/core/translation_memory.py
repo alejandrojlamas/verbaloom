@@ -24,6 +24,7 @@ from typing import Any
 TRANSLATION_MEMORY_VERSION = "translation-memory-v1"
 
 _VOLATILE_PROMPT_KEYS = {
+    "_candidate_results",
     "_editorial_quality_report",
     "_fidelity_report",
     "_source_guard_refs",

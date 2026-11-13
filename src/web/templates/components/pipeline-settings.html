@@ -1,0 +1,46 @@
+<section id="pipelineSettings" class="pipeline-settings" aria-labelledby="pipelineHeading">
+    <h3 id="pipelineHeading" data-i18n="settings:pipe_title">Models and review</h3>
+    <div class="pipeline-fields">
+        <label for="pipelinePreset"><span data-i18n="settings:pipe_preset">Configuration</span>
+            <select id="pipelinePreset" class="form-control">
+                <option value="legacy" data-i18n="settings:pipe_legacy">Current configuration</option>
+                <option value="compatible" data-i18n="settings:pipe_compatible">A · Compatible roles</option>
+                <option value="openai_equivalent" data-i18n="settings:pipe_openai_equivalent">B · Equivalent OpenAI</option>
+                <option value="deepseek_source_audited" data-i18n="settings:pipe_deepseek_source_audited">C · Experimental DeepSeek</option>
+                <option value="openai_source_audited" data-i18n="settings:pipe_openai_source_audited">D · Experimental OpenAI</option>
+                <option value="custom" data-i18n="settings:pipe_custom" disabled>Custom roles</option>
+            </select>
+        </label>
+    </div>
+    <div id="pipelineEditor" hidden>
+        <div class="pipeline-fields">
+            <label for="pipelineReview"><span data-i18n="settings:pipe_review">Review policy</span>
+                <select id="pipelineReview" class="form-control">
+                    <option value="compatible" data-i18n="settings:pipe_review_compatible">Compatible review</option>
+                    <option value="source_audited_v1" data-i18n="settings:pipe_review_source">Full audit (experimental)</option>
+                </select>
+            </label>
+        </div>
+        <details class="pipeline-roles">
+            <summary data-i18n="settings:pipe_roles">Model assignments</summary>
+            <div id="pipelineRoleFields"></div>
+        </details>
+        <label class="pipeline-budget-toggle" for="pipelineBudgetEnabled">
+            <input type="checkbox" id="pipelineBudgetEnabled">
+            <span data-i18n="settings:pipe_budget">Per-job spending limit</span>
+        </label>
+        <div id="pipelineBudgetFields" class="pipeline-fields" hidden>
+            <label for="pipelineBudgetUsd"><span data-i18n="settings:pipe_usd">Gross API limit (USD)</span>
+                <input id="pipelineBudgetUsd" class="form-control" type="number" min="0.01" max="1000000" step="0.01" value="5" required>
+            </label>
+            <label for="pipelineMaxCalls"><span data-i18n="settings:pipe_calls">HTTP attempt limit</span>
+                <input id="pipelineMaxCalls" class="form-control" type="number" min="1" max="1000000" step="1" value="500" required>
+            </label>
+        </div>
+        <button type="button" id="pipelinePreflight" class="btn btn-secondary">
+            <span class="material-symbols-outlined" aria-hidden="true">network_check</span>
+            <span data-i18n="settings:pipe_check">Check model access</span>
+        </button>
+    </div>
+    <div id="pipelineStatus" role="status" aria-live="polite"></div>
+</section>

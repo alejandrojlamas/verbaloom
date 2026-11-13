@@ -62,6 +62,7 @@
     <link rel="stylesheet" href="/static/style.css?v={{ app_version|default('dev') }}&ux=pro-ui-20260704-ajl2">
     <link rel="stylesheet" href="/static/css/design-system.css?v={{ app_version|default('dev') }}&ux=ds-20260625">
     <link rel="stylesheet" href="/static/css/app-components.css?v={{ app_version|default('dev') }}&ux=app-components-20260704-ajl-mobile5">
+    <link rel="stylesheet" href="/static/css/pipeline-settings.css?v={{ asset_version|default(app_version|default('dev')) }}">
 </head>
 <body>
     <div class="container">
@@ -999,10 +1000,11 @@
                 </div>
 
                 <div id="settingsOptionsSection" class="hidden">
+                    {% include 'components/pipeline-settings.html' %}
                     <!-- Provider + API Settings Row -->
                     <div id="providerRow" style="display: grid; grid-template-columns: 1fr 2fr; gap: 15px; margin-bottom: 15px; align-items: end;">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="settings:ai_provider">AI Provider</label>
+                            <label id="providerSelectionLabel" data-i18n="settings:ai_provider">AI Provider</label>
                             <div class="neu-inset-light">
                                 <select class="form-control" id="llmProvider">
                                     <option value="ollama">Ollama (Local)</option>
@@ -1041,7 +1043,7 @@
 
                         <!-- OpenAI API Key -->
                         <div class="form-group" id="openaiApiKeyGroup" style="display: none; margin-bottom: 0;">
-                            <label><span data-i18n="settings:api_key">API Key</span> <span id="openaiKeyStatus" class="key-status"></span></label>
+                            <label for="openaiApiKey"><span data-i18n="settings:pipe_provider_key" data-i18n-params='{"provider":"OpenAI"}'>OpenAI API key</span> <span id="openaiKeyStatus" class="key-status"></span></label>
                             <div class="neu-inset-light">
                                 <input type="password" class="form-control" id="openaiApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_openai;title:settings:api_key_rotation_tip" placeholder="Enter OpenAI API key" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
                             </div>
@@ -1065,7 +1067,7 @@
 
                         <!-- DeepSeek API Key -->
                         <div class="form-group" id="deepseekSettings" style="display: none; margin-bottom: 0;">
-                            <label><span data-i18n="settings:api_key">API Key</span> <span id="deepseekKeyStatus" class="key-status"></span></label>
+                            <label for="deepseekApiKey"><span data-i18n="settings:pipe_provider_key" data-i18n-params='{"provider":"DeepSeek"}'>DeepSeek API key</span> <span id="deepseekKeyStatus" class="key-status"></span></label>
                             <div class="neu-inset-light">
                                 <input type="password" class="form-control" id="deepseekApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_deepseek;title:settings:api_key_rotation_tip" placeholder="Enter DeepSeek API key" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
                             </div>
@@ -1091,7 +1093,7 @@
                     <!-- Model Selection Row (Full Width) -->
                     <div style="display: grid; grid-template-columns: 1fr auto; gap: 15px; margin-bottom: 15px; align-items: end;">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="settings:model">Model Selection</label>
+                            <label id="modelSelectionLabel" data-i18n="settings:model">Model Selection</label>
                             <div class="neu-inset-light">
                                 <select class="form-control" id="model">
                                     <option value="" data-i18n="common:loading">Loading...</option>

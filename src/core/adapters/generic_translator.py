@@ -8,9 +8,11 @@ through the FormatAdapter interface.
 import asyncio
 from typing import Callable, Optional, Dict, Any
 from pathlib import Path
+from contextlib import ExitStack
 
 from .format_adapter import FormatAdapter
 from .translation_unit import TranslationUnit
+from .stage_journal import JOURNAL_KEY, UnitStageJournal, stage_contract
 from src.core.editorial_quality import (
     EditorialQualityReport,
     editorial_report_path,
@@ -18,8 +20,8 @@ from src.core.editorial_quality import (
 )
 from src.core.literary_continuity import (
     export_literary_continuity_state,
-    import_literary_continuity_state,
     observe_literary_continuity,
+    get_literary_continuity_state,
 )
 from src.core.fidelity_supervisor import (
     FidelityDecision,
@@ -31,12 +33,22 @@ from src.core.fidelity_supervisor import (
     write_fidelity_report_from_options,
 )
 from src.core.llm_output_guard import guard_llm_output
+from src.core.llm.exceptions import ProviderActionRequiredError
+from src.core.epub.audit_repair import strictly_better
+from src.core.review_strategy import (
+    bind_runtime_strategy,
+    skip_universal_refinement,
+    source_audited,
+    valid_saved_semantic_approval,
+)
 from src.core.post_processor import clean_translated_text
+from src.core.quality_assurance.models import atomic_write_bytes
 from src.core.book_profiles import apply_profile_glossary_corrections
 from src.core.translation_memory import (
     TranslationMemoryCache,
     TranslationMemoryRequest,
 )
+from src.core.usage.context import reset_usage_context, set_usage_context
 
 
 def _guard_adapter_output(
@@ -105,7 +117,9 @@ class GenericTranslator:
         self,
         adapter: FormatAdapter,
         checkpoint_manager: Any,  # CheckpointManager
-        translation_id: str
+        translation_id: str,
+        *,
+        memory_path: str | Path | None = None,
     ):
         """
         Initialize the generic translator.
@@ -118,6 +132,7 @@ class GenericTranslator:
         self.adapter = adapter
         self.checkpoint_manager = checkpoint_manager
         self.translation_id = translation_id
+        self.memory_path = memory_path
 
     async def _refine_unit_inline(
         self,
@@ -134,6 +149,7 @@ class GenericTranslator:
         prompt_options: Dict[str, Any],
         runtime_state: Dict[str, Any],
         log_callback: Optional[Callable],
+        stage_journal: UnitStageJournal,
     ) -> tuple[str, Optional[FidelityDecision]]:
         """Run editorial refinement for one already-translated unit.
 
@@ -156,7 +172,8 @@ class GenericTranslator:
         )
         refined_text = None
         try:
-            refined_text, _llm_response = await _make_refinement_request(
+            refined_text, _llm_response = await stage_journal.call(
+                "refinement", _make_refinement_request, kind="text_pair",
                 draft_translation=draft_text,
                 context_before=previous_refined_context,
                 context_after="",
@@ -170,6 +187,7 @@ class GenericTranslator:
                 context_manager=None,
                 runtime_state=runtime_state,
                 section=section,
+                source_text=unit.content,
             )
         except Exception as exc:
             from src.core.llm.exceptions import RateLimitError
@@ -216,7 +234,8 @@ class GenericTranslator:
         source_text = unit.content
         editorial_quality_report = prompt_options.get('_editorial_quality_report')
         if prompt_options.get('editorial_quality_guard', True):
-            decision, _guard_response = await _assess_refinement_with_editorial_guard(
+            decision, _guard_response = await stage_journal.call(
+                "editorial_audit", _assess_refinement_with_editorial_guard, kind="quality",
                 draft_text=draft_text,
                 refined_text=refined_text,
                 chunk_index=unit_index + 1,
@@ -248,13 +267,6 @@ class GenericTranslator:
                     kept,
                     prompt_options,
                     source_text=source_text,
-                )
-                observe_literary_continuity(
-                    runtime_state=runtime_state,
-                    source_text=source_text,
-                    translated_text=kept,
-                    section=section,
-                    phase="refinement",
                 )
                 return kept, None
 
@@ -298,13 +310,6 @@ class GenericTranslator:
                 prompt_options,
                 source_text=source_text,
             )
-            observe_literary_continuity(
-                runtime_state=runtime_state,
-                source_text=source_text,
-                translated_text=kept,
-                section=section,
-                phase="refinement",
-            )
             return kept, None
         fidelity_decision = None
         if (
@@ -312,9 +317,11 @@ class GenericTranslator:
             and source_text
             and _normalize_guard_text(source_text) != _normalize_guard_text(refined_text)
         ):
-            fidelity_decision, _fidelity_response = await supervise_fidelity(
+            fidelity_decision, _fidelity_response = await stage_journal.call(
+                "refinement_audit", supervise_fidelity,
                 source_text,
                 refined_text,
+                kind="fidelity",
                 chunk_index=unit_index + 1,
                 phase="refinement",
                 section=section,
@@ -346,22 +353,8 @@ class GenericTranslator:
                     prompt_options,
                     source_text=source_text,
                 )
-                observe_literary_continuity(
-                    runtime_state=runtime_state,
-                    source_text=source_text,
-                    translated_text=kept,
-                    section=section,
-                    phase="refinement",
-                )
                 return kept, fidelity_decision
 
-        observe_literary_continuity(
-            runtime_state=runtime_state,
-            source_text=source_text,
-            translated_text=refined_text,
-            section=section,
-            phase="refinement",
-        )
         return refined_text, fidelity_decision
 
     async def translate(
@@ -393,7 +386,10 @@ class GenericTranslator:
         Returns:
             True if translation completed successfully, False otherwise
         """
+        unit_usage_token = None
+        ownership = ExitStack()
         try:
+            ownership.enter_context(self.checkpoint_manager.execution_lock(self.translation_id))
             # 1. Prepare file for translation
             if log_callback:
                 log_callback("prepare_start", f"Preparing {self.adapter.format_name.upper()} file for translation")
@@ -443,10 +439,13 @@ class GenericTranslator:
             resume_from = 0
             last_context = ""
             runtime_state: dict = {}
-            prompt_options = llm_kwargs.get('prompt_options') or {}
+            prompt_options = bind_runtime_strategy(llm_kwargs.get('prompt_options'), file_type=self.adapter.format_name)
             llm_kwargs['prompt_options'] = prompt_options
             memory_enabled = prompt_options.get('translation_memory_enabled', True) is not False
-            translation_memory = TranslationMemoryCache() if memory_enabled else None
+            translation_memory = (
+                (TranslationMemoryCache(self.memory_path) if self.memory_path is not None else TranslationMemoryCache())
+                if memory_enabled else None
+            )
             memory_hits = 0
             structure_summary = prompt_options.get('structured_layout_summary')
             if log_callback and isinstance(structure_summary, dict):
@@ -480,14 +479,40 @@ class GenericTranslator:
             checkpoint_data = self.checkpoint_manager.load_checkpoint(self.translation_id)
 
             if checkpoint_data:
+                for saved_chunk in checkpoint_data.get('chunks', []):
+                    index = saved_chunk.get('chunk_index')
+                    if (type(index) is not int or not 0 <= index < total_units
+                            or saved_chunk.get('original_text') != units[index].content
+                            or (saved_chunk.get('chunk_data') or {}).get('chunk_index', index) != index):
+                        raise ProviderActionRequiredError(
+                            "The current source/segmentation does not match retained units; review the checkpoint before resuming.",
+                            reason="checkpoint_source_changed", provider="checkpoint",
+                        )
+                if source_audited(prompt_options):
+                    for saved_chunk in checkpoint_data.get('chunks', []):
+                        candidate = saved_chunk.get('translated_text')
+                        index = saved_chunk.get('chunk_index')
+                        if candidate and (
+                            type(index) is not int or not 0 <= index < len(units)
+                            or saved_chunk.get('original_text') != units[index].content
+                            or (saved_chunk.get('chunk_data') or {}).get('chunk_index', index) != index
+                        ):
+                            raise ProviderActionRequiredError(
+                                "The current source units do not match the retained checkpoint. "
+                                "Restore the original input before resuming.",
+                                reason="checkpoint_source_changed", provider=llm_provider,
+                            )
+                        if candidate and not valid_saved_semantic_approval(
+                            saved_chunk.get('original_text') or '', candidate,
+                            (saved_chunk.get('chunk_data') or {}).get('fidelity_decision'),
+                        ):
+                            raise ProviderActionRequiredError(
+                                "Saved units lack the full semantic approval required by this strategy. "
+                                "Resume with the original strategy or review the retained candidates explicitly.",
+                                reason="review_strategy_changed", provider=llm_provider,
+                            )
                 resume_from = await self.adapter.resume_from_checkpoint(checkpoint_data)
                 restored_translated_chunks = getattr(self.adapter, "translated_chunks", None)
-                saved_context = checkpoint_data.get('translation_context') or {}
-                last_context = saved_context.get('previous_translation_context', '')
-                import_literary_continuity_state(
-                    runtime_state,
-                    saved_context.get('literary_continuity_state'),
-                )
                 if fidelity_report:
                     seen_fidelity_chunks = set()
                     for saved_chunk in checkpoint_data.get('chunks', []):
@@ -511,13 +536,13 @@ class GenericTranslator:
                 if stats_callback:
                     stats_callback({
                         'total_chunks': total_units,
-                        'completed_chunks': resume_from,
+                        'completed_chunks': checkpoint_data.get('actual_completed_chunks', resume_from),
                         'failed_chunks': 0
                     })
             else:
                 restored_translated_chunks = None
                 # 4. Create new translation job
-                self.checkpoint_manager.start_job(
+                started = self.checkpoint_manager.start_job(
                     translation_id=self.translation_id,
                     file_type=self.adapter.format_name,
                     config={
@@ -531,6 +556,8 @@ class GenericTranslator:
                     },
                     input_file_path=str(self.adapter.input_file_path)
                 )
+                if not started:
+                    raise ProviderActionRequiredError("Could not create the job checkpoint.", reason="checkpoint_write_failed", provider="checkpoint")
 
             # 5. Create LLM client
             from src.core.llm_client import LLMClient
@@ -548,6 +575,7 @@ class GenericTranslator:
             inline_refinement = (
                 bool(prompt_options.get('inline_refinement'))
                 and self.adapter.format_name in {'txt', 'pdf'}
+                and not skip_universal_refinement(prompt_options)
             )
             pending_refinement = None
             pending_refinement_payload = None
@@ -569,6 +597,74 @@ class GenericTranslator:
                         "inline_refinement_start",
                         "✨ Full-flow pipeline enabled: translating and editorially refining by chunk."
                     )
+
+            contract = stage_contract(
+                units, source_language=source_language, target_language=target_language,
+                model=model_name, provider=llm_provider, options=prompt_options,
+                parameters={k: v for k, v in llm_kwargs.items() if k != 'prompt_options'},
+            )
+            saved_chunks = {c['chunk_index']: c for c in (checkpoint_data or {}).get('chunks', [])}
+            journals = {}
+            completed_indices = {
+                i for i, chunk in saved_chunks.items()
+                if chunk.get('status') == 'completed' and chunk.get('translated_text')
+            }
+            for index, chunk in saved_chunks.items():
+                data = chunk.get('chunk_data') or {}
+                if JOURNAL_KEY in data:
+                    if type(index) is not int or not 0 <= index < total_units:
+                        raise ProviderActionRequiredError("Saved unit index is invalid.", reason="checkpoint_corrupt", provider="checkpoint")
+                    journals[index] = UnitStageJournal(
+                        self.checkpoint_manager, self.translation_id, index, units[index], contract,
+                        saved=data[JOURNAL_KEY], options=prompt_options, log=log_callback,
+                    )
+            if not self.checkpoint_manager.update_progress(self.translation_id, total_chunks=total_units):
+                raise ProviderActionRequiredError("Could not persist the unit count.", reason="checkpoint_write_failed", provider="checkpoint")
+
+            def save_checkpoint(**kwargs):
+                journal = journals.get(kwargs['chunk_index'])
+                if journal is not None:
+                    kwargs['chunk_data'] = {**(kwargs.get('chunk_data') or {}), JOURNAL_KEY: journal.data}
+                next_completed = set(completed_indices)
+                if kwargs.get('translated_text'):
+                    next_completed.add(kwargs['chunk_index'])
+                else:
+                    next_completed.discard(kwargs['chunk_index'])
+                kwargs['completed_chunks'] = len(next_completed)
+                if not self.checkpoint_manager.save_checkpoint(**kwargs):
+                    raise ProviderActionRequiredError("Could not persist the completed unit.", reason="checkpoint_write_failed", provider="checkpoint")
+                completed_indices.clear()
+                completed_indices.update(next_completed)
+
+            def ensure_continuity(unit):
+                if 'literary_continuity_state' not in runtime_state:
+                    get_literary_continuity_state(
+                        prompt_options=prompt_options, runtime_state=runtime_state,
+                        sample_text=unit.content, source_language=source_language,
+                        target_language=target_language, log_callback=log_callback,
+                    )
+
+            ensure_continuity(units[0])
+
+            def accept_context(unit, text, phase):
+                nonlocal last_context
+                ensure_continuity(unit)
+                last_context = text[-200:]
+                observe_literary_continuity(
+                    runtime_state=runtime_state, source_text=unit.content,
+                    translated_text=text,
+                    section=infer_section_title(unit.content, context_before=unit.context_before),
+                    phase=phase,
+                )
+
+            # A sparse checkpoint may contain accepted units AFTER the first
+            # hole. Rebuild only the prefix, not a stale future-facing snapshot.
+            for index in range(resume_from):
+                if index not in saved_chunks:
+                    raise ProviderActionRequiredError("The checkpoint prefix is missing a retained unit.", reason="checkpoint_corrupt", provider="checkpoint")
+                saved = saved_chunks[index]
+                accept_context(units[index], saved['translated_text'],
+                               'refinement' if (saved.get('chunk_data') or {}).get('inline_refinement') else 'translation')
 
             def build_translation_context() -> Dict[str, Any]:
                 context = {'previous_translation_context': last_context}
@@ -621,11 +717,7 @@ class GenericTranslator:
                     pending_refinement_payload = None
                     return
 
-                last_context = (
-                    refined_content[-200:]
-                    if len(refined_content) > 200
-                    else refined_content
-                )
+                accept_context(unit, refined_content, 'refinement')
 
                 chunk_data = dict(unit.metadata)
                 if translation_fidelity_decision is not None:
@@ -647,7 +739,7 @@ class GenericTranslator:
                     if cache_key:
                         chunk_data['translation_memory_key'] = cache_key[:16]
 
-                self.checkpoint_manager.save_checkpoint(
+                save_checkpoint(
                     translation_id=self.translation_id,
                     chunk_index=unit_index,
                     original_text=unit.content,
@@ -662,7 +754,7 @@ class GenericTranslator:
                 if stats_callback:
                     stats_callback({
                         'total_chunks': total_units,
-                        'completed_chunks': unit_index + 1,
+                        'completed_chunks': len(completed_indices),
                         'failed_chunks': failed_count
                     })
 
@@ -674,19 +766,24 @@ class GenericTranslator:
                 pending_refinement_payload = None
 
             for i, unit in enumerate(units):
+                if unit_usage_token is not None:
+                    reset_usage_context(unit_usage_token)
+                unit_usage_token = set_usage_context(unit_id=unit.unit_id)
                 if i < resume_from:
                     continue
+                # Adjacent units depend on the accepted final context. Starting
+                # the next translation against a provisional draft changes its
+                # inputs on resume and can repeat an already received result.
+                if inline_refinement:
+                    await finalize_pending_refinement()
                 if (
                     isinstance(restored_translated_chunks, list)
                     and i < len(restored_translated_chunks)
                     and restored_translated_chunks[i]
                 ):
                     restored_text = restored_translated_chunks[i]
-                    last_context = (
-                        restored_text[-200:]
-                        if len(restored_text) > 200
-                        else restored_text
-                    )
+                    accept_context(unit, restored_text,
+                                   'refinement' if (saved_chunks[i].get('chunk_data') or {}).get('inline_refinement') else 'translation')
                     if log_callback:
                         log_callback(
                             "checkpoint_unit_skipped",
@@ -707,19 +804,10 @@ class GenericTranslator:
                             )
                         await finalize_pending_refinement()
 
-                    # Try to save partial output for text-backed formats (fast reconstruction)
-                    # For EPUB, partial output may not be valid, so we skip reconstruction
-                    if self.adapter.format_name in ['txt', 'srt', 'pdf']:
-                        try:
-                            if log_callback:
-                                log_callback("reconstruct_partial", "Saving partial output before interruption")
-                            output_bytes = await self.adapter.reconstruct_output(bilingual=bilingual_output)
-                            with open(self.adapter.output_file_path, 'wb') as f:
-                                f.write(output_bytes)
-                        except Exception as e:
-                            if log_callback:
-                                log_callback("reconstruct_partial_failed",
-                                    f"Could not save partial output: {str(e)}")
+                    # The checkpoint retains partial work. Do not overwrite a
+                    # published file or fill its missing units with the source.
+                    if log_callback:
+                        log_callback("checkpoint_retained", "Partial work retained in the checkpoint; no incomplete output was published.")
 
                     # Mark as paused/interrupted
                     self.checkpoint_manager.mark_paused(self.translation_id)
@@ -729,6 +817,7 @@ class GenericTranslator:
                     log_callback("unit_start",
                         f"Translating unit {i+1}/{total_units} ({unit.unit_id})")
 
+                ensure_continuity(unit)
                 previous_context_for_unit = last_context
                 memory_request = (
                     build_memory_request(unit, previous_context_for_unit)
@@ -751,6 +840,28 @@ class GenericTranslator:
                             prompt_options,
                             source_text=unit.content,
                         )
+                        cached_approval = (cached_entry.metadata.get('metadata') or {}).get('fidelity_decision')
+                        if source_audited(prompt_options) and not valid_saved_semantic_approval(
+                            unit.content, cached_text, cached_approval,
+                        ):
+                            # Cleanup/glossary changes invalidate the candidate, not its translation.
+                            decision, _ = await supervise_fidelity(
+                                unit.content, cached_text, chunk_index=i + 1,
+                                phase="translation_memory", section=unit.unit_id,
+                                source_language=source_language, target_language=target_language,
+                                primary_model=model_name, primary_provider=llm_provider,
+                                client=llm_client, prompt_options=prompt_options, log_callback=log_callback,
+                            )
+                            if not decision.accepted:
+                                raise ProviderActionRequiredError(
+                                    "The retained memory candidate requires editorial review.",
+                                    reason="cached_candidate_rejected", provider=llm_provider,
+                                )
+                            cached_approval = decision.to_dict()
+                            translation_memory.put(memory_request, cached_text, metadata={
+                                **unit.metadata, 'format_name': self.adapter.format_name,
+                                'fidelity_decision': cached_approval,
+                            })
                         gate_rejections = [
                             issue for issue in target_language_gate_issues(
                                 unit.content,
@@ -783,26 +894,17 @@ class GenericTranslator:
                                 continue
 
                             memory_hits += 1
-                            last_context = (
-                                cached_text[-200:]
-                                if len(cached_text) > 200
-                                else cached_text
-                            )
-                            observe_literary_continuity(
-                                runtime_state=runtime_state,
-                                source_text=unit.content,
-                                translated_text=cached_text,
-                                section=unit.unit_id,
-                                phase="translation_memory",
-                            )
+                            accept_context(unit, cached_text, 'translation_memory')
                             chunk_data = {
                                 **unit.metadata,
                                 'translation_memory_hit': True,
                                 'translation_memory_key': cached_entry.key[:16],
                             }
+                            if source_audited(prompt_options):
+                                chunk_data['fidelity_decision'] = cached_approval
                             if inline_refinement:
                                 chunk_data['inline_refinement'] = True
-                            self.checkpoint_manager.save_checkpoint(
+                            save_checkpoint(
                                 translation_id=self.translation_id,
                                 chunk_index=i,
                                 original_text=unit.content,
@@ -816,7 +918,7 @@ class GenericTranslator:
                             if stats_callback:
                                 stats_callback({
                                     'total_chunks': total_units,
-                                    'completed_chunks': i + 1,
+                                    'completed_chunks': len(completed_indices),
                                     'failed_chunks': failed_count
                                 })
                             if log_callback:
@@ -827,8 +929,16 @@ class GenericTranslator:
                             continue
 
                 # Translate unit
+                saved = saved_chunks.get(i) or {}
+                journal = journals.get(i) or UnitStageJournal(
+                    self.checkpoint_manager, self.translation_id, i, unit, contract,
+                    saved=(saved.get('chunk_data') or {}).get(JOURNAL_KEY),
+                    options=prompt_options, log=log_callback,
+                )
+                journals[i] = journal
                 try:
-                    translated_content = await generate_translation_request(
+                    translated_content = await journal.call(
+                        "translation", generate_translation_request,
                         main_content=unit.content,
                         context_before=unit.context_before,
                         context_after=unit.context_after,
@@ -856,9 +966,11 @@ class GenericTranslator:
                         )
                         fidelity_decision = None
                         if fidelity_supervisor_enabled(prompt_options):
-                            fidelity_decision, _ = await supervise_fidelity(
+                            fidelity_decision, _ = await journal.call(
+                                "translation_audit", supervise_fidelity,
                                 unit.content,
                                 translated_content,
+                                kind="fidelity",
                                 chunk_index=i + 1,
                                 phase="translation",
                                 section=unit.unit_id,
@@ -883,7 +995,8 @@ class GenericTranslator:
                                         "fidelity_retry",
                                         f"Retrying unit {i+1}/{total_units} after fidelity rejection"
                                     )
-                                retry_content = await generate_translation_request(
+                                retry_content = await journal.call(
+                                    "translation_retry", generate_translation_request,
                                     main_content=unit.content,
                                     context_before=unit.context_before,
                                     context_after=unit.context_after,
@@ -908,9 +1021,11 @@ class GenericTranslator:
                                         prompt_options,
                                         source_text=unit.content,
                                     )
-                                    retry_decision, _ = await supervise_fidelity(
+                                    retry_decision, _ = await journal.call(
+                                        "translation_retry_audit", supervise_fidelity,
                                         unit.content,
                                         retry_content,
+                                        kind="fidelity",
                                         chunk_index=i + 1,
                                         phase="translation_retry",
                                         section=unit.unit_id,
@@ -922,10 +1037,8 @@ class GenericTranslator:
                                         prompt_options=prompt_options,
                                         log_callback=log_callback,
                                     )
-                                    if retry_decision.accepted:
+                                    if strictly_better(fidelity_decision, retry_decision):
                                         translated_content = retry_content
-                                        fidelity_decision = retry_decision
-                                    else:
                                         fidelity_decision = retry_decision
 
                             if fidelity_decision and not fidelity_decision.accepted:
@@ -944,7 +1057,7 @@ class GenericTranslator:
                                     **unit.metadata,
                                     'fidelity_decision': fidelity_decision.to_dict(),
                                 }
-                                self.checkpoint_manager.save_checkpoint(
+                                save_checkpoint(
                                     translation_id=self.translation_id,
                                     chunk_index=i,
                                     original_text=unit.content,
@@ -957,17 +1070,12 @@ class GenericTranslator:
                                 if stats_callback:
                                     stats_callback({
                                         'total_chunks': total_units,
-                                        'completed_chunks': i,
+                                        'completed_chunks': len(completed_indices),
                                         'failed_chunks': failed_count
                                     })
                                 continue
 
                         if inline_refinement:
-                            # The previous unit's editorial pass has been
-                            # running while this unit translated. Finish and
-                            # checkpoint it before scheduling this unit, so
-                            # saved chunks remain ordered and resumable.
-                            await finalize_pending_refinement()
                             pending_refinement_payload = {
                                 'unit': unit,
                                 'unit_index': i,
@@ -988,6 +1096,7 @@ class GenericTranslator:
                                     prompt_options=prompt_options,
                                     runtime_state=runtime_state,
                                     log_callback=log_callback,
+                                    stage_journal=journal,
                                 )
                             )
                             if log_callback:
@@ -995,16 +1104,6 @@ class GenericTranslator:
                                     "inline_refinement_queued",
                                     f"Editorial pass queued for unit {i+1}/{total_units}"
                                 )
-                            # Let the next translation chunk see the previous
-                            # translated context even while the editorial pass
-                            # is still in flight. finalize_pending_refinement()
-                            # replaces it with the refined context before
-                            # scheduling the next editorial task.
-                            last_context = (
-                                translated_content[-200:]
-                                if len(translated_content) > 200
-                                else translated_content
-                            )
                             continue
 
                         # Save via adapter
@@ -1022,11 +1121,7 @@ class GenericTranslator:
 
                         # Update context for next unit before checkpointing so
                         # resume keeps both immediate flow and long memory.
-                        last_context = (
-                            translated_content[-200:]
-                            if len(translated_content) > 200
-                            else translated_content
-                        )
+                        accept_context(unit, translated_content, 'translation')
 
                         # Save checkpoint
                         chunk_data = dict(unit.metadata)
@@ -1039,11 +1134,12 @@ class GenericTranslator:
                                 metadata={
                                     **unit.metadata,
                                     'format_name': self.adapter.format_name,
+                                    'fidelity_decision': fidelity_decision.to_dict() if fidelity_decision is not None else None,
                                 },
                             )
                             if cache_key:
                                 chunk_data['translation_memory_key'] = cache_key[:16]
-                        self.checkpoint_manager.save_checkpoint(
+                        save_checkpoint(
                             translation_id=self.translation_id,
                             chunk_index=i,
                             original_text=unit.content,
@@ -1058,7 +1154,7 @@ class GenericTranslator:
                         if stats_callback:
                             stats_callback({
                                 'total_chunks': total_units,
-                                'completed_chunks': i + 1,
+                                'completed_chunks': len(completed_indices),
                                 'failed_chunks': failed_count
                             })
 
@@ -1077,7 +1173,7 @@ class GenericTranslator:
                         failed_count += 1
 
                         # Save checkpoint with failure
-                        self.checkpoint_manager.save_checkpoint(
+                        save_checkpoint(
                             translation_id=self.translation_id,
                             chunk_index=i,
                             original_text=unit.content,
@@ -1092,7 +1188,7 @@ class GenericTranslator:
                         if stats_callback:
                             stats_callback({
                                 'total_chunks': total_units,
-                                'completed_chunks': i,
+                                'completed_chunks': len(completed_indices),
                                 'failed_chunks': failed_count
                             })
 
@@ -1112,7 +1208,7 @@ class GenericTranslator:
                     failed_count += 1
 
                     # Save checkpoint with failure
-                    self.checkpoint_manager.save_checkpoint(
+                    save_checkpoint(
                         translation_id=self.translation_id,
                         chunk_index=i,
                         original_text=unit.content,
@@ -1127,12 +1223,24 @@ class GenericTranslator:
                     if stats_callback:
                         stats_callback({
                             'total_chunks': total_units,
-                            'completed_chunks': i,
+                            'completed_chunks': len(completed_indices),
                             'failed_chunks': failed_count
                         })
 
             if inline_refinement:
                 await finalize_pending_refinement()
+
+            completed = {
+                chunk['chunk_index'] for chunk in self.checkpoint_manager.db.get_chunks(self.translation_id)
+                if chunk['status'] == 'completed' and chunk.get('translated_text')
+                and type(chunk['chunk_index']) is int and 0 <= chunk['chunk_index'] < total_units
+                and chunk.get('original_text') == units[chunk['chunk_index']].content
+            }
+            if failed_count or completed != set(range(total_units)):
+                self.checkpoint_manager.mark_partial(self.translation_id)
+                if log_callback:
+                    log_callback("publication_incomplete", f"Publication blocked: {len(completed)}/{total_units} approved units; retained candidates need review.")
+                return False
 
             # 7. Reconstruct output file
             if log_callback:
@@ -1142,8 +1250,7 @@ class GenericTranslator:
                 output_bytes = await self.adapter.reconstruct_output(bilingual=bilingual_output)
 
                 # Save final file
-                with open(self.adapter.output_file_path, 'wb') as f:
-                    f.write(output_bytes)
+                atomic_write_bytes(self.adapter.output_file_path, output_bytes)
 
                 if log_callback:
                     log_callback("reconstruct_complete",
@@ -1234,18 +1341,28 @@ class GenericTranslator:
                 log_callback("translation_error", f"Translation error: {str(e)}")
             return False
         finally:
-            for client_name in ('llm_client', 'refinement_client'):
-                client = locals().get(client_name)
-                if client is not None and hasattr(client, 'close'):
-                    try:
-                        await client.close()
-                    except Exception:
-                        pass
-            # Ensure cleanup even on error
             try:
-                await self.adapter.cleanup()
-            except Exception:
-                pass
+                pending_task = locals().get('pending_refinement')
+                if pending_task is not None:
+                    if not pending_task.done():
+                        pending_task.cancel()
+                    await asyncio.gather(pending_task, return_exceptions=True)
+                if unit_usage_token is not None:
+                    reset_usage_context(unit_usage_token)
+                for client_name in ('llm_client', 'refinement_client'):
+                    client = locals().get(client_name)
+                    if client is not None and hasattr(client, 'close'):
+                        try:
+                            await client.close()
+                        except Exception:
+                            pass
+                # Ensure cleanup even on error
+                try:
+                    await self.adapter.cleanup()
+                except Exception:
+                    pass
+            finally:
+                ownership.close()
 
     def __repr__(self) -> str:
         return (

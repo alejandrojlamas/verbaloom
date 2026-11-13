@@ -16,6 +16,7 @@ import { ProgressManager, formatElapsedTime, deriveRateContext, buildRecommendat
 import { renderTranslationTitle, getFileIcon, createGenericEPUBIcon } from './progress-title.js?v=20260705-transform-flow';
 import { LifecycleManager } from '../utils/lifecycle-manager.js';
 import { t } from '../i18n/i18n.js';
+import { SubmissionReceipt } from './submission-receipt.js';
 
 // Storage configuration with versioning
 const STORAGE_VERSION = 1;
@@ -388,6 +389,9 @@ export const TranslationTracker = {
      * Restore active translation state if there's one running on the server
      */
     async restoreActiveTranslation() {
+        // The start request owns a specific ID even before its response arrives.
+        // BatchController reconciles that receipt; do not attach another book.
+        if (SubmissionReceipt.read()) return;
         try {
             const response = await ApiClient.getActiveTranslations();
             const activeJobs = (response.translations || []).filter(
@@ -506,6 +510,7 @@ export const TranslationTracker = {
      * @param {Object} data - Translation update data
      */
     handleTranslationUpdate(data) {
+        if (SubmissionReceipt.read()) return;
         const currentJob = StateManager.getState('translation.currentJob');
 
         if (!currentJob || data.translation_id !== currentJob.translationId) {
@@ -1404,7 +1409,7 @@ export const TranslationTracker = {
         DomHelpers.setText('interruptBtn', t('translation:interrupt_batch_with_icon'));
 
         const currentFilesToProcess = StateManager.getState('files.toProcess') || [];
-        DomHelpers.setDisabled('translateBtn', currentFilesToProcess.length === 0 || !StatusManager.isConnected());
+        DomHelpers.setDisabled('translateBtn', currentFilesToProcess.length === 0 || !StatusManager.canSubmit());
         DomHelpers.setText('translateBtn', t('translation:start_batch_with_icon'));
         DomHelpers.hide('progressSection');
 

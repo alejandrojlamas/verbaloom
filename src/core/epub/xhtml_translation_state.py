@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 from .unit_contract import (
+    EPUB_CACHE_IDENTITY_VERSION,
     EPUB_PIPELINE_VERSION,
     EPUB_PROMPT_VERSION,
     TranslationUnitStatus,
@@ -324,6 +325,99 @@ class XHTMLTranslationState:
             and self.validate()
         )
 
+    def _fingerprints_for_saved_options(self, options: Dict[str, Any]) -> Dict[str, str]:
+        return stage_fingerprints(
+            source_language=self.source_language,
+            target_language=self.target_language,
+            model_name=self.model_name,
+            max_tokens_per_chunk=self.max_tokens_per_chunk,
+            max_retries=self.max_retries,
+            prompt_options=options,
+            versions=self.prompt_versions_by_stage,
+            _legacy_runtime_identity=not (self.stage_fingerprints or {}).get("identity_version"),
+        )
+
+    def migrate_runtime_cache_identity(
+        self,
+        *,
+        prompt_options: Optional[Dict[str, Any]],
+        current_stage_fingerprints: Dict[str, str],
+        source_document_hash: str,
+        current_max_retries: int,
+    ) -> bool:
+        """Prove old identities or retain candidates after a profile content edit.
+
+        Later editorial changes invalidate only their dependent suffix. This
+        does not migrate arbitrary source/model/prompt drift or corrupt hashes.
+        The caller must persist the migration before launching another request.
+        """
+        if not (
+            self.strict_contract and self.validate()
+            and self.source_document_hash == source_document_hash
+            and (self.stage_fingerprints or {}).get("identity_version") in (None, EPUB_CACHE_IDENTITY_VERSION)
+            and current_stage_fingerprints.get("identity_version") == EPUB_CACHE_IDENTITY_VERSION
+        ):
+            return False
+        previous = dict(self.stage_fingerprints or {"translation": self.config_fingerprint})
+        expected = self._fingerprints_for_saved_options(dict(self.prompt_options or {}))
+        if (expected["translation"] != self.config_fingerprint
+                or any(expected.get(key) != value for key, value in previous.items())):
+            return False
+        normalized = stage_fingerprints(
+            source_language=self.source_language, target_language=self.target_language,
+            model_name=self.model_name, max_tokens_per_chunk=self.max_tokens_per_chunk,
+            max_retries=self.max_retries, prompt_options=self.prompt_options,
+            versions=self.prompt_versions_by_stage,
+        )
+        invalidated = invalidated_stages(normalized, current_stage_fingerprints)
+        reason = "runtime_limits_removed_from_identity"
+        if "translation" in invalidated:
+            updated_options = dict(self.prompt_options or {})
+            profile_hash = (prompt_options or {}).get("_profile_content_hash")
+            if not (updated_options.get("profile_id") and profile_hash
+                    and profile_hash != updated_options.get("_profile_content_hash")):
+                return False
+            updated_options["_profile_content_hash"] = profile_hash
+            updated = stage_fingerprints(
+                source_language=self.source_language, target_language=self.target_language,
+                model_name=self.model_name, max_tokens_per_chunk=self.max_tokens_per_chunk,
+                max_retries=self.max_retries, prompt_options=updated_options,
+                versions=self.prompt_versions_by_stage,
+            )
+            if updated["translation"] != current_stage_fingerprints["translation"]:
+                return False
+            invalidated = ("review", "audit")
+            reason = "profile_content_changed_or_previously_unrecorded"
+        if not all(stage in previous for stage in ("review", "audit")):
+            invalidated = ("review", "audit")
+
+        migration = {
+            "from": previous, "to": dict(current_stage_fingerprints),
+            "invalidated": list(invalidated), "reason": reason,
+            "translation_retained_as_candidate": bool(invalidated),
+        }
+        # Reject inconsistent per-unit provenance before mutating any unit.
+        for chunk in self.chunks:
+            record = chunk.get("unit") or {}
+            if record.get("stage_fingerprints") and record["stage_fingerprints"] != previous:
+                return False
+        for chunk in self.chunks:
+            record = chunk.get("unit")
+            if not isinstance(record, dict):
+                continue
+            if invalidated:
+                invalidate_unit_stages(record, invalidated)
+            record["cache_identity_migration"] = dict(migration)
+            record["stage_fingerprints"] = dict(current_stage_fingerprints)
+
+        self.prompt_options = dict(prompt_options or {})
+        self.max_retries = current_max_retries
+        self.stage_fingerprints = dict(current_stage_fingerprints)
+        self.config_fingerprint = current_stage_fingerprints["translation"]
+        self.prompt_versions_by_stage = prompt_versions()
+        self.doc_metadata["cache_identity_migration"] = migration
+        return True
+
     def migrate_legacy_automatic_recovery_metadata(
         self,
         *,
@@ -356,14 +450,7 @@ class XHTMLTranslationState:
         ):
             return False
 
-        expected_saved = stage_fingerprints(
-            source_language=self.source_language,
-            target_language=self.target_language,
-            model_name=self.model_name,
-            max_tokens_per_chunk=self.max_tokens_per_chunk,
-            max_retries=self.max_retries,
-            prompt_options=saved_options,
-        )
+        expected_saved = self._fingerprints_for_saved_options(saved_options)
         sanitized_saved_options = dict(saved_options)
         sanitized_saved_options.pop("automatic_failure_recovery", None)
         sanitized_saved_options.pop("automatic_failure_recovery_cycle", None)
@@ -476,14 +563,7 @@ class XHTMLTranslationState:
 
         previous_options = dict(options)
         previous_options["profile_id"] = previous_profile_id
-        expected_previous = stage_fingerprints(
-            source_language=self.source_language,
-            target_language=self.target_language,
-            model_name=self.model_name,
-            max_tokens_per_chunk=self.max_tokens_per_chunk,
-            max_retries=self.max_retries,
-            prompt_options=previous_options,
-        )
+        expected_previous = self._fingerprints_for_saved_options(previous_options)
         saved_fingerprints = self.stage_fingerprints or {
             "translation": self.config_fingerprint,
         }

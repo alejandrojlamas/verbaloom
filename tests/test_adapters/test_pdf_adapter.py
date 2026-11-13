@@ -16,7 +16,9 @@ def _escape_pdf_text(text: str) -> str:
 
 def write_minimal_pdf(path: Path, text: str) -> None:
     """Write a small valid text PDF that pypdf can extract from."""
-    stream = f"BT /F1 12 Tf 72 720 Td ({_escape_pdf_text(text)}) Tj ET".encode("latin-1")
+    stream = f"BT /F1 12 Tf 72 720 Td ({_escape_pdf_text(text)}) Tj ET".encode(
+        "latin-1"
+    )
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -25,7 +27,11 @@ def write_minimal_pdf(path: Path, text: str) -> None:
             b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
         ),
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+        b"<< /Length "
+        + str(len(stream)).encode("ascii")
+        + b" >>\nstream\n"
+        + stream
+        + b"\nendstream",
     ]
 
     content = b"%PDF-1.4\n"
@@ -50,7 +56,9 @@ def test_extract_pdf_text_from_path_and_bytes(tmp_path):
     write_minimal_pdf(pdf_path, "Hello from a PDF document.")
 
     assert "Hello from a PDF document." in extract_pdf_text(pdf_path)
-    assert "Hello from a PDF document." in extract_pdf_text_from_bytes(pdf_path.read_bytes())
+    assert "Hello from a PDF document." in extract_pdf_text_from_bytes(
+        pdf_path.read_bytes()
+    )
 
 
 def test_detect_file_type_recognizes_pdf_extension_and_magic(tmp_path):
@@ -107,3 +115,45 @@ async def test_pdf_adapter_reports_no_extractable_text(tmp_path):
     assert adapter.get_translation_units() == []
     assert adapter.last_error
     assert "PDF" in adapter.last_error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", [None, "", "   "])
+@pytest.mark.parametrize("bilingual", [False, True])
+async def test_pdf_adapter_never_substitutes_source_for_missing_translation(
+    tmp_path, missing, bilingual
+):
+    source = tmp_path / "source.pdf"
+    write_minimal_pdf(source, "The original must not become a translated fallback.")
+    adapter = PdfAdapter(source, tmp_path / "out.txt", {"max_tokens_per_chunk": 500})
+    assert await adapter.prepare_for_translation()
+    adapter.translated_chunks[0] = missing
+    with pytest.raises(ValueError, match="untranslated"):
+        await adapter.reconstruct_output(bilingual=bilingual)
+
+
+@pytest.mark.asyncio
+async def test_pdf_resume_uses_canonical_checkpoint_index(tmp_path):
+    source = tmp_path / "source.pdf"
+    write_minimal_pdf(source, "This unit has already been translated.")
+    adapter = PdfAdapter(source, tmp_path / "out.txt", {"max_tokens_per_chunk": 500})
+    assert await adapter.prepare_for_translation()
+    assert (
+        await adapter.resume_from_checkpoint(
+            {
+                "chunks": [
+                    {
+                        "status": "completed",
+                        "chunk_index": 0,
+                        "translated_text": "Esta unidad ya esta traducida.",
+                        "chunk_data": {},
+                    }
+                ],
+                "resume_from_index": 1,
+            }
+        )
+        == 1
+    )
+    assert "Esta unidad ya esta traducida." in (
+        await adapter.reconstruct_output()
+    ).decode("utf-8-sig")

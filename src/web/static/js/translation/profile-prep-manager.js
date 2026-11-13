@@ -4,6 +4,7 @@ import { MessageLogger } from '../ui/message-logger.js';
 import { ApiKeyUtils } from '../utils/api-key-utils.js';
 import { t } from '../i18n/i18n.js';
 import { TextTransformManager } from './text-transform-manager.js?v=20260705-transform-flow';
+import { PipelineSettings } from '../ui/pipeline-settings.js';
 
 export const ProfilePrepManager = {
     pendingFiles: [],
@@ -104,6 +105,13 @@ export const ProfilePrepManager = {
         }
         if (this.active) return;
 
+        let pipeline;
+        try {
+            pipeline = PipelineSettings.snapshot();
+            const credentials = PipelineSettings.validateCredentials(['profile_prepare', 'profile_review']);
+            if (!credentials.valid) { MessageLogger.showMessage(credentials.message, 'error'); return; }
+        }
+        catch { MessageLogger.showMessage(t('settings:pipe_invalid'), 'error'); return; }
         const language = DomHelpers.getValue('profilePrepLanguage') || DomHelpers.getValue('targetLang') || 'Spanish';
         const purpose = DomHelpers.getValue('profilePrepPurpose') || 'translation';
         const formData = new FormData();
@@ -119,9 +127,14 @@ export const ProfilePrepManager = {
         formData.append('review_model', 'deepseek-v4-pro');
         formData.append('llm_full_coverage', 'true');
 
-        const deepseekKey = ApiKeyUtils.getValue('deepseekApiKey');
-        if (deepseekKey) {
-            formData.append('api_key', deepseekKey);
+        if (pipeline) {
+            formData.append('pipeline', JSON.stringify(pipeline));
+            for (const [field, value] of Object.entries(PipelineSettings.credentials(pipeline, ['profile_prepare', 'profile_review']))) {
+                if (value) formData.append(field, value);
+            }
+        } else {
+            const deepseekKey = ApiKeyUtils.getValue('deepseekApiKey');
+            if (deepseekKey) formData.append('api_key', deepseekKey);
         }
 
         this.active = true;
@@ -130,11 +143,16 @@ export const ProfilePrepManager = {
         this.pollFailureCount = 0;
         this.pollFailureStartedAt = 0;
         this.showLiveView();
+        this.renderModelLabel({ pipeline });
         this.renderPendingFiles();
         this.setProgress(0, t('transform:profile_prep_running'));
         MessageLogger.showMessage(t('transform:profile_prep_started'), 'info');
 
         try {
+            if (pipeline) {
+                const roles = ['profile_prepare', 'profile_review'];
+                await PipelineSettings.verifyAccess({ pipeline, ...PipelineSettings.credentials(pipeline, roles) }, roles);
+            }
             const started = await ApiClient.startBookProfilePreparation(formData);
             this.persistTrackedJob(started.prep_id);
             await this.followJob(started);
@@ -432,9 +450,23 @@ export const ProfilePrepManager = {
             ? `${termsReviewed || 0}/${termsTotal || 0}`
             : String(suggestions || 0));
         this.setText('profilePrepSignals', String(signals || 0));
-        const discoveryModel = job.model || 'deepseek-flash';
-        const reviewModel = job.review_model || job.result?.profile?.review_model || 'deepseek-v4-pro';
-        this.setText('profilePrepModelLabel', `${job.provider || 'deepseek'} · ${discoveryModel} · reviewer ${reviewModel}`);
+        this.renderModelLabel(job);
+    },
+
+    renderModelLabel(job) {
+        const prepare = job.pipeline?.roles?.profile_prepare;
+        const review = job.pipeline?.roles?.profile_review;
+        const params = {
+            provider: prepare?.provider || job.provider || 'deepseek',
+            model: prepare?.model || job.model || 'deepseek-flash',
+            reviewProvider: review?.provider || job.review_provider || job.provider || 'deepseek',
+            reviewModel: review?.model || job.review_model || job.result?.profile?.review_model || 'deepseek-v4-pro',
+        };
+        const node = DomHelpers.getElement('profilePrepModelLabel');
+        if (!node) return;
+        node.dataset.i18n = 'settings:pipe_profile_models';
+        node.dataset.i18nParams = JSON.stringify(params);
+        node.textContent = t(node.dataset.i18n, params);
     },
 
     formatProgressMessage(job) {

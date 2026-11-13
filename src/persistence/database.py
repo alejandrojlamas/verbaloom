@@ -128,7 +128,9 @@ class Database:
         translation_id: str,
         file_type: str,
         config: Dict[str, Any],
-        server_session_id: Optional[str] = None
+        server_session_id: Optional[str] = None,
+        *,
+        status: str = 'running',
     ) -> bool:
         """
         Create a new translation job record.
@@ -166,7 +168,7 @@ class Database:
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     translation_id,
-                    'running',
+                    status,
                     file_type,
                     json.dumps(config),
                     json.dumps(progress),
@@ -516,7 +518,10 @@ class Database:
                     cursor.execute(
                         """
                         UPDATE translation_jobs
-                        SET status = 'partial', progress = ?, updated_at = CURRENT_TIMESTAMP
+                        SET status = CASE
+                                WHEN status IN ('running', 'processing', 'validating', 'completed', 'partial')
+                                THEN 'partial' ELSE status END,
+                            progress = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE translation_id = ?
                         """,
                         (json.dumps(progress), translation_id),
@@ -614,7 +619,7 @@ class Database:
 
     def reset_running_jobs(self, current_session_id: str) -> int:
         """
-        Reset jobs with 'running' status from previous server sessions to 'interrupted'.
+        Reset queued/running/validating jobs from old sessions to interrupted.
 
         Only resets jobs that have a different server_session_id than the current one,
         preserving jobs that are actually running in the current session.
@@ -633,14 +638,14 @@ class Database:
                 conn = self._get_connection()
                 cursor = conn.cursor()
 
-                # Reset jobs that are 'running' but from a different session
+                # Reset accepted work from a different session
                 # (or have no session_id, meaning they're from before this feature)
                 cursor.execute("""
                     UPDATE translation_jobs
                     SET status = 'interrupted',
                         updated_at = CURRENT_TIMESTAMP,
                         paused_at = CURRENT_TIMESTAMP
-                    WHERE status IN ('running', 'validating')
+                    WHERE status IN ('queued', 'running', 'validating')
                     AND (server_session_id IS NULL OR server_session_id != ?)
                 """, (current_session_id,))
 
@@ -669,7 +674,7 @@ class Database:
                     """
                     SELECT translation_id
                     FROM translation_jobs
-                    WHERE status IN ('running', 'validating')
+                    WHERE status IN ('queued', 'running', 'validating')
                     AND (server_session_id IS NULL OR server_session_id != ?)
                     ORDER BY updated_at DESC
                     """,

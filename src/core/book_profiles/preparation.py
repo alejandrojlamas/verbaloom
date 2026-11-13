@@ -20,6 +20,7 @@ import yaml
 
 from src.core.glossary import extract_glossary_candidates
 from src.core.llm.request_deadline import await_llm_call
+from src.core.llm.exceptions import RateLimitError
 from src.core.output_formats import extract_readable_text
 from src.utils.file_detector import detect_file_type_by_content
 from src.utils.archive_safety import validate_zip_archive, validate_zip_bytes
@@ -806,7 +807,7 @@ async def prepare_book_profile_from_text(
             _emit_progress(
                 progress_callback,
                 "llm_discovery",
-                f"DeepSeek Flash lee fragmento {chunk_index}/{chunk_total}.",
+                f"{model or provider_name or 'LLM'} lee fragmento {chunk_index}/{chunk_total}.",
                 start_progress,
                 chunk_index=chunk_index,
                 chunk_total=chunk_total,
@@ -826,10 +827,13 @@ async def prepare_book_profile_from_text(
                     llm_provider.generate,
                     user,
                     provider=llm_provider,
+                    role="profile_prepare",
                     system_prompt=system,
                 )
                 raw = getattr(response, "content", "") if response is not None else ""
                 payload = parse_glossary_discovery_payload(raw)
+            except RateLimitError:
+                raise
             except Exception as exc:
                 warning = (
                     f"Discovery chunk {chunk_index}/{chunk_total} failed; "
@@ -878,6 +882,8 @@ async def prepare_book_profile_from_text(
                         warnings.append(
                             f"Discovery split retry was incomplete for chunk {chunk_index}/{chunk_total}."
                         )
+                except RateLimitError:
+                    raise
                 except Exception as exc:
                     warnings.append(
                         f"Discovery split retry failed for chunk {chunk_index}/{chunk_total}: {exc}"
@@ -1070,6 +1076,7 @@ async def _retry_discovery_chunk_in_halves(
             llm_provider.generate,
             user,
             provider=llm_provider,
+            role="profile_prepare",
             system_prompt=system,
         )
         raw = getattr(response, "content", "") if response is not None else ""

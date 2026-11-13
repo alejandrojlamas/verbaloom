@@ -439,6 +439,15 @@ class TranslationStateManager:
 
         job = checkpoint_data['job']
         restored_stats = restore_timing_checkpoint(copy.deepcopy(job['progress']))
+        restored_config = copy.deepcopy(job['config'])
+        recovery_stop = restored_config.get('_automatic_recovery_stop') or {}
+        pause_reason = (
+            'manual' if restored_config.get('_manual_pause_requested') else
+            restored_config.get('_provider_action_required') or recovery_stop.get('reason')
+        )
+        if pause_reason and not pending_resume:
+            restored_stats['live_activity_event'] = pause_reason
+            restored_stats['live_status_kind'] = 'recoverable'
         restored_progress, _ = _summary_progress_values(None, restored_stats)
         with self._lock:
             # Restore job into in-memory state
@@ -449,7 +458,8 @@ class TranslationStateManager:
                 'stats': restored_stats,
                 'logs': [f"[{datetime.now().strftime('%H:%M:%S')}] Job restored from checkpoint."],
                 'result': None,
-                'config': copy.deepcopy(job['config']),
+                'config': restored_config,
+                'pause_reason': None if pending_resume else pause_reason,
                 'interrupted': bool(pending_resume),
                 'output_filepath': job['config'].get('output_filepath'),
                 'resume_from_index': checkpoint_data['resume_from_index']

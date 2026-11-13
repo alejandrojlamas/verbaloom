@@ -8,12 +8,14 @@ shape for deciding whether to accept, retry, repair, fallback, pause, or fail.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import difflib
 import hashlib
+import inspect
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Optional
-
 
 _SCRIPT_PATTERNS: dict[str, re.Pattern[str]] = {
     "latin": re.compile(r"[A-Za-z\u00c0-\u024f]"),
@@ -101,6 +103,23 @@ _DECISIONS = {
     "fail",
 }
 _SIMILARITY_COMPARE_CHARS = 8000
+_candidate_sink = ContextVar("editorial_candidate_sink", default=None)
+
+
+@contextmanager
+def capture_candidates(sink):
+    """Opt-in synchronous full capture for private experiments, never public logs."""
+    if (
+        not callable(sink)
+        or inspect.iscoroutinefunction(sink)
+        or inspect.iscoroutinefunction(type(sink).__call__)
+    ):
+        raise TypeError("Candidate sink must be synchronous and callable")
+    token = _candidate_sink.set(sink)
+    try:
+        yield
+    finally:
+        _candidate_sink.reset(token)
 
 
 @dataclass(frozen=True)
@@ -384,6 +403,9 @@ def record_candidate_result(
     limit: int = 240,
 ) -> None:
     """Append a bounded, metadata-first CandidateResult to prompt_options."""
+    sink = _candidate_sink.get()
+    if sink is not None:
+        sink(result.to_dict(include_text=True))
     if not isinstance(prompt_options, dict):
         return
     records = prompt_options.setdefault("_candidate_results", [])

@@ -2,8 +2,7 @@ import asyncio
 
 import pytest
 
-from src.core.adapters import translate_file
-from src.core.text_processor import split_text_into_chunks
+from src.core.adapters import TxtAdapter, translate_file
 from src.persistence.checkpoint_manager import CheckpointManager
 from tests.characterization import fake_llm
 
@@ -22,7 +21,10 @@ def test_text_resume_retries_only_failed_holes_after_first_error(tmp_path, monke
     output_path = tmp_path / "book.es.txt"
     input_path.write_text(source, encoding="utf-8")
 
-    chunks = split_text_into_chunks(source, max_tokens_per_chunk=24)
+    # Match production normalization/segmentation, including the final paragraph.
+    adapter = TxtAdapter(input_path, output_path, {"max_tokens_per_chunk": 24})
+    assert asyncio.run(adapter.prepare_for_translation())
+    chunks = adapter.chunks
     assert len(chunks) >= 4
     failed_index = 2
 

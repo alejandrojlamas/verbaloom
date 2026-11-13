@@ -57,6 +57,7 @@ import { Validators } from './utils/validators.js';
 import { LifecycleManager } from './utils/lifecycle-manager.js';
 import { StatusManager } from './utils/status-manager.js';
 import { initializeThemeManager } from './utils/theme-manager.js?v=20260704-ajl-mobile';
+import { PipelineSettings } from './ui/pipeline-settings.js';
 import { UpdateChecker } from './utils/update-checker.js';
 
 // ========================================
@@ -380,7 +381,7 @@ function wireModuleEvents() {
         const translateBtn = DomHelpers.getElement('translateBtn');
         if (translateBtn && !StateManager.getState('translation.isBatchActive')) {
             // Only enable if files exist AND LLM is connected
-            translateBtn.disabled = files.length === 0 || !StatusManager.isConnected();
+            translateBtn.disabled = files.length === 0 || !StatusManager.canSubmit();
         }
     });
 }
@@ -420,6 +421,7 @@ async function initializeModules() {
     initializeThemeManager();
     SettingsManager.initialize();
     FormManager.initialize();
+    void PipelineSettings.initialize();
     SettingsSummary.initialize();
     NotificationsManager.initialize();
     GlossaryManager.initialize();
@@ -454,7 +456,7 @@ async function initializeModules() {
     QuickTestManager.init();
     TextTransformManager.init();
     ProfilePrepManager.init();
-    TranslationTracker.initialize().catch((error) => {
+    TranslationTracker.initialize().then(() => BatchController.recoverPendingSubmission()).catch((error) => {
         console.error('TranslationTracker initialization failed:', error);
     });
 }
@@ -495,28 +497,8 @@ window.resetForm = FormManager.resetForm.bind(FormManager);
 // Batch Controller
 window.startBatchTranslation = BatchController.startBatchTranslation.bind(BatchController);
 window.interruptCurrentTranslation = async () => {
-    let currentJob = StateManager.getState('translation.currentJob');
-    if (!currentJob || !currentJob.translationId) {
-        try {
-            const activeData = await ApiClient.getActiveTranslations();
-            const activeJob = (activeData.translations || []).find((job) => {
-                return ['running', 'queued', 'pricing_wait', 'provider_wait'].includes(job.status);
-            });
-            if (activeJob?.translation_id) {
-                currentJob = {
-                    translationId: activeJob.translation_id,
-                    fileRef: {
-                        name: activeJob.output_filename || activeJob.input_filename || activeJob.translation_id,
-                        fileType: activeJob.file_type || 'txt',
-                    },
-                };
-                StateManager.setState('translation.currentJob', currentJob);
-                StateManager.setState('translation.isBatchActive', true);
-            }
-        } catch (error) {
-            console.warn('[interrupt] could not resolve active translation from server', error);
-        }
-    }
+    if (await BatchController.cancelPendingSubmission()) return;
+    const currentJob = StateManager.getState('translation.currentJob');
 
     if (!currentJob || !currentJob.translationId) {
         MessageLogger.showMessage(t('translation:no_active_translation'), 'info');

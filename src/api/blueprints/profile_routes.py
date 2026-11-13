@@ -6,6 +6,8 @@ import asyncio
 from datetime import datetime, timezone
 from functools import lru_cache
 import hashlib
+import json
+from contextvars import copy_context
 import math
 import os
 from pathlib import Path
@@ -41,11 +43,15 @@ from src.core.book_profiles.profile_goals import resolve_profile_goal
 from src.core.llm.factory import create_llm_provider
 from src.core.output_formats import extract_readable_text
 from src.core.usage import reset_usage_context, set_usage_context
+from src.core.pipeline_config import ENDPOINTS, validate_pipeline
+from src.core.pipeline_runtime import activate_pipeline, active_pipeline, close_pipeline
+from src.core.llm.exceptions import RateLimitError
 import src.config as _config
 from src.utils.language_detector import LanguageDetector
 from src.utils.provider_security import (
     EndpointCredentialError,
     resolve_api_key_for_endpoint,
+    resolve_pipeline_credentials,
 )
 
 
@@ -367,6 +373,7 @@ def create_profile_blueprint(state_manager=None):
                 return jsonify(snapshot), 202
 
             prep_id = uuid.uuid4().hex
+            payload["prep_id"] = prep_id
             job = _new_profile_prep_job(
                 prep_id,
                 payload,
@@ -635,6 +642,19 @@ def _collect_profile_prep_payload() -> dict[str, Any]:
         or form.get("term_review_model")
         or ("deepseek-v4-pro" if provider_type == "deepseek" else model)
     )
+    pipeline = form.get("pipeline")
+    pipeline_credentials = {}
+    if pipeline is not None:
+        try:
+            pipeline = validate_pipeline(json.loads(pipeline) if isinstance(pipeline, str) else pipeline)
+            pipeline_credentials["pipeline"] = pipeline
+            resolve_pipeline_credentials(pipeline_credentials, form, primary_role="profile_prepare",
+                                         roles=("profile_prepare", "profile_review"))
+        except (ValueError, TypeError) as exc:
+            raise ProfilePrepRequestError(f"Invalid pipeline configuration: {exc}") from exc
+        provider_type = pipeline["roles"]["profile_prepare"]["provider"]
+        model = pipeline["roles"]["profile_prepare"]["model"]
+        review_model = pipeline["roles"]["profile_review"]["model"]
     default_endpoint = {
         "ollama": _config.API_ENDPOINT,
         "openai": _config.OPENAI_API_ENDPOINT,
@@ -645,7 +665,10 @@ def _collect_profile_prep_payload() -> dict[str, Any]:
     }.get(provider_type, "")
     api_endpoint = str(form.get("api_endpoint") or default_endpoint)
     env_var = f"{provider_type.upper()}_API_KEY"
-    if provider_type in {"openai", "nim"}:
+    if pipeline is not None:
+        api_endpoint = ENDPOINTS[provider_type]
+        api_key = pipeline_credentials[f"{provider_type}_api_key"]
+    elif provider_type in {"openai", "nim"}:
         try:
             api_key, _key_source = resolve_api_key_for_endpoint(
                 form.get("api_key"),
@@ -684,6 +707,7 @@ def _collect_profile_prep_payload() -> dict[str, Any]:
     )
 
     return {
+        **pipeline_credentials,
         "combined_text": combined_text,
         "source_name": source_name,
         "source_language": source_language,
@@ -698,6 +722,8 @@ def _collect_profile_prep_payload() -> dict[str, Any]:
         "provider_type": provider_type,
         "model": model,
         "review_model": review_model,
+        "review_provider_type": (pipeline["roles"]["profile_review"]["provider"]
+                                 if pipeline else provider_type),
         "api_key": api_key,
         "api_endpoint": api_endpoint,
         "max_llm_chunks": limits["max_llm_chunks"],
@@ -862,7 +888,7 @@ def _run_profile_preparation(
     provider = None
     review_provider = None
     try:
-        if payload["max_llm_chunks"] > 0:
+        if payload["max_llm_chunks"] > 0 and payload.get("pipeline") is None:
             try:
                 provider = create_llm_provider(
                     provider_type=payload["provider_type"],
@@ -896,7 +922,16 @@ def _run_profile_preparation(
                 ) from exc
 
         async def _prepare():
+            nonlocal provider, review_provider
+            token = activate_pipeline(payload.get("pipeline"),
+                job_id=payload.get("prep_id") or uuid.uuid4().hex,
+                credentials={p: payload.get(f"{p}_api_key") for p in ("openai", "deepseek")},
+                roles=("profile_prepare", "profile_review"))
+            runtime = active_pipeline.get()
             try:
+                if runtime is not None and payload["max_llm_chunks"] > 0:
+                    provider = runtime.client_for("profile_prepare")
+                    review_provider = runtime.client_for("profile_review")
                 return await prepare_book_profile_from_text(
                     payload["combined_text"],
                     source_name=payload["source_name"],
@@ -911,7 +946,7 @@ def _run_profile_preparation(
                     term_review_provider=review_provider,
                     provider_name=payload["provider_type"] if provider is not None else "",
                     model=payload["model"] if provider is not None else "",
-                    term_review_provider_name=payload["provider_type"] if review_provider is not None else "",
+                    term_review_provider_name=(payload.get("review_provider_type") or payload["provider_type"]) if review_provider is not None else "",
                     term_review_model=payload["review_model"] if review_provider is not None else "",
                     max_local_terms=payload["max_local_terms"],
                     llm_chunk_chars=payload["llm_chunk_chars"],
@@ -920,16 +955,17 @@ def _run_profile_preparation(
                     progress_callback=progress_callback,
                 )
             finally:
-                if provider is not None:
+                if runtime is None and provider is not None:
                     try:
                         await provider.close()
                     except Exception:
                         pass
-                if review_provider is not None and review_provider is not provider:
+                if runtime is None and review_provider is not None and review_provider is not provider:
                     try:
                         await review_provider.close()
                     except Exception:
                         pass
+                await close_pipeline(token)
 
         return _run_async(_prepare())
     finally:
@@ -954,6 +990,8 @@ def _new_profile_prep_job(
         "provider": payload["provider_type"],
         "model": payload["model"],
         "review_model": payload.get("review_model") or "",
+        "review_provider": payload.get("review_provider_type") or payload["provider_type"],
+        "pipeline": payload.get("pipeline"),
         "profile_goal": payload.get("profile_goal") or "",
         "profile_goal_label": payload.get("profile_goal_label") or "",
         "coverage_mode": "full" if payload.get("llm_full_coverage") else "sampled",
@@ -979,7 +1017,7 @@ def _run_profile_prep_job(prep_id: str, payload: dict[str, Any]) -> None:
         status="running",
         progress=1,
         current_stage="started",
-        message="Extraccion terminada; DeepSeek Flash leera el libro completo para preparar el perfil.",
+        message=f"Extraction finished; {payload['model']} will prepare the profile.",
     )
 
     def progress_callback(event: dict[str, Any]) -> None:
@@ -1001,6 +1039,14 @@ def _run_profile_prep_job(prep_id: str, payload: dict[str, Any]) -> None:
             current_stage="completed",
             message="Perfil editorial guardado automaticamente.",
             result={"profile": result.to_dict(), "message": "Profile prepared."},
+        )
+    except RateLimitError as exc:
+        _update_profile_prep_job(
+            prep_id, status="failed", current_stage="failed",
+            message=str(exc), error=str(exc),
+            reason=getattr(exc, "reason", "rate_limited"),
+            retryable=bool(getattr(exc, "retryable", True)),
+            retry_after=getattr(exc, "retry_after", None),
         )
     except Exception as exc:
         _update_profile_prep_job(
@@ -1103,6 +1149,7 @@ def _profile_prep_request_fingerprint(payload: Mapping[str, Any]) -> str:
         digest.update(str(payload.get(field) or "").encode("utf-8", errors="replace"))
         digest.update(b"\0")
     digest.update(str(payload.get("combined_text") or "").encode("utf-8", errors="replace"))
+    digest.update(json.dumps(payload.get("pipeline"), sort_keys=True, separators=(",", ":")).encode())
     return digest.hexdigest()
 
 
@@ -1135,7 +1182,8 @@ def _run_async(coro):
     import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(lambda: asyncio.run(coro)).result()
+        context = copy_context()
+        return pool.submit(context.run, lambda: asyncio.run(coro)).result()
 
 
 def _book_profile_glossary_payload(profile) -> dict[str, Any]:

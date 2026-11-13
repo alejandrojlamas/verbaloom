@@ -13,6 +13,7 @@
 import { DomHelpers } from './dom-helpers.js';
 import { StateManager } from '../core/state-manager.js';
 import { t } from '../i18n/i18n.js';
+import { PipelineSettings } from './pipeline-settings.js';
 
 const PROVIDER_LABELS = {
     ollama: 'Ollama',
@@ -123,9 +124,10 @@ function queueOperation() {
 }
 
 function buildLlmLine() {
-    const providerKey = (DomHelpers.getValue('llmProvider') || '').trim();
+    const primary = PipelineSettings.primary(queueOperation() === 'refine' ? 'refine' : 'translate');
+    const providerKey = primary?.provider || (DomHelpers.getValue('llmProvider') || '').trim();
     const providerLabel = PROVIDER_LABELS[providerKey] || providerKey || '—';
-    const modelLabel = getSelectText('model') || DomHelpers.getValue('model') || '—';
+    const modelLabel = primary?.model || getSelectText('model') || DomHelpers.getValue('model') || '—';
     const sourceLang = getLanguage('sourceLang', 'customSourceLang') || t('translation:summary_lang_auto_detect');
     const targetLang = getLanguage('targetLang', 'customTargetLang') || '—';
     if (queueOperation() === 'refine') {
@@ -375,6 +377,7 @@ export const SettingsSummary = {
         window.addEventListener('fileListChanged', render);
         window.addEventListener('glossarySelectionChanged', render);
         window.addEventListener('localeChanged', render);
+        window.addEventListener('pipelineChanged', render);
 
         const container = DomHelpers.getElement('settingsSummary');
         if (container) {

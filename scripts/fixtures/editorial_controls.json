@@ -1,0 +1,17 @@
+{
+  "schema": "verbaloom.synthetic-editorial-controls/v1",
+  "source_language": "English",
+  "target_language": "Spanish",
+  "source_text": "[id0]Elena did not sell the violin.\n\nAt seven, she whispered, \"A fine victory,\" and shut the door.\n\nShe waited for Pavel.[id1]",
+  "legitimate_candidate": "[id0]Elena no vendió el violín.\n\nA las siete, susurró: «Una hermosa victoria», y cerró la puerta.\n\nEsperó a Pavel.[id1]",
+  "controls": [
+    {"id": "negation", "expected_kind": "negation", "old": "Elena no vendió", "new": "Elena vendió"},
+    {"id": "omission", "expected_kind": "omission", "old": "A las siete, susurró: «Una hermosa victoria», y cerró la puerta.\n\n", "new": ""},
+    {"id": "name", "expected_kind": "name_changed", "old": "Elena", "new": "Marta"},
+    {"id": "duplication", "expected_kind": "duplication", "old": "Esperó a Pavel.", "new": "Esperó a Pavel.\n\nEsperó a Pavel."},
+    {"id": "voice", "expected_kind": "flattened_voice", "old": "A las siete, susurró: «Una hermosa victoria», y cerró la puerta.", "new": "A las siete manifestó en voz baja que era una hermosa victoria y procedió a cerrar la puerta."},
+    {"id": "markers", "expected_kind": "marker_damage", "old": "[id1]", "new": "[id9]"},
+    {"id": "legitimate", "expected_kind": null, "old": "", "new": ""},
+    {"id": "legitimate_syntax", "expected_kind": null, "old": "Elena no vendió el violín.", "new": "El violín no lo vendió Elena."}
+  ]
+}

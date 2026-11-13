@@ -575,7 +575,7 @@ def test_strict_checkpoint_waits_for_quality_gate_before_completed(tmp_path, mon
     checkpoint = manager.load_checkpoint("strict-run")
 
     assert checkpoint["checkpoint_complete"] is True
-    assert checkpoint["job"]["status"] == "validating"
+    assert checkpoint["job"]["status"] == "running"
     assert manager.mark_completed("strict-run") is True
     assert manager.get_job("strict-run")["status"] == "validating"
     assert manager.mark_completed("strict-run", quality_gate_passed=True) is True

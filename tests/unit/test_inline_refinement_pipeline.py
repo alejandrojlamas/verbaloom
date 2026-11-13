@@ -75,6 +75,7 @@ async def test_txt_inline_refinement_saves_refined_chunks_in_order(tmp_path, mon
 
     async def fake_refine(**kwargs):
         idx = kwargs["draft_translation"].split()[1].lower()
+        assert kwargs["source_text"].split()[0].lower() == idx
         events.append(("refine_start", idx))
         await asyncio.sleep(0.05)
         events.append(("refine_end", idx))
@@ -122,10 +123,9 @@ async def test_txt_inline_refinement_saves_refined_chunks_in_order(tmp_path, mon
     assert [chunk["chunk_index"] for chunk in chunks] == [0, 1]
     assert all((chunk["chunk_data"] or {}).get("inline_refinement") for chunk in chunks)
 
-    # The second translation starts before the first refinement finishes:
-    # that proves the pipeline overlaps translation and editing while still
-    # saving completed chunks in order.
-    assert events.index(("translate_start", "second")) < events.index(("refine_end", "first"))
+    # The next unit depends on the final accepted neighbor, so live execution
+    # and recovery must use the same context rather than an in-flight draft.
+    assert events.index(("translate_start", "second")) > events.index(("refine_end", "first"))
 
 
 @pytest.mark.asyncio

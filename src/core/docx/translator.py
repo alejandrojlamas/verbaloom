@@ -12,6 +12,7 @@ from src.core.fidelity_supervisor import (
     ensure_fidelity_report,
     write_fidelity_report_from_options,
 )
+from src.core.quality_assurance.models import atomic_write_bytes
 
 
 async def translate_docx_file(
@@ -126,8 +127,7 @@ async def translate_docx_file(
         }
 
     # Save to output file
-    with open(output_filepath, 'wb') as f:
-        f.write(docx_bytes)
+    atomic_write_bytes(output_filepath, docx_bytes)
 
     if log_callback:
         log_callback("file_saved", f"DOCX saved to {output_filepath}")

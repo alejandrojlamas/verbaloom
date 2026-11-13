@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict, Optional
+from .pipeline_runtime import selected_role
 
 from .locale_quality import (
     build_mexican_spanish_repair_instructions,
@@ -49,6 +50,9 @@ def _literary_quality_alert_guard_enabled(prompt_options: Optional[dict]) -> boo
 
 def _resolve_quality_alert_model(model: str, prompt_options: Optional[dict]) -> str:
     """Pick the cheap model used only for alert-triggered repair passes."""
+    role = selected_role("repair")
+    if role:
+        return role["model"]
     options = prompt_options or {}
     configured = (
         options.get("quality_alert_model")
@@ -89,6 +93,9 @@ def _resolve_source_aware_editorial_guard_model(
     model: str,
     prompt_options: Optional[dict],
 ) -> str:
+    role = selected_role("audit")
+    if role:
+        return role["model"]
     options = prompt_options or {}
     configured = (
         options.get("source_aware_editorial_guard_model")

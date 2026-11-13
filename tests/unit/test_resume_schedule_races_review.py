@@ -350,6 +350,9 @@ def test_manual_resume_can_reclaim_its_own_provider_wait(tmp_path):
     source.write_text("source", encoding="utf-8")
     config = {
         **_scheduled_config("waiting-model"),
+        "_rate_limit_recovery_cycle": 2,
+        "_provider_action_required": "rate_limit_recovery_exhausted",
+        "_automatic_recovery_stop": {"reason": "automatic_recovery_budget_exhausted"},
         "file_type": "txt",
         "preserved_input_path": str(source),
         "llm_provider": "ollama",
@@ -376,6 +379,10 @@ def test_manual_resume_can_reclaim_its_own_provider_wait(tmp_path):
     assert response.status_code == 200
     assert state.get_translation_field("book", "status") == "queued"
     assert starts and starts[0][1]["replace_handoff"] is True
+    resumed_config = state.get_translation_field("book", "config")
+    assert resumed_config["_rate_limit_recovery_cycle"] == 2
+    assert "_provider_action_required" not in resumed_config
+    assert "_automatic_recovery_stop" not in resumed_config
 
 
 def test_manual_resume_does_not_bypass_live_provider_backoff():

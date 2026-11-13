@@ -189,6 +189,14 @@ async def translate_file(
         input_filepath = text_first_input_path
         detected_type = 'txt'
 
+    from src.core.review_strategy import bind_runtime_strategy
+
+    prompt_options = bind_runtime_strategy(prompt_options, file_type=detected_type)
+    ensure_fidelity_report(
+        prompt_options, document_name=os.path.basename(output_filepath),
+        source_language=source_language, target_language=target_language,
+        translator_model=model_name, translator_provider=llm_provider,
+    )
     if prompt_options.get('refine') and detected_type in {'txt', 'pdf'}:
         prompt_options['inline_refinement'] = True
 

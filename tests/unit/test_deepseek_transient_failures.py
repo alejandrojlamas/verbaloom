@@ -8,7 +8,7 @@ import pytest
 import src.core.llm.providers.deepseek as deepseek_module
 from src.core.llm.providers.deepseek import DeepSeekProvider
 from src.core.llm.exceptions import (
-    ContentRiskError,
+    ProviderActionRequiredError,
     DeepSeekPeakPricingError,
     InsufficientCreditsError,
     RateLimitError,
@@ -346,9 +346,9 @@ async def test_deepseek_401_fails_fast_without_wasting_a_retry(monkeypatch):
     monkeypatch.setattr(provider, "_get_client", get_client)
     monkeypatch.setattr(deepseek_module.asyncio, "sleep", no_sleep)
 
-    result = await provider.generate("Translate this complete unit.")
-
-    assert result is None
+    with pytest.raises(ProviderActionRequiredError) as error:
+        await provider.generate("Translate this complete unit.")
+    assert error.value.reason == "authentication_error"
     # Only the first (failing) call should have been made -- no retry burned
     # on a request that can never succeed.
     assert client.calls == 1
@@ -401,11 +401,12 @@ async def test_deepseek_content_risk_is_not_retried_with_identical_payload(monke
 
     monkeypatch.setattr(provider, "_get_client", get_client)
 
-    with pytest.raises(ContentRiskError) as exc_info:
+    with pytest.raises(ProviderActionRequiredError) as exc_info:
         await provider.generate("Translate this complete unit.")
 
     assert exc_info.value.provider == "deepseek"
-    assert exc_info.value.retryable_with_smaller_unit is True
+    assert exc_info.value.reason == "provider_refusal"
+    assert exc_info.value.retryable is False
     assert client.calls == 1
 
 
@@ -509,7 +510,7 @@ async def test_deepseek_content_risk_does_not_trip_circuit_breaker(monkeypatch):
 
     monkeypatch.setattr(provider, "_get_client", get_client)
 
-    with pytest.raises(ContentRiskError):
+    with pytest.raises(ProviderActionRequiredError):
         await provider.generate("Translate this complete unit.")
 
     assert provider._retry_manager.get_circuit_state() == "closed"
@@ -556,8 +557,7 @@ async def test_deepseek_401_does_not_trip_circuit_breaker(monkeypatch):
 
     monkeypatch.setattr(provider, "_get_client", get_client)
 
-    result = await provider.generate("Translate this complete unit.")
-
-    assert result is None
+    with pytest.raises(ProviderActionRequiredError):
+        await provider.generate("Translate this complete unit.")
     assert provider._retry_manager.get_circuit_state() == "closed"
     assert provider._retry_manager._circuit_breaker._failure_count == 0

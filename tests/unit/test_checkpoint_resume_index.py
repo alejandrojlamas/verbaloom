@@ -117,8 +117,8 @@ def test_resume_uses_real_chunk_prefix_when_progress_is_stale_low(cm):
 
     assert checkpoint["resume_from_index"] == 5
     assert checkpoint["checkpoint_complete"] is True
-    assert checkpoint["job"]["status"] == "completed"
-    assert cm.get_resumable_jobs() == []
+    assert checkpoint["job"]["status"] == "interrupted"
+    assert cm.get_resumable_jobs()[0]["resume_from_index"] == 5
 
 
 def test_resume_stops_at_first_missing_or_failed_chunk(cm):
@@ -255,7 +255,7 @@ def test_epub_checkpoint_complete_uses_logical_chunk_counts_not_file_count(cm):
     assert checkpoint["resume_from_index"] == 3  # file-level: all 3 files done
     assert checkpoint["job"]["progress"]["completed_chunks"] == 169  # logical: all done
     assert checkpoint["checkpoint_complete"] is True
-    assert checkpoint["job"]["status"] == "completed"
+    assert checkpoint["job"]["status"] == "running"  # publication is a separate transition
 
 
 def test_epub_checkpoint_not_complete_when_logical_chunks_remain(cm):

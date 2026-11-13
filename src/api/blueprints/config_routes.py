@@ -53,6 +53,7 @@ from .mobile_access_routes import (
     register_mobile_access_routes,
 )
 from .provider_model_routes import register_provider_model_routes
+from .pipeline_routes import register_pipeline_routes
 
 # Setup logger for this module
 logger = logging.getLogger('config_routes')
@@ -85,6 +86,7 @@ def create_config_blueprint(server_session_id=None):
         logger=logger,
     )
     register_provider_model_routes(bp, config=_config, logger=logger)
+    register_pipeline_routes(bp)
 
     @bp.route('/')
     @bp.route('/verbaloom')

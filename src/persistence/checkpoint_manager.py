@@ -5,6 +5,7 @@ Checkpoint manager for translation job persistence and resume functionality.
 import os
 import shutil
 import tempfile
+import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -42,7 +43,8 @@ class CheckpointManager:
     and file storage for uploaded files.
     """
 
-    def __init__(self, db_path: str = "data/jobs.db", server_session_id: Optional[str] = None):
+    def __init__(self, db_path: str = "data/jobs.db", server_session_id: Optional[str] = None,
+                 *, uploads_dir: str | Path | None = None):
         """
         Initialize checkpoint manager.
 
@@ -51,16 +53,26 @@ class CheckpointManager:
             server_session_id: Unique identifier for the current server session
         """
         self.db = Database(db_path)
-        self.uploads_dir = Path("data/uploads")
+        self.uploads_dir = Path(uploads_dir) if uploads_dir is not None else Path("data/uploads")
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
         self.server_session_id = server_session_id
+
+    def execution_lock(self, translation_id: str):
+        """Exclude duplicate local engines without holding a database transaction."""
+        from .execution_lock import exclusive_execution
+
+        database = Path(self.db.db_path).resolve()
+        name = hashlib.sha256(translation_id.encode("utf-8")).hexdigest()
+        return exclusive_execution(database.parent / (database.name + ".workers") / name)
 
     def start_job(
         self,
         translation_id: str,
         file_type: str,
         config: Dict[str, Any],
-        input_file_path: Optional[str] = None
+        input_file_path: Optional[str] = None,
+        *,
+        status: str = 'running',
     ) -> bool:
         """
         Start tracking a new translation job.
@@ -74,18 +86,18 @@ class CheckpointManager:
         Returns:
             True if started successfully
         """
-        # Preserve input file first (updates config with preserved_input_path)
-        if input_file_path:
-            self._preserve_input_file(translation_id, input_file_path, config)
-
-        # Create job in database with updated config and server session ID
+        # Reserve the primary key before touching files: a duplicate submission
+        # must not overwrite the winning job's preserved source or configuration.
         success = self.db.create_job(
             translation_id,
             file_type,
             _checkpoint_safe_value(config),
             self.server_session_id,
+            status=status,
         )
-
+        if success and input_file_path:
+            self._preserve_input_file(translation_id, input_file_path, config)
+            success = self.update_job_config(translation_id, config)
         return success
 
     def get_job(self, translation_id: str) -> Optional[Dict[str, Any]]:
@@ -318,19 +330,9 @@ class CheckpointManager:
                 and resume_from_index >= total_chunks
                 and not failed_chunk_indices
             )
-        quality_required = self._quality_assurance_required(job.get('config') or {})
-        quality_passed = self._quality_assurance_passed(job.get('config') or {})
-        if checkpoint_complete and job.get('status') != 'completed':
-            terminal_status = 'completed' if (not quality_required or quality_passed) else 'validating'
-            self.db.update_job_progress(
-                translation_id,
-                current_chunk_index=total_chunks - 1,
-                total_chunks=total_chunks,
-                completed_chunks=total_chunks,
-                failed_chunks=0,
-                status=terminal_status,
-            )
-            job['status'] = terminal_status
+        if checkpoint_complete:
+            # Reading progress cannot clear a stop reason or prove publication.
+            # Reconcile the snapshot; lifecycle transitions belong to the worker.
             job['progress']['current_chunk_index'] = total_chunks - 1
             job['progress']['completed_chunks'] = total_chunks
             job['progress']['failed_chunks'] = 0
@@ -379,14 +381,7 @@ class CheckpointManager:
             if not checkpoint:
                 continue
             job = checkpoint['job']
-            quality_pending = (
-                self._quality_assurance_required(job.get('config') or {})
-                and not self._quality_assurance_passed(job.get('config') or {})
-            )
-            if (
-                (checkpoint.get('checkpoint_complete') and not quality_pending)
-                or job.get('status') == 'completed'
-            ):
+            if job.get('status') == 'completed':
                 continue
 
             progress = job['progress']
@@ -544,7 +539,7 @@ class CheckpointManager:
         """Return whether a zero-checkpoint job has enough input info to retry."""
         return any(
             bool(config.get(key))
-            for key in ('file', 'file_path', 'input_filename', 'preserved_input_path')
+            for key in ('file', 'file_path', 'input_filename', 'preserved_input_path', 'text')
         )
 
     def reset_running_jobs_on_startup(self) -> int:
@@ -795,7 +790,7 @@ class CheckpointManager:
     @staticmethod
     def _quality_assurance_passed(config: Dict[str, Any]) -> bool:
         result = dict(config.get('quality_assurance_result') or {})
-        return bool(result.get('publishable')) and str(result.get('status') or '').upper() in {
+        return result.get('publishable') is True and str(result.get('status') or '').upper() in {
             'PASSED',
             'PASSED_WITH_WARNINGS',
         }

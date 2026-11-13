@@ -7,6 +7,7 @@ import zipfile
 import pytest
 
 from src.core.epub.missing_block_repair import repair_epub_missing_blocks_with_llm
+from src.core.llm.exceptions import ProviderActionRequiredError
 
 
 def _write_epub(path: Path, paragraph: str) -> None:
@@ -88,3 +89,25 @@ async def test_selective_missing_block_repair_skips_sanitized_artifacts(tmp_path
     assert report.clean
     assert report.found == 0
     assert report.repaired == 0
+
+
+@pytest.mark.asyncio
+async def test_missing_block_refusal_is_not_retried_or_hidden_in_a_report(tmp_path):
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    _write_epub(source, "<p>I cold.</p><p>I waited.</p>")
+    _write_epub(output, "<p></p><p></p>")
+    original = output.read_bytes()
+
+    class Provider:
+        calls = 0
+
+        async def generate(self, prompt, **kwargs):
+            self.calls += 1
+            raise ProviderActionRequiredError("Review needed", reason="provider_refusal", provider="openai")
+
+    provider = Provider()
+    with pytest.raises(ProviderActionRequiredError):
+        await repair_epub_missing_blocks_with_llm(str(source), str(output),
+            config={"source_language": "English", "target_language": "Spanish"}, provider=provider)
+    assert provider.calls == 1
+    assert output.read_bytes() == original

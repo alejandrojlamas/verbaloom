@@ -17,8 +17,9 @@ The checkpoint database stores:
 - staging and intended output paths
 - final quality-gate proof and report directory
 
-Strict jobs whose chunks are complete enter `validating`, not `completed`.
-`completed` is persisted only after the whole-book gates pass.
+When a worker finishes processing, strict jobs enter `validating`, not
+`completed`. Reading a checkpoint does not change its lifecycle status or clear
+a pause/error. `completed` is persisted only after the whole-book gates pass.
 
 ## Resume
 
@@ -86,9 +87,37 @@ A blocked CLI run remains under:
 data/quality_runs/<run_id>/staging/
 ```
 
+The compatible `translate.py -i SOURCE -o OUTPUT` entrypoint also stages and
+validates before delivery. Its private candidate lives in a `.publication-*`
+directory beside OUTPUT; the exact path and run ID are printed and stored in the
+checkpoint. Resume it with `venv/bin/python translator.py resume RUN_ID` from the
+same working directory/database. A saved `--refine-only` job remains monolingual
+on resume. TTS starts only after successful publication. CLI exit codes are 0
+(approved), 1 (operational failure), 2 (blocked publication), and 130 (interrupted).
+
 It is never copied over a previous valid output. A blocked web artifact receives
 a `[partial]` prefix and remains downloadable for diagnosis, but the job remains
 partial and resumable.
+
+Approval is bound to the exact source and candidate SHA-256 values captured
+during validation. If either changes while the validators run, the run cannot
+issue a new approval. Publishing verifies the temporary copy against the
+approved candidate checksum before making it visible. Updating a report's
+output path does not approve different bytes.
+
+For a completed run, an additional non-overwriting copy can be exported with:
+
+```bash
+venv/bin/python translator.py export RUN_ID --output /path/to/additional-copy.epub
+```
+
+Export requires matching approved reports from the same validation, an unchanged
+source and unchanged candidate. A saved job must already have completed
+publication: `export` is not a way to bypass a pause, processing failure or
+budget block. Resume such jobs through their normal lifecycle. Old reports
+without checksums require fresh validation; reports and original deliveries
+are not deleted automatically. An external source/output pair without a saved
+job can be exported using the run ID returned by `validate`.
 
 Intermediate manifests and reports are kept by default. Set
 `export.keep_intermediate_files: false` only when traceability is not required.

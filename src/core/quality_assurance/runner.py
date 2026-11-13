@@ -12,6 +12,7 @@ from .config import QualityAssuranceConfig, config_from_job
 from .extractors import build_manifest
 from .gates import QualityGateReport, evaluate_quality_gates, mark_manifest_exported
 from .models import BookManifest
+from .publication import artifact_sha256, require_sha256
 from .reports import QualityReportPaths, write_quality_reports
 from .validators import ValidationBundle, validate_manifest
 
@@ -27,6 +28,12 @@ class QualityAssuranceRun:
     @property
     def publishable(self) -> bool:
         return self.report.publishable
+
+    @property
+    def validated_output_sha256(self) -> str:
+        return require_sha256(
+            self.manifest.metadata.get("validation_artifacts", {}).get("output_sha256")
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -66,6 +73,10 @@ def run_quality_assurance(
     mark_failed_for_repair: bool = True,
 ) -> QualityAssuranceRun:
     started = time.monotonic()
+    artifacts = {
+        "source_sha256": artifact_sha256(source_path),
+        "output_sha256": artifact_sha256(output_path),
+    }
     qa_config = config or config_from_job(job_config)
     safe_run_id = _safe_run_id(run_id)
     root = Path(report_root or qa_config.report_root) / safe_run_id
@@ -91,6 +102,12 @@ def run_quality_assurance(
         protected_entities=protected_entities,
         publication_report=publication_report,
     )
+    if artifacts != {
+        "source_sha256": artifact_sha256(source_path),
+        "output_sha256": artifact_sha256(output_path),
+    }:
+        raise RuntimeError("Source or output artifact changed during validation; validate again.")
+    manifest.metadata["validation_artifacts"] = artifacts
     report = evaluate_quality_gates(
         manifest,
         validation,

@@ -6,7 +6,7 @@ as well as common data structures like LLMResponse.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Union
 import httpx
 
@@ -87,6 +87,16 @@ class LLMResponse:
     context_limit: int = 0  # Context limit that was set for this request
     was_truncated: bool = False  # True if response was truncated due to context limit
     was_fallback: bool = False  # True if raw response was used because tag extraction failed
+    status: str = "completed"
+    finish_reason: str = ""
+    refusal: str = ""
+    request_id: str = ""
+    response_id: str = ""
+    response_model: str = ""
+    latency_ms: int = 0
+    raw_usage: dict = field(default_factory=dict)
+    prompt_cache_write_tokens: int = 0
+    service_tier: str = ""
 
     @property
     def prompt_cache_total_tokens(self) -> int:
@@ -214,7 +224,8 @@ class LLMProvider(ABC):
             self.generate,
             prompt,
             provider=self,
+            role="translate",
         )
-        if response:
+        if response and not response.was_truncated and response.status == "completed":
             return self.extract_translation(response.content)
         return None

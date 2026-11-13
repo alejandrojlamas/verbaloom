@@ -351,6 +351,7 @@ async def refine_subtitle_translations(
                     prompt_pair.user,
                     model_name,
                     provider=llm_client,
+                    role="refine",
                     system_prompt=prompt_pair.system,
                 )
 
@@ -671,6 +672,7 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                         prompt_pair.user,
                         model_name,
                         provider=client,
+                        role="translate",
                         system_prompt=prompt_pair.system,
                     )
                     execution_time = time.time() - start_time

@@ -444,6 +444,7 @@ export const ProviderManager = {
             if (nimSettings) nimSettings.style.display = 'block';
             if (loadModels) this.loadNimModels();
         }
+        window.dispatchEvent(new CustomEvent('providerSettingsChanged'));
     },
 
     /**

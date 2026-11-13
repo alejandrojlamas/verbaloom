@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from html.entities import name2codepoint
 from pathlib import Path
@@ -47,6 +48,7 @@ class BoundaryReport:
     repaired_boundaries: int = 0
     findings: list[BoundaryFinding] = field(default_factory=list)
     structural_mismatches: list[str] = field(default_factory=list)
+    allowed_element_additions: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @property
     def clean(self) -> bool:
@@ -368,6 +370,7 @@ def _merge_report(target: BoundaryReport, source: BoundaryReport) -> None:
     target.repaired_boundaries += source.repaired_boundaries
     target.findings.extend(source.findings)
     target.structural_mismatches.extend(source.structural_mismatches)
+    target.allowed_element_additions.update(source.allowed_element_additions)
 
 
 def _write_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, payload: bytes) -> None:
@@ -381,8 +384,50 @@ def _write_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, payload: byte
     archive.writestr(clone, payload)
 
 
-def audit_epub_dom_boundaries(source_epub: str | Path, output_epub: str | Path) -> BoundaryReport:
-    """Audit an already-packaged EPUB against source DOM whitespace."""
+def _project_cover_landmarks(
+    source_root: etree._Element,
+    output_root: etree._Element,
+    file_href: str,
+    cover_page_href: str,
+) -> dict[str, int]:
+    from .publication_structure import EPUB_NS, XHTML_NS, XML_NS, build_cover_landmarks
+
+    def landmarks(root):
+        return [node for node in root.iter() if isinstance(node.tag, str)
+                and "landmarks" in str(node.get(f"{{{EPUB_NS}}}type") or "").split()]
+
+    def shape(node):
+        return (node.tag, sorted(node.attrib.items()), str(node.text or "").strip(),
+                str(node.tail or "").strip(), [shape(child) for child in node])
+
+    if not cover_page_href or landmarks(source_root):
+        return {}
+    additions = landmarks(output_root)
+    if len(additions) != 1:
+        return {}
+    node = additions[0]
+    parent = node.getparent()
+    if parent is None or parent.tag != f"{{{XHTML_NS}}}body" or parent[-1] is not node:
+        return {}
+    language = output_root.get(f"{{{XML_NS}}}lang") or output_root.get("lang") or ""
+    expected = build_cover_landmarks(
+        href=file_href, cover_page_href=cover_page_href, language_code=language,
+    )
+    if shape(node) != shape(expected):
+        return {}
+    counts = Counter(etree.QName(child).localname for child in node.iter())
+    # Only the temporary comparison tree is changed, never the published file.
+    parent.remove(node)
+    return dict(counts)
+
+
+def audit_epub_dom_boundaries(
+    source_epub: str | Path,
+    output_epub: str | Path,
+    *,
+    generated_cover_landmarks: Mapping[str, str] | None = None,
+) -> BoundaryReport:
+    """Audit text slots; optional landmark targets come from validated OPF metadata."""
     report = BoundaryReport()
     with zipfile.ZipFile(source_epub) as source, zipfile.ZipFile(output_epub) as output:
         source_names = set(source.namelist())
@@ -392,6 +437,12 @@ def audit_epub_dom_boundaries(source_epub: str | Path, output_epub: str | Path) 
             try:
                 source_root = _parse_xhtml(source.read(name))
                 output_root = _parse_xhtml(output.read(name))
+                additions = _project_cover_landmarks(
+                    source_root, output_root, name,
+                    (generated_cover_landmarks or {}).get(name, ""),
+                )
+                if additions:
+                    report.allowed_element_additions[name] = additions
                 # Publication finishing may repair invalid source blockquotes
                 # by adding a neutral flow wrapper. Mirror that deterministic
                 # repair in memory before comparing text slots so the wrapper

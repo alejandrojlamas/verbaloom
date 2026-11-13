@@ -219,6 +219,7 @@ Use verdict pass only when no material issue exists; otherwise use warn or fail.
                 user,
                 model,
                 provider=provider,
+                role="audit",
                 system_prompt=system,
             )
         if callable(getattr(provider, "generate", None)):
@@ -226,6 +227,7 @@ Use verdict pass only when no material issue exists; otherwise use warn or fail.
                 provider.generate,
                 user,
                 provider=provider,
+                role="audit",
                 system_prompt=system,
             )
         raise TypeError("semantic audit provider exposes neither make_request nor generate")
@@ -376,12 +378,14 @@ first audit is unsupported and verdict confirmed when an objective error remains
                 user,
                 model,
                 provider=provider,
+                role="audit",
                 system_prompt=system,
             )
         return await await_llm_call(
             provider.generate,
             user,
             provider=provider,
+            role="audit",
             system_prompt=system,
         )
 

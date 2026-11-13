@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
 from pathlib import Path
 import re
@@ -17,6 +19,23 @@ from .models import BookProfile, ProfileDetector, ProfileGlossaryEntry
 
 
 _YAML_SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+_frozen_profile = ContextVar("frozen_editorial_profile", default=None)
+
+
+@contextmanager
+def frozen_profile_scope(profile: BookProfile):
+    """Bind an explicit immutable snapshot to this task, including child tasks.
+
+    Experiments must not observe live profile edits halfway through a comparison.
+    Other profile IDs fail closed instead of falling through to global files.
+    """
+    if not isinstance(profile, BookProfile):
+        raise TypeError("A loaded BookProfile snapshot is required")
+    token = _frozen_profile.set(profile)
+    try:
+        yield
+    finally:
+        _frozen_profile.reset(token)
 
 
 class BookProfileError(RuntimeError):
@@ -36,6 +55,9 @@ def resolve_profiles_root(root: str | Path | None = None) -> Path:
 
 
 def profile_exists(profile_id: str, *, profiles_root: str | Path | None = None) -> bool:
+    frozen = _frozen_profile.get()
+    if frozen is not None:
+        return profile_id == frozen.profile_id
     if not _safe_profile_id(profile_id):
         return False
     return (resolve_profiles_root(profiles_root) / profile_id / "profile.yml").exists()
@@ -184,6 +206,12 @@ def load_book_profile(
         return None
     if not _safe_profile_id(profile_id):
         raise BookProfileError(f"Invalid profile id: {profile_id!r}")
+
+    frozen = _frozen_profile.get()
+    if frozen is not None:
+        if profile_id != frozen.profile_id:
+            raise BookProfileError("Profile is outside the frozen execution scope")
+        return frozen
 
     root = resolve_profiles_root(profiles_root)
     profile_dir = root / profile_id

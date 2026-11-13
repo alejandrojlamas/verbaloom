@@ -150,6 +150,8 @@ NIM_BASE_MODELS = {
 }
 
 OPENAI_STATIC_MODELS = [
+    {"id": "gpt-6-luna", "name": "GPT-6 Luna"},
+    {"id": "gpt-6.1-terra", "name": "GPT-6.1 Terra"},
     {"id": "gpt-4o", "name": "GPT-4o (Latest)"},
     {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
     {"id": "gpt-4-turbo", "name": "GPT-4 Turbo"},

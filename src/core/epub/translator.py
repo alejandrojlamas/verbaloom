@@ -1593,7 +1593,12 @@ def _repackage_epub(
     log_callback: Optional[Callable] = None,
 ) -> None:
     """Repackage the EPUB file."""
-    with zipfile.ZipFile(output_filepath, 'w', zipfile.ZIP_DEFLATED) as epub_zip:
+    from src.core.quality_assurance.models import atomic_binary_writer
+
+    with (
+        atomic_binary_writer(output_filepath) as stream,
+        zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED) as epub_zip,
+    ):
         # Add mimetype first (uncompressed)
         mimetype_path = os.path.join(temp_dir, 'mimetype')
         if os.path.exists(mimetype_path):
@@ -1606,6 +1611,31 @@ def _repackage_epub(
                     file_path_abs = os.path.join(root_path, file_item)
                     arcname = os.path.relpath(file_path_abs, temp_dir)
                     epub_zip.write(file_path_abs, arcname)
+
+
+def _set_translation_contributor_role(
+    opf_root: etree._Element,
+    metadata: etree._Element,
+    contributor: etree._Element,
+) -> None:
+    from .publication_structure import OPF_NS, _ensure_unique_id, _package_version
+
+    role_attribute = f"{{{OPF_NS}}}role"
+    if _package_version(opf_root) < 3.0:
+        contributor.set(role_attribute, "trl")
+        return
+    contributor.attrib.pop(role_attribute, None)
+    identifier = _ensure_unique_id(opf_root, contributor, "verbaloom-translator")
+    roles = metadata.xpath(
+        "opf:meta[@refines=$ref and @property='role' and @scheme='marc:relators']",
+        namespaces={"opf": OPF_NS}, ref=f"#{identifier}",
+    )
+    if not any(str(item.text or "").strip() == "trl" for item in roles):
+        etree.SubElement(
+            metadata, f"{{{OPF_NS}}}meta", refines=f"#{identifier}",
+            property="role", scheme="marc:relators",
+        ).text = "trl"
+
 
 def _update_epub_metadata(
     opf_tree: etree._ElementTree,
@@ -1644,6 +1674,8 @@ def _update_epub_metadata(
         for item in metadata.findall('.//dc:contributor', namespaces=NAMESPACES):
             if str(item.text or '').strip() in legacy_generator_names:
                 item.text = GENERATOR_NAME
+            if str(item.text or '').strip() == GENERATOR_NAME:
+                _set_translation_contributor_role(opf_root, metadata, item)
         desc_el = metadata.find('.//dc:description', namespaces=NAMESPACES)
         if desc_el is not None and desc_el.text:
             migrated_description = str(desc_el.text)
@@ -1677,7 +1709,7 @@ def _update_epub_metadata(
                     '{http://purl.org/dc/elements/1.1/}contributor'
                 )
                 contributor_el.text = GENERATOR_NAME
-            contributor_el.set('{http://www.idpf.org/2007/opf}role', 'trl')
+            _set_translation_contributor_role(opf_root, metadata, contributor_el)
 
             # Add or update description with signature
             signature_text = f"\n\nTranslated using {GENERATOR_NAME}\n{GENERATOR_SOURCE}"

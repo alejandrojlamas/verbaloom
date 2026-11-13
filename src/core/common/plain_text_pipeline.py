@@ -14,6 +14,8 @@ from src.core.text_processor import split_text_into_chunks
 from src.core.translator import generate_translation_request
 from src.core.post_processor import clean_translated_text
 from src.core.epub.translation_metrics import TranslationMetrics
+from src.core.review_strategy import bind_runtime_strategy, source_audited
+from src.core.fidelity_supervisor import supervise_fidelity
 
 
 PARAGRAPH_SEPARATOR = "\n\n"
@@ -98,7 +100,7 @@ async def translate_paragraphs_plain(
     # When source blocks carry inline-markdown formatting (bold/italic/links
     # encoded by the DOCX/EPUB plain extractors), tell the prompt layer so the
     # model preserves the markers instead of "cleaning" them up.
-    effective_options = dict(prompt_options or {})
+    effective_options = bind_runtime_strategy(prompt_options, file_type="txt")
     if not effective_options.get("inline_markdown"):
         from src.common.inline_markdown import has_inline_markdown
         if any(has_inline_markdown(p) for p in source):
@@ -202,6 +204,25 @@ async def translate_paragraphs_plain(
                     got_paragraphs, expected_in_chunk
                 )
                 translated = PARAGRAPH_SEPARATOR.join(got_paragraphs)
+            if source_audited(prompt_options):
+                decision, _ = await supervise_fidelity(
+                    main_content, translated, chunk_index=i + 1,
+                    phase="final_plain_text_audit", section=f"plain:{i}",
+                    source_language=source_language, target_language=target_language,
+                    primary_model=model_name,
+                    primary_provider=getattr(llm_client, "provider_type", ""),
+                    client=llm_client, prompt_options=prompt_options, log_callback=log_callback,
+                )
+                if not decision.accepted:
+                    stats.record_failure(max(1, len(main_content)))
+                    if stats_callback:
+                        stats_callback(stats.to_dict())
+                    from src.core.epub.exceptions import ChunkTranslationFailedError
+
+                    raise ChunkTranslationFailedError(
+                        "Plain-text candidate failed source-aware audit; publication is blocked.",
+                        chunk_index=i, attempts=1, reason="fidelity_rejected",
+                    )
             aligned_paragraphs.extend(got_paragraphs)
             translated_parts.append(translated)
             stats.successful_first_try += 1

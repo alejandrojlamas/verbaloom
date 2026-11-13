@@ -17,6 +17,7 @@ from src.utils.json_extraction import (
 )
 from src.core.glossary.lexical_policy import LexicalPolicy, resolve_lexical_policy
 from src.core.llm.request_deadline import await_llm_call
+from src.core.llm.exceptions import RateLimitError
 
 from .profile_goals import ProfileGoalRules, resolve_profile_goal
 
@@ -322,6 +323,8 @@ async def _review_term_batch_resilient(
             )
         except asyncio.TimeoutError:
             failure = f"deadline de {attempt_timeout:.1f}s agotado"
+        except RateLimitError:
+            raise
         except Exception as exc:
             failure = f"{type(exc).__name__}: {exc}"
 
@@ -416,6 +419,7 @@ async def _generate_term_review_batch(
             llm_provider.generate,
             user,
             provider=llm_provider,
+            role="profile_review",
             request_timeout=provider_timeout or timeout,
             deadline=timeout,
             system_prompt=system,
@@ -448,7 +452,7 @@ async def _term_review_heartbeat(
             progress_callback,
             progress=progress,
             message=(
-                f"DeepSeek sigue revisando lote {batch_number}/{total_batches} "
+                f"{model or 'LLM'} sigue revisando lote {batch_number}/{total_batches} "
                 f"({elapsed}s sin respuesta nueva)."
             ),
             term_batch_index=batch_number,

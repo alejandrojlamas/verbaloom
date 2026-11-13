@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from enum import Enum
 import hashlib
 import json
+from dataclasses import asdict, is_dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable, Mapping, MutableMapping, Optional
-
 
 EPUB_PIPELINE_VERSION = "epub-strict-units-v2"
 EPUB_TRANSLATION_PROMPT_VERSION = "epub-translation-2026-07-11"
@@ -15,6 +15,18 @@ EPUB_REVIEW_PROMPT_VERSION = "epub-review-2026-07-12"
 EPUB_AUDIT_PROMPT_VERSION = "epub-audit-2026-07-12-v2"
 EPUB_PLACEHOLDER_VERSION = "epub-placeholders-v2"
 EPUB_SEGMENTATION_VERSION = "epub-sentence-clause-v2"
+EPUB_CACHE_IDENTITY_VERSION = "epub-semantic-cache-v1"
+# These allowances govern future work, not the meaning of a saved result.
+OPERATIONAL_PROMPT_OPTIONS = frozenset({
+    "max_repair_rounds",
+    "epub_audit_repair_rounds",
+    "epub_audit_max_attempts",
+    "repair_until_pass",
+    # Repair serialization governs future proposals, not an existing approval.
+    "fidelity_repair_policy",
+    "automatic_failure_recovery",
+    "automatic_failure_recovery_cycle",
+})
 # Compatibility alias used by existing reports and checkpoints.  New code
 # should persist the independent versions returned by ``prompt_versions``.
 EPUB_PROMPT_VERSION = EPUB_TRANSLATION_PROMPT_VERSION
@@ -39,7 +51,7 @@ def text_sha256(value: str) -> str:
     return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
 
 
-def _safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+def _legacy_safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
     for key, value in sorted((options or {}).items()):
         lowered = str(key).casefold()
@@ -58,6 +70,66 @@ def _safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[str, Any]
     return safe
 
 
+def _secret_option(key: str) -> bool:
+    key = key.casefold()
+    return (
+        key in {"key", "token", "secret", "credential", "password", "authorization"}
+        or key.endswith(("api_key", "access_token", "refresh_token", "_secret", "_password"))
+    )
+
+
+def _dependency_value(value: Any, *, redact_secrets: bool = True) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        value = asdict(value)
+    if isinstance(value, Mapping):
+        content_maps = {"glossary_terms", "glossary_term_metadata", "prompt_texts"}
+        return {
+            str(k): _dependency_value(
+                v, redact_secrets=redact_secrets and str(k) not in content_maps,
+            )
+            for k, v in value.items()
+            if not redact_secrets or not _secret_option(str(k))
+        }
+    if isinstance(value, (tuple, list)):
+        return [_dependency_value(item, redact_secrets=redact_secrets) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(f"Unsupported editorial dependency type: {type(value).__name__}")
+
+
+def _safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    return _dependency_value({
+        str(k): v for k, v in (options or {}).items() if not str(k).startswith("_")
+    })
+
+
+def with_profile_dependency(options: Optional[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
+    """Capture loaded policy/glossary content, not just the mutable profile ID."""
+    if options is None:
+        return None
+    result = dict(options)
+    result.pop("_profile_content_hash", None)
+    if result.get("profile_id"):
+        from src.core.book_profiles.loader import load_book_profile
+
+        profile = load_book_profile(str(result["profile_id"]))
+        if profile is None:
+            raise ValueError("The selected book profile could not be loaded.")
+        payload = asdict(profile)
+        payload.pop("root", None)
+        # A policy's request allowance does not alter its editorial instructions.
+        payload.pop("max_repair_rounds", None)
+        payload["raw_config"] = {
+            k: v for k, v in payload["raw_config"].items() if k not in OPERATIONAL_PROMPT_OPTIONS
+        }
+        result["_profile_content_hash"] = text_sha256(json.dumps(
+            _dependency_value(payload), sort_keys=True, ensure_ascii=False, allow_nan=False,
+        ))
+    return result
+
+
 def prompt_versions() -> dict[str, str]:
     return {
         "translation": EPUB_TRANSLATION_PROMPT_VERSION,
@@ -68,15 +140,22 @@ def prompt_versions() -> dict[str, str]:
     }
 
 
-def _stage_option_groups(options: Optional[Mapping[str, Any]]) -> tuple[dict, dict, dict]:
+def _stage_option_groups(
+    options: Optional[Mapping[str, Any]], *, legacy_runtime_identity: bool = False,
+) -> tuple[dict, dict, dict]:
     """Split safe prompt options so a later-stage change has narrow invalidation."""
-    safe = _safe_prompt_options(options)
+    safe = (
+        _legacy_safe_prompt_options(options) if legacy_runtime_identity
+        else _safe_prompt_options(options)
+    )
     review_tokens = ("review", "reviewer", "refine", "editorial", "style", "voice", "repair", "postprocess")
     audit_tokens = ("audit", "fidelity", "supervisor", "judge", "guard")
     translation: dict[str, Any] = {}
     review: dict[str, Any] = {}
     audit: dict[str, Any] = {}
     for key, value in safe.items():
+        if not legacy_runtime_identity and key in OPERATIONAL_PROMPT_OPTIONS:
+            continue
         lowered = key.casefold()
         if any(token in lowered for token in audit_tokens):
             audit[key] = value
@@ -85,6 +164,15 @@ def _stage_option_groups(options: Optional[Mapping[str, Any]]) -> tuple[dict, di
         else:
             translation[key] = value
     return translation, review, audit
+
+
+def _role_dependencies(options: Optional[Mapping[str, Any]], names: tuple[str, ...]) -> dict:
+    roles = (options or {}).get("_pipeline_roles") or {}
+    fields = ("provider", "model", "reasoning_effort", "max_output_tokens")
+    return {
+        name: {key: roles[name].get(key) for key in fields}
+        for name in names if name in roles
+    }
 
 
 def stage_fingerprints(
@@ -96,10 +184,13 @@ def stage_fingerprints(
     max_retries: int,
     prompt_options: Optional[Mapping[str, Any]],
     versions: Optional[Mapping[str, str]] = None,
+    _legacy_runtime_identity: bool = False,
 ) -> dict[str, str]:
-    """Build independently invalidatable translation/review/audit identities."""
+    """Build stage identities; legacy mode only verifies old checkpoint evidence."""
     active_versions = {**prompt_versions(), **dict(versions or {})}
-    translation_options, review_options, audit_options = _stage_option_groups(prompt_options)
+    translation_options, review_options, audit_options = _stage_option_groups(
+        prompt_options, legacy_runtime_identity=_legacy_runtime_identity,
+    )
     common = {
         "pipeline_version": EPUB_PIPELINE_VERSION,
         "source_language": source_language,
@@ -112,9 +203,15 @@ def stage_fingerprints(
         "placeholder_version": active_versions["placeholder"],
         "segmentation_version": active_versions["segmentation"],
         "max_tokens_per_chunk": int(max_tokens_per_chunk),
-        "max_retries": int(max_retries),
         "prompt_options": translation_options,
     }
+    if _legacy_runtime_identity:
+        translation_payload["max_retries"] = int(max_retries)
+    elif (prompt_options or {}).get("_profile_content_hash"):
+        translation_payload["profile_content_hash"] = prompt_options["_profile_content_hash"]
+    translation_roles = _role_dependencies(prompt_options, ("translate", "structure_repair"))
+    if translation_roles:
+        translation_payload["model_roles"] = translation_roles
     translation_fp = text_sha256(json.dumps(
         translation_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ))
@@ -124,6 +221,9 @@ def stage_fingerprints(
         "prompt_version": active_versions["review"],
         "prompt_options": review_options,
     }
+    review_roles = _role_dependencies(prompt_options, ("refine", "repair"))
+    if review_roles:
+        review_payload["model_roles"] = review_roles
     review_fp = text_sha256(json.dumps(
         review_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ))
@@ -133,10 +233,16 @@ def stage_fingerprints(
         "prompt_version": active_versions["audit"],
         "prompt_options": audit_options,
     }
+    audit_roles = _role_dependencies(prompt_options, ("audit",))
+    if audit_roles:
+        audit_payload["model_roles"] = audit_roles
     audit_fp = text_sha256(json.dumps(
         audit_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ))
-    return {"translation": translation_fp, "review": review_fp, "audit": audit_fp}
+    result = {"translation": translation_fp, "review": review_fp, "audit": audit_fp}
+    if not _legacy_runtime_identity:
+        result["identity_version"] = EPUB_CACHE_IDENTITY_VERSION
+    return result
 
 
 def invalidated_stages(

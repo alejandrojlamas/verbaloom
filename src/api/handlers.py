@@ -3,7 +3,9 @@ Translation job handlers and processing logic
 """
 import asyncio
 import json
+import math
 import os
+import random
 import tempfile
 import threading
 import time
@@ -46,6 +48,11 @@ from src.core.epub.publication_gate import audit_epub_publication
 from src.core.fidelity_supervisor import fidelity_report_path
 from src.core.final_artifact_audit import audit_and_clean_final_artifact
 from src.core.final_source_sample_audit import audit_final_output_against_source_samples
+from src.core.quality_assurance.publication import (
+    atomic_publish,
+    create_staging_path,
+    publish_report_sidecars,
+)
 from src.core.job_engine import JobEngine, JobPhase
 from src.core.job_runtime_config import (
     configure_editorial_guard_options as _configure_editorial_guard_options,
@@ -57,6 +64,7 @@ from src.core.job_runtime_config import (
     resume_requires_layout_sanitizer_restart as _resume_requires_layout_sanitizer_restart,
 )
 from src.core.job_runtime_config import usage_process_type as _usage_process_type
+from src.core.review_strategy import refinement_plan
 from src.core.job_runtime_config import (
     uses_text_first_pipeline as _uses_text_first_pipeline,
 )
@@ -68,6 +76,7 @@ from src.core.llm import OpenRouterProvider
 from src.core.llm.exceptions import (
     DeepSeekPeakPricingError,
     InsufficientCreditsError,
+    ProviderActionRequiredError,
     RateLimitError,
 )
 from src.core.llm.factory import create_llm_provider
@@ -91,7 +100,16 @@ from src.core.progress import (
     timing_checkpoint_from_stats,
 )
 from src.core.quality_assurance import run_quality_assurance
-from src.core.usage import set_usage_context
+from src.core.recovery_policy import (
+    recovery_budget,
+    recovery_counter,
+    recovery_limit,
+    recovery_stop_reason,
+    reserve_recovery,
+)
+from src.core.usage import set_usage_context, reset_usage_context
+from src.core.pipeline_config import apply_pipeline
+from src.core.pipeline_runtime import activate_pipeline, close_pipeline
 from src.persistence.checkpoint_reconcile import checkpoint_progress_snapshot
 from src.tts.tts_config import TTSConfig
 from src.utils.custom_instructions import is_safe_filename, load_custom_instructions
@@ -119,6 +137,8 @@ _FAILED_CHUNK_RECOVERY_POLICY_VERSION = 2
 _DEFAULT_MAX_STUCK_RECOVERIES = 2
 _DEFAULT_MAX_FINALIZATION_RECOVERIES = 2
 _DEFAULT_MAX_WORKER_RECOVERIES = 2
+_DEFAULT_MAX_TRANSIENT_RECOVERIES = 5
+_DEFAULT_MAX_RATE_LIMIT_RECOVERIES = 5
 _PROVIDER_WAIT_BACKOFF_SECONDS = (60, 180, 600, 1800)
 
 _TRANSLATION_WORKER_SUPERVISOR = JobSupervisor()
@@ -155,21 +175,6 @@ def _strip_legacy_automatic_recovery_config(
         else:
             prompt_options.pop("custom_instructions", None)
         changed = True
-
-    try:
-        previous_policy = int(
-            cleaned.get("_failed_chunk_recovery_policy_version") or 0
-        )
-    except (TypeError, ValueError):
-        previous_policy = 0
-    if changed and previous_policy < _FAILED_CHUNK_RECOVERY_POLICY_VERSION:
-        for key in (
-            "_failure_recovery_cycle",
-            "_failure_recovery_stuck_count",
-            "_failure_recovery_last_index",
-            "_failure_recovery_last_completed",
-        ):
-            cleaned.pop(key, None)
 
     cleaned["prompt_options"] = prompt_options
     cleaned["_failed_chunk_recovery_policy_version"] = (
@@ -239,7 +244,9 @@ def _build_failed_chunk_recovery_plan(
     stats: Dict[str, Any],
 ) -> Dict[str, Any] | None:
     """Build one bounded, non-recursive retry for an unresolved quality unit."""
-    if not checkpoint_data or not _config_flag(config.get("auto_recover_failed_chunks"), True):
+    if (not checkpoint_data
+        or config.get("_manual_pause_requested")
+        or not _config_flag(config.get("auto_recover_failed_chunks"), True)):
         return None
     config, _ = _strip_legacy_automatic_recovery_config(config)
     checkpoint_progress = (
@@ -266,7 +273,7 @@ def _build_failed_chunk_recovery_plan(
     except (TypeError, ValueError):
         same_position = False
     stuck_count = (
-        int(config.get("_failure_recovery_stuck_count") or 0) + 1
+        recovery_counter(config.get("_failure_recovery_stuck_count")) + 1
         if same_position else 1
     )
     try:
@@ -279,14 +286,13 @@ def _build_failed_chunk_recovery_plan(
     if stuck_count > max_stuck_recoveries:
         return None
 
-    try:
-        cycle = int(config.get("_failure_recovery_cycle") or 0) + 1
-    except (TypeError, ValueError):
-        cycle = 1
+    new_config = reserve_recovery(config, "chunks", checkpoint_progress.get("total_chunks", 0))
+    if new_config is None:
+        return None
+    cycle = new_config["_failure_recovery_cycle"]
     delay_steps = (2, 10)
     delay_seconds = delay_steps[min(stuck_count - 1, len(delay_steps) - 1)]
 
-    new_config = dict(config)
     new_config.update({
         "is_resume": True,
         "resume_from_index": resume_index,
@@ -346,7 +352,9 @@ def _build_finalization_recovery_plan(
 
     delay_steps = (2, 10)
     delay_seconds = delay_steps[min(cycle - 1, len(delay_steps) - 1)]
-    new_config = dict(config)
+    new_config = reserve_recovery(config, "finalization", checkpoint_progress.get("total_chunks", 0))
+    if new_config is None:
+        return None
     new_config.update({
         "is_resume": True,
         "resume_from_index": resume_index,
@@ -390,10 +398,9 @@ def _build_worker_exception_recovery_plan(
 ) -> Dict[str, Any] | None:
     """Recover a crashed worker from durable progress.
 
-    Deterministic application errors keep a strict same-checkpoint ceiling.
-    Network disconnects and total-operation timeouts are availability failures:
-    they use a capped backoff and remain self-healing instead of becoming a
-    manual pause after an arbitrary number of attempts.
+    Both deterministic errors and availability failures have finite ceilings.
+    Real checkpoint progress renews the point-specific allowance, not the
+    cumulative job allowance. Restart/resume preserves both counters.
     """
     if (
         not checkpoint_data
@@ -405,39 +412,41 @@ def _build_worker_exception_recovery_plan(
     chunks = checkpoint_data.get("chunks") or []
     if int(progress.get("total_chunks") or 0) <= 0 and not chunks:
         return None
+    transient = _is_transient_worker_failure(error)
+    configured_max = config.get("max_worker_error_recoveries")
+    if transient:
+        configured_max = config.get("max_transient_worker_recoveries", configured_max)
+    max_recoveries = recovery_limit(
+        configured_max,
+        _DEFAULT_MAX_TRANSIENT_RECOVERIES if transient else _DEFAULT_MAX_WORKER_RECOVERIES,
+    )
     try:
-        configured_max = config.get("max_worker_error_recoveries")
-        if configured_max is None:
-            configured_max = _DEFAULT_MAX_WORKER_RECOVERIES
-        max_recoveries = max(0, int(configured_max))
-        cycle = int(config.get("_worker_exception_recovery_cycle") or 0) + 1
         resume_index = max(0, int(checkpoint_data.get("resume_from_index") or 0))
     except (TypeError, ValueError):
         return None
-    try:
-        previous_index = int(config.get("_worker_exception_last_index"))
-        previous_stuck = max(
-            0,
-            int(config.get("_worker_exception_stuck_count") or 0),
-        )
-    except (TypeError, ValueError):
-        previous_index = None
-        previous_stuck = 0
-    stuck_count = previous_stuck + 1 if previous_index == resume_index else 1
-    transient = _is_transient_worker_failure(error)
-    if not transient and stuck_count > max_recoveries:
+    previous_index = (
+        recovery_counter(config['_worker_exception_last_index'])
+        if '_worker_exception_last_index' in config else None
+    )
+    previous_stuck = recovery_counter(config.get('_worker_exception_stuck_count'))
+    progressed = previous_index is not None and resume_index > previous_index
+    stuck_count = 1 if progressed else previous_stuck + 1
+    if stuck_count > max_recoveries:
         return None
 
     delay_steps = (3, 15, 60, 180, 600) if transient else (3, 15)
     delay_seconds = delay_steps[min(stuck_count - 1, len(delay_steps) - 1)]
-    new_config = dict(config)
+    new_config = reserve_recovery(config, "worker", progress.get("total_chunks", 0))
+    if new_config is None:
+        return None
+    cycle = new_config["_worker_exception_recovery_cycle"]
     new_config.update({
         "is_resume": True,
         "resume_from_index": resume_index,
         "auto_recover_worker_errors": True,
-        "max_worker_error_recoveries": max_recoveries,
+        ("max_transient_worker_recoveries" if transient else "max_worker_error_recoveries"): max_recoveries,
         "_worker_exception_recovery_cycle": cycle,
-        "_worker_exception_last_index": resume_index,
+        "_worker_exception_last_index": max(previous_index or 0, resume_index),
         "_worker_exception_stuck_count": stuck_count,
     })
     return {
@@ -446,7 +455,7 @@ def _build_worker_exception_recovery_plan(
         "resume_index": resume_index,
         "cycle": cycle,
         "stuck_count": stuck_count,
-        "max_stuck_recoveries": None if transient else max_recoveries,
+        "max_stuck_recoveries": max_recoveries,
         "delay_seconds": delay_seconds,
         "transient": transient,
     }
@@ -486,44 +495,64 @@ def _build_rate_limit_auto_resume_plan(
     config: Dict[str, Any],
     *,
     resume_index: int,
+    total_units: int = 0,
+    suggested_seconds: int | float | None = None,
 ) -> Dict[str, Any]:
-    """Return durable provider-throttle recovery state.
-
-    A retryable 429 is an availability wait, not a failed book.  Keep retrying
-    with a capped backoff until the provider recovers or the user explicitly
-    pauses.  Content/quality failures remain independently bounded.
-    """
-    try:
-        last_resume_index = int(config.get("_auto_resume_last_index"))
-    except (TypeError, ValueError):
-        last_resume_index = None
-    try:
-        previous_stuck_count = max(0, int(config.get("_auto_resume_stuck_count") or 0))
-    except (TypeError, ValueError):
-        previous_stuck_count = 0
-    stuck_count = (
-        previous_stuck_count + 1
-        if last_resume_index == resume_index
-        else 1
+    """Reserve a finite provider retry before its durable wait is published."""
+    last_resume_index = (
+        recovery_counter(config['_auto_resume_last_index'])
+        if '_auto_resume_last_index' in config else None
     )
-    new_config = clear_resume_schedule(config)
+    previous_stuck_count = recovery_counter(config.get('_auto_resume_stuck_count'))
+    progressed = last_resume_index is not None and resume_index > last_resume_index
+    stuck_count = 1 if progressed else previous_stuck_count + 1
+    maximum = recovery_limit(
+        config.get("max_rate_limit_auto_resumes"), _DEFAULT_MAX_RATE_LIMIT_RECOVERIES
+    )
+    wait_config = dict(config, _auto_resume_stuck_count=stuck_count - 1)
+    delay = _provider_wait_seconds(wait_config, suggested_seconds)
+    max_wait = recovery_limit(config.get("max_provider_wait_seconds"), 7200)
+    max_total_wait = recovery_limit(config.get("max_provider_wait_total_seconds"), 14400)
+    try:
+        previous_wait = float(config.get("_provider_wait_total_seconds") or 0)
+    except (ValueError, TypeError, OverflowError):
+        previous_wait = math.inf
+    reason = recovery_stop_reason(config, total_units)
+    if not reason and stuck_count > maximum:
+        reason = "rate_limit_recovery_exhausted"
+    if not reason and (not math.isfinite(delay) or delay > max_wait):
+        reason = "provider_retry_after_requires_review"
+    if not reason and (
+        not math.isfinite(previous_wait)
+        or previous_wait < 0
+        or previous_wait + delay > max_total_wait
+    ):
+        reason = "provider_wait_budget_exhausted"
+    plan = {
+        "allowed": not reason,
+        "reason": reason,
+        "config": dict(config),
+        "stuck_count": stuck_count,
+        "max_resumes": maximum,
+        "resume_index": resume_index,
+        "delay_seconds": delay,
+    }
+    if reason:
+        return plan
+    new_config = reserve_recovery(clear_resume_schedule(config), "rate_limit", total_units)
+    assert new_config is not None
     new_config.update({
         "is_resume": True,
         "resume_from_index": resume_index,
-        "_auto_resume_last_index": resume_index,
+        "_auto_resume_last_index": max(last_resume_index or 0, resume_index),
         "_auto_resume_stuck_count": stuck_count,
+        "max_rate_limit_auto_resumes": maximum,
+        "max_provider_wait_seconds": max_wait,
+        "max_provider_wait_total_seconds": max_total_wait,
+        "_provider_wait_total_seconds": previous_wait + delay,
     })
-    new_config.pop("max_rate_limit_auto_resumes", None)
-    return {
-        "allowed": True,
-        "config": new_config,
-        "stuck_count": stuck_count,
-        "max_resumes": None,
-        "resume_index": resume_index,
-        "delay_seconds": _PROVIDER_WAIT_BACKOFF_SECONDS[
-            min(stuck_count - 1, len(_PROVIDER_WAIT_BACKOFF_SECONDS) - 1)
-        ],
-    }
+    plan["config"] = new_config
+    return plan
 
 
 def _build_pricing_auto_resume_plan(
@@ -549,25 +578,26 @@ def _build_pricing_auto_resume_plan(
 def _provider_wait_seconds(
     config: Dict[str, Any],
     suggested_seconds: int | float | None,
+    *,
+    jitter_fraction: float | None = None,
 ) -> float:
-    """Choose a capped progressive wait without treating it as failure."""
+    """Cap our backoff, never shorten a valid provider Retry-After minimum."""
     try:
         next_attempt = max(1, int(config.get("_auto_resume_stuck_count") or 0) + 1)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         next_attempt = 1
     backoff = _PROVIDER_WAIT_BACKOFF_SECONDS[
         min(next_attempt - 1, len(_PROVIDER_WAIT_BACKOFF_SECONDS) - 1)
     ]
     try:
-        suggested = max(0.0, float(suggested_seconds or 0.0))
-    except (TypeError, ValueError):
-        suggested = 0.0
-    # Provider hints are advisory and occasionally malformed or measured in a
-    # different unit. Never schedule one invisible multi-hour sleep.
-    return min(
-        float(_PROVIDER_WAIT_BACKOFF_SECONDS[-1]),
-        max(float(backoff), suggested),
-    )
+        suggested = float(suggested_seconds or 0.0)
+    except (TypeError, ValueError, OverflowError):
+        return math.inf
+    if not math.isfinite(suggested) or suggested < 0:
+        return math.inf
+    jitter = random.uniform(0.0, 0.2) if jitter_fraction is None else jitter_fraction
+    backoff = min(_PROVIDER_WAIT_BACKOFF_SECONDS[-1], backoff * (1 + jitter))
+    return max(backoff, suggested)
 
 
 async def _interruptible_provider_wait(
@@ -718,8 +748,9 @@ async def _honor_persisted_resume_schedule(
             "last_activity_at": time.time(),
         })
         state_manager.set_translation_field(translation_id, "stats", waiting_stats)
+        if not _persist_recovery_config(translation_id, canonical_config, state_manager, checkpoint_manager, socketio):
+            return canonical_config, False
         checkpoint_manager.mark_running(translation_id)
-        checkpoint_manager.update_job_config(translation_id, canonical_config)
         checkpoint_manager.update_progress(
             translation_id,
             eta_timing=timing_checkpoint_from_stats(waiting_stats),
@@ -787,8 +818,9 @@ async def _honor_persisted_resume_schedule(
         state_manager.set_translation_field(translation_id, "pause_reason", None)
         state_manager.set_translation_field(translation_id, "resume_at_utc", None)
         state_manager.set_translation_field(translation_id, "resume_at_local", None)
+        if not _persist_recovery_config(translation_id, ready_config, state_manager, checkpoint_manager, socketio):
+            return ready_config, False
         checkpoint_manager.mark_running(translation_id)
-        checkpoint_manager.update_job_config(translation_id, ready_config)
         return ready_config, True
 
 
@@ -813,6 +845,28 @@ def _failed_chunk_recovery_exhausted_stats(
     return current
 
 
+def _persist_recovery_config(
+    translation_id: str, config: Dict[str, Any], state_manager: Any,
+    checkpoint_manager: Any, socketio: Any,
+) -> bool:
+    """Never dispatch another attempt if its durable accounting could not save."""
+    if _persist_runtime_checkpoint_config(checkpoint_manager, translation_id, config):
+        return True
+    message = "Recovery checkpoint could not be saved. No retry was started."
+    state_manager.set_translation_field(translation_id, 'status', 'error')
+    state_manager.set_translation_field(translation_id, 'interrupted', True)
+    state_manager.set_translation_field(translation_id, 'pause_reason', 'checkpoint_write_failed')
+    state_manager.set_translation_field(translation_id, 'error', message)
+    try:
+        checkpoint_manager.mark_error(translation_id)
+    except Exception:
+        pass
+    emit_update(socketio, translation_id, {
+        'status': 'error', 'reason': 'checkpoint_write_failed', 'error': message,
+    }, state_manager)
+    return False
+
+
 def _schedule_failed_chunk_recovery(
     translation_id: str,
     plan: Dict[str, Any],
@@ -834,10 +888,15 @@ def _schedule_failed_chunk_recovery(
     with translation_lifecycle_guard(state_manager):
         if not state_manager.exists(translation_id):
             return False
+        current_config = state_manager.get_translation_field(translation_id, 'config') or {}
+        if current_config.get('_manual_pause_requested') or state_manager.get_translation_field(translation_id, 'interrupted'):
+            return False
         if state_manager.get_translation_field(
             translation_id, 'recovery_scheduled'
         ):
             return True
+        if not _persist_recovery_config(translation_id, scheduled_config, state_manager, checkpoint_manager, socketio):
+            return False
         state_manager.set_translation_field(
             translation_id, 'recovery_scheduled', True
         )
@@ -848,7 +907,6 @@ def _schedule_failed_chunk_recovery(
             translation_id, 'config', scheduled_config
         )
         checkpoint_manager.mark_running(translation_id)
-        checkpoint_manager.update_job_config(translation_id, scheduled_config)
 
     def _restart() -> None:
         if not wait_for_resume_schedule_sync(
@@ -908,7 +966,8 @@ def _schedule_failed_chunk_recovery(
             state_manager.set_translation_field(
                 translation_id, 'config', ready_config
             )
-            checkpoint_manager.update_job_config(translation_id, ready_config)
+            if not _persist_recovery_config(translation_id, ready_config, state_manager, checkpoint_manager, socketio):
+                return
             # Keep publication and worker handoff inside the lifecycle guard.
             # A pause immediately after this point either cancels the queued
             # handoff or is observed by the claimed worker; no workerless
@@ -1430,6 +1489,7 @@ async def _epub_structure_hints_for_conversion(
             llm.generate,
             prompt,
             provider=llm,
+            role="structure_repair",
             request_timeout=90,
             deadline=90,
             system_prompt=system_prompt,
@@ -1468,6 +1528,8 @@ async def _epub_structure_hints_for_conversion(
             "warnings": data.get("warnings") if isinstance(data.get("warnings"), list) else [],
         }
     except Exception as exc:
+        if isinstance(exc, RateLimitError):
+            raise
         if log_callback:
             log_callback("epub_structure_llm_error", f"⚠️ EPUB structure LLM failed; using rules only: {exc}")
         return None
@@ -1635,7 +1697,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     )
     state_manager.set_translation_field(translation_id, "stats", active_stats)
 
-    set_usage_context(
+    usage_token = set_usage_context(
         translation_id=translation_id,
         process_id=translation_id,
         process_type=_usage_process_type(config),
@@ -1936,11 +1998,11 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     def _translate_stats_callback(new_stats_dict):
         # Phase 1. enable_refinement advertises the two-phase bar up-front when
         # a refine-after pass will follow, so phase 1 maps to the [0, 50] band.
-        inline_refinement = (config.get('prompt_options') or {}).get('inline_refinement')
+        plan = refinement_plan(config)
         _emit_progress(new_stats_dict, {
-            'enable_refinement': bool(config.get('refine_after')) and not inline_refinement,
+            'enable_refinement': plan['refine_after'],
             'current_phase': 1,
-            'inline_refinement': bool(inline_refinement),
+            'inline_refinement': plan['inline_refinement'],
         })
 
     def _refine_after_stats_callback(new_stats_dict):
@@ -2012,6 +2074,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     config['quality_assurance'].setdefault('strict', True)
 
     def _discard_unstarted_checkpoint(reason: str) -> None:
+        if config.get('_submission_fingerprint'):
+            return  # Keep the durable request identity even before the first unit.
         try:
             checkpoint_data = checkpoint_manager.load_checkpoint(translation_id)
             chunks = checkpoint_data.get('chunks', []) if checkpoint_data else []
@@ -2066,7 +2130,16 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 config.setdefault('prompt_options', {})['glossary_load_error'] = str(e)
 
     automatic_recovery_plan = None
+    pipeline_token = None
     try:
+        try:
+            if config.get("pipeline") is not None:
+                apply_pipeline(config, config["pipeline"])
+            pipeline_token = activate_pipeline(config.get("pipeline"), job_id=translation_id,
+                credentials={p: config.get(f"{p}_api_key") for p in ("openai", "deepseek")})
+        except (ValueError, TypeError) as exc:
+            raise ProviderActionRequiredError("The saved pipeline configuration requires attention.",
+                                               reason="pipeline_configuration", provider="pipeline") from exc
         requested_output_format = normalize_output_format(config.get('output_format', 'auto'))
         config['output_format'] = requested_output_format
         final_output_format = requested_format_for_job(
@@ -2091,16 +2164,27 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         if not is_resume:
             file_type = config['file_type']
             input_file_path = config.get('file_path')
-            checkpoint_manager.start_job(
-                translation_id,
-                file_type,
-                config,
-                input_file_path
-            )
+            with translation_lifecycle_guard(state_manager):
+                live_config = state_manager.get_translation_field(translation_id, 'config') or {}
+                if live_config.get('_manual_pause_requested'):
+                    config.update({key: value for key, value in live_config.items()
+                                   if key.startswith('_manual_pause')})
+                    if not checkpoint_manager.get_job(translation_id):
+                        checkpoint_manager.start_job(translation_id, file_type, config, input_file_path)
+                    else:
+                        checkpoint_manager.update_job_config(translation_id, config)
+                    checkpoint_manager.mark_interrupted(translation_id)
+                    state_manager.set_translation_field(translation_id, 'status', 'interrupted')
+                    return
+                if config.get('_submission_fingerprint') and checkpoint_manager.get_job(translation_id):
+                    checkpoint_manager.update_job_config(translation_id, config)
+                    checkpoint_manager.mark_running(translation_id)
+                else:
+                    checkpoint_manager.start_job(translation_id, file_type, config, input_file_path)
 
         # PHASE 2: Configuration validation is now handled by AdaptiveContextManager during translation
 
-        # New jobs avoid unrelated files; resumes reuse this job's stable path.
+        # Resolve the intended delivery name, but never assemble into that path.
         requested_output_filename = config['output_filename']
         final_output_filepath_on_server = _resolve_job_output_path(
             config,
@@ -2115,6 +2199,10 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 f"ℹ️ Output filename modified to avoid overwriting: "
                 f"{requested_output_filename} → {actual_output_filename}")
 
+        delivery_filepath = Path(final_output_filepath_on_server)
+        final_output_filepath_on_server = str(create_staging_path(delivery_filepath))
+        config['qa_staging_output'] = final_output_filepath_on_server
+
         text_first_pipeline = _uses_text_first_pipeline(config)
         if text_first_pipeline:
             config.setdefault('prompt_options', {})['text_first_pipeline'] = True
@@ -2124,13 +2212,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         audiobook_companion_files: list[str] = []
         if final_output_format != native_format:
             native_suffix = format_extension(native_format, f".{native_format}")
-            with tempfile.NamedTemporaryFile(
-                prefix=f"tmp_{translation_id}_",
-                suffix=native_suffix,
-                delete=False,
-                dir=output_dir,
-            ) as tmp_output:
-                temp_engine_output_path = tmp_output.name
+            temp_engine_output_path = str(Path(final_output_filepath_on_server).with_suffix(native_suffix))
             output_filepath_on_server = temp_engine_output_path
 
         # Log start with unified logger. Transform jobs share the same worker
@@ -2531,8 +2613,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
             # Optional chained refinement pass on the translated output.
             should_refine_after = (
-                config.get('refine_after')
-                and not (config.get('prompt_options') or {}).get('inline_refinement')
+                refinement_plan(config)['refine_after']
                 and os.path.exists(output_filepath_on_server)
                 and not state_manager.get_translation_field(translation_id, 'interrupted')
                 and state_manager.get_translation_field(translation_id, 'status')
@@ -2555,7 +2636,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     "refine_after_start",
                     "✨ Translation done — running refinement pass on the output."
                 )
-                await engine.run_phase(
+                refinement_success = await engine.run_phase(
                     JobPhase.REFINE,
                     refine_file,
                     input_filepath=output_filepath_on_server,
@@ -2584,6 +2665,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     message="Running chained refinement pass.",
                     metadata={'refine_after': True},
                 )
+                operation_success = bool(operation_success and refinement_success)
 
         current_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
         if (
@@ -2662,13 +2744,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                         f"[native {native_format}]{native_suffix}"
                     )
                     native_backup_path = get_unique_output_path(
-                        os.path.join(output_dir, native_backup_name)
+                        str(Path(final_output_filepath_on_server).with_name(native_backup_name))
                     )
                     os.replace(temp_engine_output_path, native_backup_path)
+                    config['qa_native_output'] = native_backup_path
                     _log_message_callback(
                         "native_output_preserved",
-                        f"Preserved native {native_format.upper()} output for re-export: "
-                        f"{os.path.basename(native_backup_path)}"
+                        f"Preserved native {native_format.upper()} candidate in private staging for re-export."
                     )
                 except OSError:
                     pass
@@ -3052,24 +3134,52 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     f"⛔ No se pudo demostrar la integridad del libro; publicación bloqueada: {quality_error}",
                 )
 
-        if (
-            os.path.exists(output_filepath_on_server)
-            and state_manager.get_translation_field(translation_id, 'status') == 'partial'
-            and not Path(output_filepath_on_server).name.startswith('[partial] ')
-        ):
-            partial_output = get_partial_output_path(output_filepath_on_server)
-            Path(output_filepath_on_server).replace(partial_output)
-            output_filepath_on_server = partial_output
-            config['output_filename'] = os.path.basename(partial_output)
+        publishable = False
+        if os.path.exists(output_filepath_on_server):
+            staged_output = Path(output_filepath_on_server)
+            with translation_lifecycle_guard(state_manager):
+                publishable = bool(
+                    not state_manager.get_translation_field(translation_id, 'interrupted')
+                    and _ready_for_final_audits()
+                    and quality_run is not None and quality_run.publishable
+                    and (not strict_epub_publication or (
+                        publication_report is not None and publication_report.publishable
+                    ))
+                )
+                destination = delivery_filepath if publishable else Path(
+                    get_partial_output_path(str(delivery_filepath))
+                )
+                output_filepath_on_server = str(atomic_publish(
+                    staged_output, destination,
+                    expected_sha256=quality_run.validated_output_sha256 if publishable else None,
+                ))
+                config['output_filename'] = Path(output_filepath_on_server).name
+                if publishable:
+                    config['_job_output_filename'] = config['output_filename']
+                else:
+                    operation_success = False
+                    if (not state_manager.get_translation_field(translation_id, 'interrupted')
+                            and state_manager.get_translation_field(translation_id, 'status')
+                            in {'running', 'processing', 'partial'}):
+                        state_manager.set_translation_field(translation_id, 'status', 'partial')
+                        checkpoint_manager.mark_partial(translation_id)
             if quality_run is not None:
-                quality_run.update_output_path(partial_output)
-            _log_message_callback(
-                "failed_publication_quarantined",
-                f"📦 El artefacto no validado se guardó sólo como parcial: {config['output_filename']}",
-            )
+                quality_run.update_output_path(output_filepath_on_server)
+            _persist_runtime_checkpoint_config(checkpoint_manager, translation_id, config, _log_message_callback)
+            try:
+                publish_report_sidecars(staged_output, Path(output_filepath_on_server))
+            except OSError as report_error:
+                _log_message_callback("publication_report_copy_warning",
+                    f"Report copies remain in private staging: {report_error}")
+            if not publishable:
+                _log_message_callback("failed_publication_quarantined",
+                    f"Unvalidated candidate retained only as partial: {config['output_filename']}")
+        else:
+            operation_success = False
 
         if (
-            os.path.exists(output_filepath_on_server)
+            publishable
+            and os.path.exists(output_filepath_on_server)
             and not state_manager.get_translation_field(translation_id, 'interrupted')
             and state_manager.get_translation_field(translation_id, 'status') != 'partial'
             and audiobook_profile_enabled(config.get('prompt_options') or {})
@@ -3380,7 +3490,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 keep_intermediate = bool(
                     export_settings.get('keep_intermediate_files', True)
                 )
-                if keep_intermediate:
+                if keep_intermediate or config.get('_submission_fingerprint'):
                     checkpoint_manager.mark_completed(translation_id, quality_gate_passed=True)
                     _log_message_callback(
                         "quality_checkpoint_preserved",
@@ -3467,13 +3577,14 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
     except RateLimitError as e:
         pricing_pause = isinstance(e, DeepSeekPeakPricingError)
-        credits_exhausted = isinstance(e, InsufficientCreditsError) or not getattr(e, 'retryable', True)
+        action_required = isinstance(e, ProviderActionRequiredError)
+        credits_exhausted = isinstance(e, InsufficientCreditsError)
         auto_pause = (
             False
             if pricing_pause
             else (
                 True
-                if credits_exhausted
+                if not getattr(e, 'retryable', True)
                 else config.get('auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT)
             )
         )
@@ -3482,6 +3593,37 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         if not state_manager.exists(translation_id):
             return
+
+        rate_limit_plan = None
+        if not auto_pause and not pricing_pause:
+            with translation_lifecycle_guard(state_manager):
+                live_config = state_manager.get_translation_field(translation_id, 'config') or {}
+                if live_config.get('_explicit_resume_requested'):
+                    return
+                if live_config.get('_manual_pause_requested') or state_manager.get_translation_field(translation_id, 'interrupted'):
+                    checkpoint_manager.mark_interrupted(translation_id)
+                    return
+                cp_data = checkpoint_manager.load_checkpoint(translation_id)
+                if cp_data:
+                    progress = (cp_data.get('job') or {}).get('progress') or {}
+                    rate_limit_plan = _build_rate_limit_auto_resume_plan(
+                        config,
+                        resume_index=int(cp_data.get('resume_from_index') or 0),
+                        total_units=int(progress.get('total_chunks') or 0),
+                        suggested_seconds=e.retry_after,
+                    )
+                    if rate_limit_plan['allowed']:
+                        config = rate_limit_plan['config']
+                    else:
+                        e = ProviderActionRequiredError(
+                            "Automatic provider recovery stopped: " + rate_limit_plan['reason'] + ".",
+                            reason=rate_limit_plan['reason'],
+                            provider=provider_name,
+                        )
+                        action_required = True
+                        auto_pause = True
+                else:
+                    auto_pause = True
 
         # Auto-resume mode keeps the job running: wait, then re-enter from the checkpoint.
         if not auto_pause:
@@ -3496,7 +3638,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 waiting_status = "pricing_wait"
                 pause_reason = "deepseek_peak_pricing"
             else:
-                wait_seconds = _provider_wait_seconds(config, e.retry_after)
+                wait_seconds = rate_limit_plan['delay_seconds']
                 wait_msg = (f"⏳ Rate limited by {provider_name}.{retry_msg} "
                             f"Auto-resume in {wait_seconds}s (auto-pause disabled).")
                 wait_event = "rate_limit_auto_resume"
@@ -3570,6 +3712,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     'eta_upper_seconds': None,
                     'eta_status': 'waiting',
                     'last_activity_at': time.time(),
+                    'automatic_recovery': recovery_budget(config),
                 })
                 if pricing_pause:
                     resume_at_utc = resume_schedule.resume_at_utc
@@ -3587,7 +3730,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 state_manager.set_translation_field(
                     translation_id, 'config', config
                 )
-                checkpoint_manager.update_job_config(translation_id, config)
+                if not _persist_recovery_config(translation_id, config, state_manager, checkpoint_manager, socketio):
+                    return
                 state_manager.set_translation_field(
                     translation_id, 'stats', waiting_stats
                 )
@@ -3656,8 +3800,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
                 cp_data = checkpoint_manager.load_checkpoint(translation_id)
                 if cp_data:
-                    # Persist the provider-wait attempt so a repeated throttle
-                    # uses progressive backoff after the handoff.
+                    # The retry was reserved before waiting. A resumed waiter
+                    # consumes that reservation, never a second attempt.
                     resume_index = int(cp_data['resume_from_index'])
                     if pricing_pause:
                         rate_limit_plan = _build_pricing_auto_resume_plan(
@@ -3665,15 +3809,11 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                             resume_index=resume_index,
                         )
                     else:
-                        rate_limit_plan = _build_rate_limit_auto_resume_plan(
-                            current_config,
-                            resume_index=resume_index,
-                        )
-                    new_config = rate_limit_plan["config"]
+                        rate_limit_plan = {"config": clear_resume_schedule(current_config)}
+                    new_config = rate_limit_plan['config']
                     checkpoint_manager.mark_running(translation_id)
-                    checkpoint_manager.update_job_config(
-                        translation_id, new_config
-                    )
+                    if not _persist_recovery_config(translation_id, new_config, state_manager, checkpoint_manager, socketio):
+                        return
                     state_manager.set_translation_field(
                         translation_id, 'config', new_config
                     )
@@ -3716,59 +3856,89 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     "⚠️ Auto-resume requested but no checkpoint found, falling back to pause."
                 )
 
-        config = clear_resume_schedule(config)
-        if state_manager.exists(translation_id):
-            state_manager.set_translation_field(translation_id, 'config', config)
-            checkpoint_manager.update_job_config(translation_id, config)
+        with translation_lifecycle_guard(state_manager):
+            if not state_manager.exists(translation_id):
+                return
+            live_config = state_manager.get_translation_field(translation_id, 'config') or {}
+            if live_config.get('_explicit_resume_requested'):
+                return
+            if live_config.get('_manual_pause_requested'):
+                checkpoint_manager.mark_interrupted(translation_id)
+                return
+            config = clear_resume_schedule(config)
+            if state_manager.exists(translation_id):
+                state_manager.set_translation_field(translation_id, 'config', config)
+                checkpoint_manager.update_job_config(translation_id, config)
 
-        if credits_exhausted:
-            pause_msg = (
-                f"💳 {provider_name} no tiene saldo suficiente. El trabajo quedó pausado "
-                "en su último checkpoint; agrega saldo o configura otra clave y pulsa Reanudar."
-            )
-            pause_event = "provider_credits_exhausted"
-            pause_reason = "insufficient_credits"
-        else:
-            pause_msg = (
-                f"⏸️ Rate limited by {provider_name}.{retry_msg} "
-                "Translation auto-paused, you can resume when ready."
-            )
-            pause_event = "rate_limit_auto_pause"
-            pause_reason = "rate_limited"
-        _log_message_callback(pause_event, pause_msg)
+            if action_required:
+                pause_msg = str(e) + " The checkpoint is preserved; resolve the issue before resuming."
+                pause_event = "provider_action_required"
+                pause_reason = e.reason
+                config['_provider_action_required'] = pause_reason
+                state_manager.set_translation_field(translation_id, 'config', config)
+                checkpoint_manager.update_job_config(translation_id, config)
+            elif credits_exhausted:
+                pause_msg = (
+                    f"💳 {provider_name} no tiene saldo suficiente. El trabajo quedó pausado "
+                    "en su último checkpoint; agrega saldo o configura otra clave y pulsa Reanudar."
+                )
+                pause_event = "provider_credits_exhausted"
+                pause_reason = "insufficient_credits"
+            else:
+                pause_msg = (
+                    f"⏸️ Rate limited by {provider_name}.{retry_msg} "
+                    "Translation auto-paused, you can resume when ready."
+                )
+                pause_event = "rate_limit_auto_pause"
+                pause_reason = "rate_limited"
+            _log_message_callback(pause_event, pause_msg)
 
-        state_manager.set_translation_field(translation_id, 'status', 'rate_limited')
-        state_manager.set_translation_field(translation_id, 'interrupted', True)
-        state_manager.set_translation_field(translation_id, 'pause_reason', pause_reason)
-        checkpoint_manager.mark_interrupted(translation_id)
+            pause_status = 'interrupted' if action_required else 'rate_limited'
+            state_manager.set_translation_field(translation_id, 'status', pause_status)
+            state_manager.set_translation_field(translation_id, 'interrupted', True)
+            state_manager.set_translation_field(translation_id, 'pause_reason', pause_reason)
+            checkpoint_manager.mark_interrupted(translation_id)
 
-        stats = state_manager.get_translation_field(translation_id, 'stats') or {}
-        elapsed_time = _apply_active_timing(stats).get('elapsed_time', 0.0)
-        _finalize_stats_callback({'elapsed_time': elapsed_time})
+            stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+            if action_required:
+                stats.update({
+                    'live_status': pause_msg,
+                    'live_status_kind': 'recoverable',
+                    'live_activity_event': pause_reason,
+                    'provider_retry_at': None,
+                    'eta_seconds': None,
+                    'eta_status': 'unavailable',
+                    'automatic_recovery': recovery_budget(config),
+                })
+                state_manager.update_stats(translation_id, stats)
+            elapsed_time = _apply_active_timing(stats).get('elapsed_time', 0.0)
+            _finalize_stats_callback({'elapsed_time': elapsed_time})
 
-        emit_update(socketio, translation_id, {
-            'status': 'rate_limited',
-            'log': pause_msg,
-            'reason': pause_reason,
-            'result': state_manager.get_translation_field(translation_id, 'result') or (
-                "Translation paused (insufficient credits)"
-                if credits_exhausted else "Translation paused (rate limited)"
-            )
-        }, state_manager)
+            emit_update(socketio, translation_id, {
+                'status': pause_status,
+                'log': pause_msg,
+                'reason': pause_reason,
+                'result': state_manager.get_translation_field(translation_id, 'result') or (
+                    pause_msg if action_required else (
+                        "Translation paused (insufficient credits)"
+                        if credits_exhausted else "Translation paused (rate limited)"
+                    )
+                )
+            }, state_manager)
 
-        socketio.emit('checkpoint_created', {
-            'translation_id': translation_id,
-            'status': 'rate_limited',
-            'reason': pause_reason,
-            'message': pause_msg
-        }, namespace='/')
-
-        output_filepath = state_manager.get_translation_field(translation_id, 'output_filepath')
-        if output_filepath and os.path.exists(output_filepath):
-            socketio.emit('file_list_changed', {
-                'reason': 'rate_limited',
-                'filename': config.get('output_filename', 'unknown')
+            socketio.emit('checkpoint_created', {
+                'translation_id': translation_id,
+                'status': pause_status,
+                'reason': pause_reason,
+                'message': pause_msg
             }, namespace='/')
+
+            output_filepath = state_manager.get_translation_field(translation_id, 'output_filepath')
+            if output_filepath and os.path.exists(output_filepath):
+                socketio.emit('file_list_changed', {
+                    'reason': 'rate_limited',
+                    'filename': config.get('output_filename', 'unknown')
+                }, namespace='/')
 
     except Exception as e:
         critical_error_msg = f"Critical error during translation task ({translation_id}): {str(e)}"
@@ -3779,6 +3949,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         if state_manager.exists(translation_id):
             if state_manager.get_translation_field(translation_id, 'interrupted'):
+                live_config = state_manager.get_translation_field(translation_id, 'config') or {}
+                if live_config.get('_explicit_resume_requested'):
+                    return
                 state_manager.set_translation_field(
                     translation_id, 'status', 'interrupted'
                 )
@@ -3807,7 +3980,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                         .get('progress', {})
                         .get('total_chunks') or 0
                     )
-                if total <= 0 and not chunks and int(stats.get('completed_chunks') or 0) == 0:
+                if (total <= 0 and not chunks and int(stats.get('completed_chunks') or 0) == 0
+                        and not config.get('_submission_fingerprint')):
                     checkpoint_manager.delete_checkpoint(translation_id)
             except Exception:
                 pass
@@ -3817,85 +3991,103 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 checkpoint_data,
                 e,
             )
-            if recovery_plan is not None:
-                cycle = recovery_plan["cycle"]
-                delay_seconds = recovery_plan["delay_seconds"]
-                transient_recovery = bool(recovery_plan.get("transient"))
-                recovery_status = (
-                    "provider_wait" if transient_recovery else "running"
-                )
-                recovery_stats = state_manager.get_translation_field(
-                    translation_id, 'stats'
-                ) or {}
-                recovery_stats.update({
-                    'live_status': (
-                        (
-                            "Proveedor temporalmente no disponible; "
-                            f"reintento automático en {delay_seconds}s"
-                        )
-                        if transient_recovery
-                        else (
-                            "Recuperando el proceso desde el último checkpoint "
-                            f"(ciclo {cycle})"
-                        )
-                    ),
-                    'live_status_kind': (
-                        'scheduled_pause' if transient_recovery else 'active'
-                    ),
-                    'live_activity_event': 'worker_exception_auto_recovery',
-                    'last_activity_at': time.time(),
-                    'worker_error_recovery_cycle': cycle,
-                    'provider_retry_at': (
-                        time.time() + delay_seconds
-                        if transient_recovery else None
-                    ),
-                })
-                state_manager.update_stats(translation_id, recovery_stats)
-                state_manager.set_translation_field(
-                    translation_id, 'config', recovery_plan['config']
-                )
-                state_manager.set_translation_field(
-                    translation_id,
-                    'status',
-                    recovery_status,
-                )
-                state_manager.set_translation_field(translation_id, 'error', None)
-                checkpoint_manager.mark_running(translation_id)
-                checkpoint_manager.update_job_config(
-                    translation_id,
-                    recovery_plan['config'],
-                )
-                retry_budget = (
-                    "sin límite fijo y con espera progresiva"
-                    if recovery_plan.get('transient')
-                    else (
-                        f"intento {recovery_plan['stuck_count']}/"
-                        f"{recovery_plan['max_stuck_recoveries']} en este punto"
+            with translation_lifecycle_guard(state_manager):
+                live_config = state_manager.get_translation_field(translation_id, 'config') or {}
+                if live_config.get('_explicit_resume_requested'):
+                    return
+                if live_config.get('_manual_pause_requested') or state_manager.get_translation_field(translation_id, 'interrupted'):
+                    checkpoint_manager.mark_interrupted(translation_id)
+                    return
+                if recovery_plan is not None:
+                    cycle = recovery_plan["cycle"]
+                    delay_seconds = recovery_plan["delay_seconds"]
+                    transient_recovery = bool(recovery_plan.get("transient"))
+                    recovery_status = (
+                        "provider_wait" if transient_recovery else "running"
                     )
-                )
-                _log_message_callback(
-                    "worker_exception_auto_recovery_scheduled",
-                    "🔄 El worker falló, pero el avance está íntegro. "
-                    f"Se reanudará desde el checkpoint en {delay_seconds}s "
-                    f"({retry_budget}).",
-                )
-                emit_update(socketio, translation_id, {
-                    'status': recovery_status,
-                    'recovering': True,
-                    'recovery_scope': 'worker',
-                    'recovery_cycle': cycle,
-                    'retry_after': delay_seconds,
-                    'stats': recovery_stats,
-                }, state_manager)
-                _schedule_failed_chunk_recovery(
-                    translation_id,
-                    recovery_plan,
-                    state_manager,
-                    output_dir,
-                    socketio,
-                )
-                return
+                    recovery_stats = state_manager.get_translation_field(
+                        translation_id, 'stats'
+                    ) or {}
+                    recovery_stats.update({
+                        'live_status': (
+                            (
+                                "Proveedor temporalmente no disponible; "
+                                f"reintento automático en {delay_seconds}s"
+                            )
+                            if transient_recovery
+                            else (
+                                "Recuperando el proceso desde el último checkpoint "
+                                f"(ciclo {cycle})"
+                            )
+                        ),
+                        'live_status_kind': (
+                            'scheduled_pause' if transient_recovery else 'active'
+                        ),
+                        'live_activity_event': 'worker_exception_auto_recovery',
+                        'last_activity_at': time.time(),
+                        'worker_error_recovery_cycle': cycle,
+                        'provider_retry_at': (
+                            time.time() + delay_seconds
+                            if transient_recovery else None
+                        ),
+                    })
+                    state_manager.update_stats(translation_id, recovery_stats)
+                    state_manager.set_translation_field(
+                        translation_id,
+                        'status',
+                        recovery_status,
+                    )
+                    state_manager.set_translation_field(translation_id, 'error', None)
+                    retry_budget = (
+                        f"attempt {recovery_plan['stuck_count']}/"
+                        f"{recovery_plan['max_stuck_recoveries']} at this checkpoint"
+                    )
+                    _log_message_callback(
+                        "worker_exception_auto_recovery_scheduled",
+                        "🔄 El worker falló, pero el avance está íntegro. "
+                        f"Se reanudará desde el checkpoint en {delay_seconds}s "
+                        f"({retry_budget}).",
+                    )
+                    emit_update(socketio, translation_id, {
+                        'status': recovery_status,
+                        'recovering': True,
+                        'recovery_scope': 'worker',
+                        'recovery_cycle': cycle,
+                        'retry_after': delay_seconds,
+                        'stats': recovery_stats,
+                    }, state_manager)
+                    _schedule_failed_chunk_recovery(
+                        translation_id,
+                        recovery_plan,
+                        state_manager,
+                        output_dir,
+                        socketio,
+                    )
+                    return
 
+            if checkpoint_data and _config_flag(config.get('auto_recover_worker_errors'), True):
+                progress = (checkpoint_data.get('job') or {}).get('progress') or {}
+                reason = recovery_stop_reason(config, progress.get('total_chunks', 0)) or 'worker_recovery_exhausted'
+                config = clear_resume_schedule(config)
+                config['_automatic_recovery_stop'] = {
+                    'reason': reason,
+                    'scope': 'worker',
+                    'budget': recovery_budget(config, progress.get('total_chunks', 0)),
+                }
+                state_manager.set_translation_field(translation_id, 'config', config)
+                state_manager.set_translation_field(translation_id, 'pause_reason', reason)
+                checkpoint_manager.update_job_config(translation_id, config)
+                stopped_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+                stopped_stats.update({
+                    'live_status': 'Automatic recovery requires review. Saved progress is preserved.',
+                    'live_status_kind': 'recoverable',
+                    'live_activity_event': reason,
+                    'provider_retry_at': None,
+                    'eta_seconds': None,
+                    'eta_status': 'unavailable',
+                    'automatic_recovery': config['_automatic_recovery_stop']['budget'],
+                })
+                state_manager.update_stats(translation_id, stopped_stats)
             state_manager.set_translation_field(translation_id, 'status', 'error')
             state_manager.set_translation_field(translation_id, 'error', critical_error_msg)
             # Unconditional: the DB row exists independently of whether we
@@ -3911,6 +4103,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             emit_update(socketio, translation_id, {
                 'error': critical_error_msg,
                 'status': 'error',
+                'reason': state_manager.get_translation_field(translation_id, 'pause_reason'),
                 'result': state_manager.get_translation_field(translation_id, 'result') or f"Translation failed: {critical_error_msg}"
             }, state_manager)
 
@@ -3919,6 +4112,14 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             await asyncio.to_thread(notify, EVENT_FAILURE,
                 _notification_context(config, translation_id, elapsed_time,
                                       error=critical_error_msg))
+
+
+    finally:
+        try:
+            if pipeline_token is not None:
+                await close_pipeline(pipeline_token)
+        finally:
+            reset_usage_context(usage_token)
 
 
 async def _perform_tts_generation(translation_id, config, output_filepath, state_manager, socketio, log_callback):

@@ -22,7 +22,9 @@ from src.prompts.prompts import (
 )
 from src.prompts.examples import ensure_example_ready, has_example_for_pair, PLACEHOLDER_EXAMPLES
 from .llm_client import default_client, LLMClient, create_llm_client, LLMResponse
-from .llm import ContentRiskError, ContextOverflowError, RepetitionLoopError, RateLimitError
+from .llm import ContextOverflowError, RepetitionLoopError, RateLimitError
+from .llm.exceptions import ProviderActionRequiredError
+from .pipeline_runtime import selected_role
 from .post_processor import clean_translated_text
 from .context_optimizer import (
     AdaptiveContextManager,
@@ -111,6 +113,7 @@ from .book_profiles.audit import (
     SCORE_FIELDS,
     build_profile_audit_prompt,
     parse_profile_audit_response,
+    validate_profile_audit_payload,
     profile_audit_result_from_payload,
     run_profile_precheck,
     score_repair_guidance,
@@ -364,6 +367,7 @@ async def _client_generate(
     *,
     system_prompt: str | None = None,
     temperature: float | None = None,
+    role: str = "translate",
 ) -> LLMResponse | None:
     kwargs = {"system_prompt": system_prompt}
     if _call_supports_kwarg(client.generate, "temperature"):
@@ -372,6 +376,7 @@ async def _client_generate(
         client.generate,
         prompt,
         provider=client,
+        role=role,
         **kwargs,
     )
 
@@ -384,6 +389,7 @@ async def _client_make_request(
     system_prompt: str | None = None,
     temperature: float | None = None,
     timeout: int | None = None,
+    role: str = "refine",
 ) -> LLMResponse | None:
     kwargs = {"system_prompt": system_prompt}
     if timeout is not None and _call_supports_kwarg(client.make_request, "timeout"):
@@ -396,6 +402,7 @@ async def _client_make_request(
         model,
         provider=client,
         request_timeout=timeout,
+        role=role,
         **kwargs,
     )
 
@@ -404,8 +411,6 @@ async def _client_make_request(
 MAX_CHUNK_REDUCTION_ATTEMPTS = 3
 CHUNK_REDUCTION_FACTOR = 0.6  # Reduce to 60% of original size each attempt
 MIN_CHUNK_CHARACTERS = 200  # Minimum chunk size to attempt translation
-MAX_CONTENT_RISK_REDUCTION_ATTEMPTS = 8
-MIN_CONTENT_RISK_CHARACTERS = 8
 
 def _profile_repair_instructions(
     source_text: str,
@@ -440,6 +445,9 @@ def _profile_audit_enabled(prompt_options: Optional[dict]) -> bool:
 
 
 def _resolve_profile_audit_model(model: str, prompt_options: Optional[dict]) -> str:
+    role = selected_role("audit")
+    if role:
+        return role["model"]
     options = prompt_options or {}
     configured = (
         options.get("profile_audit_model")
@@ -459,6 +467,9 @@ def _resolve_profile_audit_model(model: str, prompt_options: Optional[dict]) -> 
 
 
 def _resolve_profile_repair_model(model: str, prompt_options: Optional[dict]) -> str:
+    role = selected_role("repair")
+    if role:
+        return role["model"]
     options = prompt_options or {}
     configured = (
         options.get("profile_repair_model")
@@ -477,6 +488,9 @@ def _resolve_profile_repair_model(model: str, prompt_options: Optional[dict]) ->
 
 
 def _resolve_combined_quality_audit_model(model: str, prompt_options: Optional[dict]) -> str:
+    role = selected_role("audit")
+    if role:
+        return role["model"]
     options = prompt_options or {}
     configured = (
         options.get("combined_quality_audit_model")
@@ -599,9 +613,11 @@ async def _run_combined_quality_audit(
                     candidate_text,
                     profile_id=profile_id,
                 )
-        except Exception:
-            profile = None
-            profile_result = None
+        except Exception as exc:
+            raise ProviderActionRequiredError(
+                "The active profile could not be loaded for the combined audit.",
+                reason="profile_unavailable", provider="pipeline",
+            ) from exc
 
     prompt_pair = build_combined_quality_audit_prompt(
         source_text=source_text,
@@ -618,6 +634,7 @@ async def _run_combined_quality_audit(
         profile_policy=profile_policy,
         profile_audit_prompt=profile_audit_prompt,
         glossary_block=glossary_block,
+        profile_score_fields=score_fields_for_profile(profile) if profile is not None else (),
     )
     audit_model = _resolve_combined_quality_audit_model(model, prompt_options)
     if log_callback:
@@ -641,16 +658,27 @@ async def _run_combined_quality_audit(
         alert_model=audit_model,
         phase="audit",
     )
-    if not response:
-        return None, None
-    payload = parse_combined_quality_audit_response(response.content)
+    if response and (getattr(response, "status", "completed") == "refused" or getattr(response, "refusal", None)):
+        raise ProviderActionRequiredError(
+            "The provider refused the combined audit; review is required.",
+            reason="provider_refusal", provider=selected_role("audit").get("provider", "pipeline"), response=response,
+        )
+    payload = None
+    if response and not response.was_truncated and getattr(response, "status", "completed") == "completed":
+        payload = parse_combined_quality_audit_response(
+            response.content,
+            profile_score_fields=score_fields_for_profile(profile) if profile is not None else (),
+        )
     if not payload:
         if log_callback:
             log_callback(
                 "combined_quality_audit_parse_failed",
                 f"⚠️ Combined quality audit returned invalid JSON for chunk {chunk_index}.",
             )
-        return None, response
+        raise ProviderActionRequiredError(
+            "The required combined audit returned no valid judgment; review is required.",
+            reason="audit_invalid_response", provider=selected_role("audit").get("provider", "pipeline"), response=response,
+        )
     _store_combined_audit_record(
         prompt_options,
         chunk_index=chunk_index,
@@ -891,8 +919,11 @@ async def _run_profile_audit(
 
     try:
         profile = load_book_profile(profile_id)
-    except Exception:
-        return local_result, None
+    except Exception as exc:
+        raise ProviderActionRequiredError(
+            "The active profile could not be loaded for its required audit.",
+            reason="profile_unavailable", provider="pipeline",
+        ) from exc
 
     glossary_block = build_profile_glossary_block(
         source_text,
@@ -929,18 +960,31 @@ async def _run_profile_audit(
         alert_model=audit_model,
         phase="audit",
     )
-    if not audit_response:
-        return local_result, None
-
-    parsed = parse_profile_audit_response(audit_response.content)
+    if audit_response and (
+        getattr(audit_response, "status", "completed") == "refused"
+        or getattr(audit_response, "refusal", None)
+    ):
+        raise ProviderActionRequiredError(
+            "The provider refused the profile audit; review is required.",
+            reason="provider_refusal", provider=selected_role("audit").get("provider", "pipeline"), response=audit_response,
+        )
+    parsed = None
+    if (audit_response and not audit_response.was_truncated
+            and getattr(audit_response, "status", "completed") == "completed"):
+        parsed = parse_profile_audit_response(
+            audit_response.content, score_fields=score_fields_for_profile(profile),
+        )
     if not parsed:
         if log_callback:
             label = f" {chunk_label}" if chunk_label else ""
             log_callback(
                 "profile_audit_parse_failed",
-                f"⚠️ Active profile audit{label} returned invalid JSON; using local precheck only."
+                f"Active profile audit{label} returned no valid judgment; review is required."
             )
-        return local_result, audit_response
+        raise ProviderActionRequiredError(
+            "The required profile audit returned no valid judgment; review is required.",
+            reason="audit_invalid_response", provider=selected_role("audit").get("provider", "pipeline"), response=audit_response,
+        )
 
     result = profile_audit_result_from_payload(
         profile_id,
@@ -1411,41 +1455,26 @@ async def _assess_refinement_with_editorial_guard(
         alert_model=guard_model,
         phase="audit",
     )
-    if not guard_response:
-        _record_candidate(
-            prompt_options,
-            CandidateResult.from_quality_decision(
-                decision,
-                text=refined_text,
-                source_text=source_text or draft_text,
-                source_language=source_language,
-                target_language=target_language,
-            ),
-            log_callback=log_callback,
+    if guard_response and (getattr(guard_response, "status", "completed") == "refused" or getattr(guard_response, "refusal", None)):
+        raise ProviderActionRequiredError(
+            "The provider refused the editorial audit; review is required.",
+            reason="provider_refusal", provider=selected_role("audit").get("provider", "pipeline"), response=guard_response,
         )
-        return decision, None
-
-    assessment = parse_source_aware_guard_response(guard_response.content)
+    assessment = None
+    if (guard_response and not guard_response.was_truncated
+            and getattr(guard_response, "status", "completed") == "completed"):
+        assessment = parse_source_aware_guard_response(guard_response.content)
     if not assessment:
         if log_callback:
             log_callback(
                 "source_aware_editorial_guard_parse_failed",
                 f"⚠️ Source-aware editorial guard returned invalid JSON for chunk {chunk_index}; "
-                "falling back to local guard.",
+                "review is required.",
             )
-        _record_candidate(
-            prompt_options,
-            CandidateResult.from_quality_decision(
-                decision,
-                text=refined_text,
-                source_text=source_text or draft_text,
-                source_language=source_language,
-                target_language=target_language,
-                response=guard_response,
-            ),
-            log_callback=log_callback,
+        raise ProviderActionRequiredError(
+            "The required editorial audit returned no valid judgment; review is required.",
+            reason="audit_invalid_response", provider=selected_role("audit").get("provider", "pipeline"), response=guard_response,
         )
-        return decision, guard_response
 
     decision = apply_source_aware_guard_assessment(
         decision,
@@ -1502,6 +1531,7 @@ async def _generate_alert_repair(
             prompt,
             system_prompt=system_prompt,
             temperature=temperature,
+            role="audit" if phase == "audit" else "repair",
         )
 
     provider = None
@@ -1516,6 +1546,7 @@ async def _generate_alert_repair(
             alert_model,
             system_prompt=system_prompt,
             temperature=temperature,
+            role="audit" if phase == "audit" else "repair",
         )
     finally:
         if provider is not None and original_model:
@@ -1537,94 +1568,6 @@ def _merge_llm_usage(primary: Optional[LLMResponse], extra: Optional[LLMResponse
     primary.context_limit = max(primary.context_limit, extra.context_limit)
     primary.was_truncated = primary.was_truncated or extra.was_truncated
     return primary
-
-
-async def _stitch_content_risk_fragments(
-    fragments: List[str],
-    *,
-    target_language: str,
-    client: Any,
-    log_callback: Optional[Any],
-    prompt_options: Optional[dict],
-) -> Tuple[str, Optional[LLMResponse]]:
-    """Join target-language microfragments without resending filtered source.
-
-    Content-policy recovery can require clause- or word-sized requests. Their
-    translations are complete but may have artificial seam grammar. This pass
-    receives only the already translated target text, and is accepted only
-    when the deterministic editorial guard confirms that structural markers,
-    numbers, references, and content volume remain intact.
-    """
-    combined = "\n".join(part for part in fragments if part)
-    if len(fragments) < 2 or not combined.strip():
-        return combined, None
-
-    system_prompt = (
-        f"You are a seam editor for {target_language}. The passage below was translated "
-        "in adjacent microfragments. Join it into continuous, natural target-language "
-        "prose. Preserve every fact, name, number, quotation, sentence, and placeholder; "
-        "do not summarize, omit, add, censor, explain, or change meaning. Change only "
-        "grammar, word order, punctuation, and artificial line breaks caused by the seams. "
-        f"Return only the complete passage inside {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT}."
-    )
-    user_prompt = (
-        "# ADJACENT TARGET-LANGUAGE FRAGMENTS\n"
-        f"{TRANSLATE_TAG_IN}\n{combined}\n{TRANSLATE_TAG_OUT}"
-    )
-    try:
-        response = await _client_generate(
-            client,
-            user_prompt,
-            system_prompt=system_prompt,
-            temperature=temperature_for_phase("refinement"),
-        )
-    except ContentRiskError:
-        if log_callback:
-            log_callback(
-                "content_risk_stitch_filtered",
-                "Provider also filtered the target-only seam pass; preserving every "
-                "translated microfragment unchanged.",
-            )
-        return combined, None
-
-    if not response:
-        return combined, None
-    stitched = client.extract_translation(response.content)
-    if not stitched:
-        if log_callback:
-            log_callback(
-                "content_risk_stitch_extraction_failed",
-                "Target-only seam pass returned no valid translation wrapper; preserving "
-                "the complete microfragment sequence.",
-            )
-        return combined, response
-
-    decision = assess_refinement(
-        combined,
-        stitched,
-        chunk_index=0,
-        section="content_filter_seam",
-        source_text=combined,
-        target_language=target_language,
-        source_language=target_language,
-        prompt_options=prompt_options,
-    )
-    if not decision.accepted:
-        if log_callback:
-            rejected = ", ".join(issue.code for issue in decision.issues if issue.severity == "reject")
-            log_callback(
-                "content_risk_stitch_rejected",
-                "Target-only seam pass changed protected content; preserving the complete "
-                f"microfragment sequence ({rejected or 'deterministic guard'}).",
-            )
-        return combined, response
-
-    if log_callback:
-        log_callback(
-            "content_risk_stitch_accepted",
-            "Reassembled provider-filtered microfragments into continuous target-language prose.",
-        )
-    return stitched, response
 
 
 async def _maybe_repair_quality_alerts(
@@ -2365,7 +2308,6 @@ async def _make_llm_request_with_adaptive_context(
     all_translations = []
     reduction_attempt = 0
     last_response: Optional[LLMResponse] = None
-    content_risk_micro_split = False
 
     while current_content.strip():
         try:
@@ -2708,15 +2650,6 @@ async def _make_llm_request_with_adaptive_context(
 
             # Success - combine all translations
             combined = "\n".join(all_translations) if all_translations else None
-            if combined and content_risk_micro_split:
-                combined, stitch_response = await _stitch_content_risk_fragments(
-                    all_translations,
-                    target_language=target_language,
-                    client=client,
-                    log_callback=log_callback,
-                    prompt_options=prompt_options,
-                )
-                last_response = _merge_llm_usage(last_response, stitch_response)
             if combined:
                 observe_literary_continuity(
                     runtime_state=runtime_state,
@@ -2753,43 +2686,6 @@ async def _make_llm_request_with_adaptive_context(
             else:
                 tqdm.write(f"\n⚠️ Repetition loop detected - increase OLLAMA_NUM_CTX")
             return None, main_content, last_response
-
-        except ContentRiskError as e:
-            reduction_attempt += 1
-            if reduction_attempt > MAX_CONTENT_RISK_REDUCTION_ATTEMPTS:
-                if log_callback:
-                    log_callback(
-                        "content_risk_split_fatal",
-                        "Provider content filter still rejected the passage after "
-                        f"{MAX_CONTENT_RISK_REDUCTION_ATTEMPTS} bounded splits: {e}",
-                    )
-                return None, main_content, last_response
-
-            first_part, second_part = split_chunk_for_retry(current_content, 0.5)
-            if (
-                len(first_part.strip()) < MIN_CONTENT_RISK_CHARACTERS
-                or not second_part.strip()
-                or first_part == current_content
-            ):
-                if log_callback:
-                    log_callback(
-                        "content_risk_split_fatal",
-                        "Provider content filter rejected the smallest safe semantic unit; "
-                        "the checkpoint remains resumable.",
-                    )
-                return None, main_content, last_response
-
-            if len(first_part.strip()) < MIN_CHUNK_CHARACTERS:
-                content_risk_micro_split = True
-
-            if log_callback:
-                log_callback(
-                    "content_risk_split_retry",
-                    "Provider content filter rejected this passage; retrying as smaller "
-                    f"sentence-aligned units ({len(first_part)} + {len(second_part)} chars).",
-                )
-            current_content = first_part
-            remaining_content = second_part + ("\n" + remaining_content if remaining_content else "")
 
         except ContextOverflowError as e:
             # If we have a context manager, try increasing context
@@ -3891,6 +3787,10 @@ async def refine_chunks(
                             if combined_profile:
                                 try:
                                     active_profile = load_book_profile(profile_id)
+                                    validate_profile_audit_payload(
+                                        combined_profile,
+                                        score_fields=score_fields_for_profile(active_profile),
+                                    )
                                     if (prompt_options or {}).get("profile_local_precheck_enabled") is False:
                                         local_profile_issues = []
                                     else:
@@ -3941,6 +3841,8 @@ async def refine_chunks(
                                 )
                             llm_response = _merge_llm_usage(llm_response, audit_response)
                         except Exception as audit_error:
+                            if isinstance(audit_error, RateLimitError):
+                                raise
                             if log_callback:
                                 log_callback(
                                     "profile_audit_error",

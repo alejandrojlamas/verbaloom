@@ -138,3 +138,31 @@ def test_unit_stage_invalidation_preserves_valid_earlier_results():
     assert record["translation_status"] == "COMPLETED"
     assert record["review_status"] == "PENDING"
     assert record["status"] == "TRANSLATED"
+
+
+def test_pipeline_role_changes_invalidate_only_dependent_stages():
+    from copy import deepcopy
+    from src.core.pipeline_config import pipeline_preset
+
+    roles = pipeline_preset("compatible", {})["roles"]
+    base = _fingerprints({"_pipeline_roles": roles})
+    for role, expected in (
+        ("translate", ("translation", "review", "audit")),
+        ("structure_repair", ("translation", "review", "audit")),
+        ("refine", ("review", "audit")), ("repair", ("review", "audit")),
+        ("audit", ("audit",)), ("profile_prepare", ()),
+    ):
+        changed = deepcopy(roles)
+        changed[role]["reasoning_effort"] = "low"
+        current = _fingerprints({"_pipeline_roles": changed})
+        assert invalidated_stages(base, current) == expected, role
+
+
+def test_pipeline_cache_dependencies_ignore_budget_and_credentials():
+    from src.core.pipeline_config import pipeline_preset
+
+    roles = pipeline_preset("compatible", {})["roles"]
+    base = _fingerprints({"_pipeline_roles": roles})
+    roles["audit"]["api_key"] = "YOUR_API_KEY_HERE"
+    roles["audit"]["budget"] = 5
+    assert _fingerprints({"_pipeline_roles": roles}) == base

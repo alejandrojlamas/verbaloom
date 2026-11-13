@@ -352,6 +352,7 @@ async def repair_flagged_chunks(
                         client.make_request,
                         user_prompt,
                         provider=client,
+                        role="repair",
                         model=model_name,
                         request_timeout=REQUEST_TIMEOUT,
                         system_prompt=system_prompt,

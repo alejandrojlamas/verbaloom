@@ -567,7 +567,13 @@ def audit_epub_publication(
     source = snapshot_epub(source_path, recover=True)
     output = snapshot_epub(output_path, recover=False)
     broken = snapshot_epub(broken_path, recover=True) if broken_path else None
-    boundary_report = audit_epub_dom_boundaries(source_path, output_path)
+    boundary_report = audit_epub_dom_boundaries(
+        source_path, output_path,
+        generated_cover_landmarks={
+            href: output.cover_page for href in output.nav_files
+            if href in source.nav_files and output.cover_page in output.entry_names
+        },
+    )
     report.dom_boundary_findings = len(boundary_report.findings)
     report.dom_boundary_structural_mismatches = len(boundary_report.structural_mismatches)
     report.spacing_findings += report.dom_boundary_findings
@@ -693,6 +699,9 @@ def audit_epub_publication(
     for file_href in source.spine:
         source_counts = source.element_counts.get(file_href, Counter())
         output_counts = output.element_counts.get(file_href, Counter())
+        output_counts = output_counts - Counter(
+            boundary_report.allowed_element_additions.get(file_href, {})
+        )
         if source_counts != output_counts:
             delta = output_counts - source_counts
             removed = source_counts - output_counts

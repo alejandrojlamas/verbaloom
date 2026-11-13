@@ -16,6 +16,7 @@ from typing import Any, List, Mapping, Optional, Union
 import httpx
 import asyncio
 import json
+import time
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS, TEMPERATURE
 from ..base import LLMProvider, LLMResponse
@@ -24,12 +25,14 @@ from src.core.deepseek_pricing import (
     is_official_deepseek_endpoint,
 )
 from ..exceptions import (
-    ContentRiskError,
     ContextOverflowError,
     DeepSeekPeakPricingError,
     InsufficientCreditsError,
+    ProviderActionRequiredError,
+    RateLimitError,
 )
 from ..rate_limit_handler import handle_rate_limit
+from ..attempts import observe_attempt, reserve_attempt
 
 
 class DeepSeekProvider(LLMProvider):
@@ -54,6 +57,7 @@ class DeepSeekProvider(LLMProvider):
     """
 
     API_URL = "https://api.deepseek.com/chat/completions"
+    supports_attempt_reservations = True
     MODELS_URL = "https://api.deepseek.com/models"
 
     MODEL_CONTEXT_SIZES = {
@@ -97,7 +101,8 @@ class DeepSeekProvider(LLMProvider):
         api_key: Union[str, List[str]],
         model: str = "deepseek-v4-pro",
         api_endpoint: Optional[str] = None,
-        disable_thinking: bool = True
+        disable_thinking: bool = True,
+        max_output_tokens: Optional[int] = None,
     ):
         """
         Initialize the DeepSeek provider.
@@ -119,6 +124,12 @@ class DeepSeekProvider(LLMProvider):
         super().__init__(normalized_model, api_keys=api_key, provider_name="deepseek")
         self.api_endpoint = resolved_endpoint
         self.disable_thinking = disable_thinking
+        self.configured_model = model
+        if max_output_tokens is not None and (
+            type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 384_000
+        ):
+            raise ValueError("DeepSeek output limit must be an integer in 1..384000")
+        self.max_output_tokens = max_output_tokens
 
     def _get_context_limit(self) -> int:
         """
@@ -313,6 +324,8 @@ class DeepSeekProvider(LLMProvider):
 
         if self._thinking_enabled_by_default() and self.disable_thinking:
             payload["thinking"] = {"type": "disabled"}
+        if self.max_output_tokens is not None:
+            payload["max_tokens"] = self.max_output_tokens
 
         client = await self._get_client()
         for attempt in range(MAX_TRANSLATION_ATTEMPTS):
@@ -329,23 +342,28 @@ class DeepSeekProvider(LLMProvider):
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             }
+            reservation_id = reserve_attempt(endpoint=self.api_endpoint, payload=payload,
+                                             attempt=attempt + 1)
+            response = None
+            response_record = None
+            attempt_status = "error"
+            error_type = ""
+            error_reason = ""
+            started_at = time.time()
+            started = time.perf_counter()
+            http_finished = started
             try:
-                response = await client.post(
-                    self.api_endpoint,
-                    headers=headers,
-                    json=payload,
-                    timeout=timeout
-                )
+                try:
+                    response = await client.post(
+                        self.api_endpoint, headers=headers, json=payload, timeout=timeout,
+                    )
+                finally:
+                    http_finished = time.perf_counter()
 
                 if response.status_code == 401:
-                    # Permanent failure: an invalid/revoked key will not
-                    # start working on retry. Fail immediately instead of
-                    # raising and falling into the generic `except
-                    # Exception` handler below, which used to retry it like
-                    # a transient network error and waste the one extra
-                    # attempt MAX_TRANSLATION_ATTEMPTS budgets.
-                    print("❌ DeepSeek: Invalid API key (401) — not retrying, this cannot succeed without a valid key.")
-                    return None
+                    raise ProviderActionRequiredError(
+                        "DeepSeek credentials require attention.", reason="authentication_error", provider="deepseek",
+                    )
 
                 if response.status_code == 429:
                     await handle_rate_limit(
@@ -362,6 +380,16 @@ class DeepSeekProvider(LLMProvider):
 
                 response.raise_for_status()
                 result = response.json()
+                usage = self._usage_counts(result.get("usage"))
+                response_record = LLMResponse(
+                    content="", prompt_tokens=usage["prompt"], completion_tokens=usage["completion"],
+                    prompt_cache_hit_tokens=usage["cache_hit"], prompt_cache_miss_tokens=usage["cache_miss"],
+                    total_tokens=usage["total"], reasoning_tokens=usage["reasoning"],
+                    context_used=usage["total"], context_limit=self._get_context_limit(),
+                    raw_usage=result.get("usage") or {}, request_id=response.headers.get("x-request-id", ""),
+                    response_id=str(result.get("id") or ""), response_model=str(result.get("model") or self.model),
+                    latency_ms=int((http_finished-started)*1000), status="incomplete",
+                )
 
                 if "choices" not in result or len(result["choices"]) == 0:
                     # An empty/malformed body can be a transient provider
@@ -383,8 +411,25 @@ class DeepSeekProvider(LLMProvider):
                     "max_tokens",
                     "max_output_tokens",
                 }
+                response_record.content = response_text if isinstance(response_text, str) else ""
+                response_record.finish_reason = finish_reason
+                response_record.was_truncated = was_truncated
+                refusal = choice.get("message", {}).get("refusal")
+                if refusal or finish_reason == "content_filter":
+                    attempt_status = "refused"
+                    response_record.status = "refused"
+                    response_record.refusal = str(refusal or "")
+                    raise ProviderActionRequiredError(
+                        "DeepSeek refused this passage; review is required.",
+                        reason="provider_refusal", provider="deepseek", response=response_record,
+                    )
+                if not isinstance(response_text, str) or (not response_text.strip() and not was_truncated):
+                    raise ValueError("Empty completion content")
+                if is_official_deepseek_endpoint(self.api_endpoint) and not finish_reason:
+                    raise ValueError("Official DeepSeek response is missing finish_reason")
+                if finish_reason and finish_reason not in {"stop", "length", "max_tokens", "max_output_tokens"}:
+                    raise ValueError("Unexpected completion finish reason")
 
-                usage = self._usage_counts(result.get("usage"))
                 prompt_tokens = usage["prompt"]
                 completion_tokens = usage["completion"]
                 cache_hit_tokens = usage["cache_hit"]
@@ -398,23 +443,20 @@ class DeepSeekProvider(LLMProvider):
                 print(f"💬 DeepSeek: {prompt_tokens}+{completion_tokens} tokens{cache_note}")
                 self._retry_manager.record_attempt_result(True)
 
-                return LLMResponse(
-                    content=response_text,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    prompt_cache_hit_tokens=cache_hit_tokens,
-                    prompt_cache_miss_tokens=cache_miss_tokens,
-                    total_tokens=usage["total"],
-                    reasoning_tokens=usage["reasoning"],
-                    context_used=usage["total"],
-                    context_limit=self._get_context_limit(),
-                    was_truncated=was_truncated
-                )
+                response_record.status = "incomplete" if was_truncated else "completed"
+                attempt_status = "incomplete" if was_truncated else "ok"
+                return response_record
 
-            except InsufficientCreditsError:
+            except (RateLimitError, ContextOverflowError) as exc:
+                error_type = type(exc).__name__
+                error_reason = getattr(exc, "reason", "")
+                raise
+            except asyncio.CancelledError:
+                error_type = "cancelled_in_flight"
                 raise
 
             except httpx.TimeoutException as e:
+                error_type = "ambiguous_timeout"
                 print(f"DeepSeek API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                 self._retry_manager.record_attempt_result(False)
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
@@ -423,15 +465,17 @@ class DeepSeekProvider(LLMProvider):
                 return None
 
             except httpx.HTTPStatusError as e:
+                error_type = "http_error"
                 error_body = ""
                 error_message = str(e)
                 if hasattr(e, 'response') and hasattr(e.response, 'text'):
                     error_body = e.response.text[:500]
                     error_message = f"{e} - {error_body}"
 
-                if e.response.status_code == 404:
-                    print(f"❌ DeepSeek: Model '{self.model}' not found!")
-                    print("   Check available models at https://platform.deepseek.com/")
+                if e.response.status_code in {403, 404}:
+                    error_reason = "permission_denied" if e.response.status_code == 403 else "model_unavailable"
+                    raise ProviderActionRequiredError("DeepSeek request requires configuration changes.",
+                                                      reason=error_reason, provider="deepseek")
                 elif e.response.status_code == 401:
                     print("❌ DeepSeek: Invalid API key!")
                 elif e.response.status_code == 402:
@@ -441,11 +485,10 @@ class DeepSeekProvider(LLMProvider):
                     print(f"Response details: Status {e.response.status_code}, Body: {error_body}...")
 
                 context_overflow_keywords = [
-                    "context_length", "maximum context", "token limit",
-                    "too many tokens", "reduce the length", "max_tokens",
-                    "context window", "exceeds"
+                    "context_length_exceeded", "maximum context length",
+                    "too many tokens", "context window exceeded",
                 ]
-                if any(keyword in error_message.lower() for keyword in context_overflow_keywords):
+                if e.response.status_code == 400 and any(keyword in error_message.lower() for keyword in context_overflow_keywords):
                     raise ContextOverflowError(f"DeepSeek context overflow: {error_message}")
 
                 content_risk_keywords = (
@@ -457,10 +500,16 @@ class DeepSeekProvider(LLMProvider):
                 if e.response.status_code == 400 and any(
                     keyword in error_message.lower() for keyword in content_risk_keywords
                 ):
-                    raise ContentRiskError(
-                        "DeepSeek refused the submitted book passage because of its content filter.",
-                        provider="deepseek",
+                    error_reason = "provider_refusal"
+                    attempt_status = "refused"
+                    raise ProviderActionRequiredError(
+                        "DeepSeek refused this passage; review is required.",
+                        reason=error_reason, provider="deepseek",
                     )
+                if 400 <= e.response.status_code < 500 and e.response.status_code not in {408, 409}:
+                    error_reason = "invalid_request"
+                    raise ProviderActionRequiredError("DeepSeek rejected the request configuration.",
+                                                      reason=error_reason, provider="deepseek")
 
                 # Reached only for a plain/unexpected HTTP error (not the
                 # context-overflow or content-risk cases raised above,
@@ -474,6 +523,7 @@ class DeepSeekProvider(LLMProvider):
                 return None
 
             except json.JSONDecodeError as e:
+                error_type = "invalid_json"
                 print(f"DeepSeek API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                 self._retry_manager.record_attempt_result(False)
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
@@ -482,11 +532,29 @@ class DeepSeekProvider(LLMProvider):
                 return None
 
             except Exception as e:
+                error_type = type(e).__name__
                 print(f"DeepSeek API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                 self._retry_manager.record_attempt_result(False)
                 if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                     await asyncio.sleep(self._retry_manager.delay_for_attempt(attempt + 1))
                     continue
                 return None
+
+            finally:
+                http_status = response.status_code if response is not None else None
+                observe_attempt(response=response_record, status=attempt_status, metadata={
+                    "attempt": attempt + 1, "started_at": started_at,
+                    "elapsed_ms": int((http_finished-started)*1000),
+                    "budget_reservation_id": reservation_id, "http_status": http_status,
+                    "request_id": response.headers.get("x-request-id", "") if response is not None else "",
+                    "error": error_type, "reason": error_reason,
+                    "configured_model": self.configured_model,
+                    "effective_model": self.model,
+                    "usage_unknown": not bool(response_record and response_record.raw_usage),
+                    "billing_uncertain": not bool(response_record and response_record.raw_usage) and (
+                        http_status is None or http_status >= 500 or http_status == 200),
+                    "parameters": {key: payload[key] for key in (
+                        "model", "max_tokens", "temperature", "thinking", "stream") if key in payload},
+                })
 
         return None

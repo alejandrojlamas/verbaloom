@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -16,6 +15,9 @@ def test_provider_wait_is_active_and_not_terminal_in_translation_tracker():
     assert "data.status === 'provider_wait'" in source
 
 
-def test_global_interrupt_finds_provider_wait_job():
+def test_global_interrupt_uses_selected_job_not_an_arbitrary_provider_wait():
     source = (ROOT / "src/web/static/js/index.js").read_text(encoding="utf-8")
-    assert "'provider_wait'" in source
+    interrupt = source.split('window.interruptCurrentTranslation = async () => {', 1)[1].split('// Resume Manager', 1)[0]
+    assert 'await BatchController.cancelPendingSubmission()' in interrupt
+    assert 'ApiClient.interruptTranslation(currentJob.translationId)' in interrupt
+    assert 'getActiveTranslations' not in interrupt

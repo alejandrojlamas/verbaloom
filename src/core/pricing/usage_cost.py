@@ -12,6 +12,8 @@ def calculate_usage_cost(
     completion_tokens: int,
     prompt_cache_hit_tokens: int = 0,
     prompt_cache_miss_tokens: int = 0,
+    cache_write_30m_tokens: int = 0,
+    cache_write_12h_tokens: int = 0,
 ) -> tuple[float, float, float]:
     """Return input, output, and total USD cost for provider-reported usage.
 
@@ -31,12 +33,16 @@ def calculate_usage_cost(
     # Provider docs define prompt = cache hit + cache miss. Be defensive when
     # compatible gateways omit one field or report an inconsistent breakdown.
     cache_hit = min(cache_hit, prompt)
-    cache_miss = min(cache_miss, max(0, prompt - cache_hit))
-    unreported_input = max(0, prompt - cache_hit - cache_miss)
+    write_12h = min(max(0, int(cache_write_12h_tokens)), prompt - cache_hit)
+    write_30m = min(max(0, int(cache_write_30m_tokens)), prompt - cache_hit - write_12h)
+    cache_miss = min(cache_miss, max(0, prompt - cache_hit - write_12h - write_30m))
+    unreported_input = max(0, prompt - cache_hit - cache_miss - write_12h - write_30m)
 
     input_cost = (
         cache_hit * cache_hit_rate
         + (cache_miss + unreported_input) * input_rate
+        + write_30m * float(pricing.get("input_cache_write_30m", input_rate))
+        + write_12h * float(pricing.get("input_cache_write_12h", input_rate))
     ) / 1_000_000
     output_cost = completion * output_rate / 1_000_000
     return input_cost, output_cost, input_cost + output_cost

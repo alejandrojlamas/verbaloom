@@ -10,8 +10,32 @@ Sources: official provider documentation pages.
 
 from __future__ import annotations
 
-LAST_UPDATED = "2026-09-29"
+LAST_UPDATED = "2026-11-12"
 DEEPSEEK_PRICING_EFFECTIVE_AT = "2026-09-10T04:00:00+00:00"
+OPENAI_PRICING_VERSION = "openai_official_2026-11-12"
+OPENAI_PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing"
+OPENAI_EDITORIAL_PRICING = {
+    "gpt-6-luna": {"input": 0.10, "output": 0.50, "input_cache_hit": 0.01,
+                   "input_cache_write_30m": 0.125, "input_cache_write_12h": 0.25},
+    "gpt-6.1-terra": {"input": 1.00, "output": 5.00, "input_cache_hit": 0.05,
+                      "input_cache_write_30m": 1.25, "input_cache_write_12h": 2.50},
+}
+
+
+def get_openai_editorial_pricing(model, *, prompt_tokens=0, service_tier="default",
+                                regional=False):
+    """Versioned text rates; unknown tiers/models have no inferred price."""
+    base = OPENAI_EDITORIAL_PRICING.get(model.lower())
+    multiplier = {"default": 1, "standard": 1, "batch": 0.5, "flex": 0.5,
+                  "fast": 2, "priority": 2}.get(service_tier)
+    if base is None or multiplier is None:
+        return None
+    long_context = prompt_tokens > 272_000
+    return {
+        key: rate * multiplier * (1.1 if regional else 1) * (
+            (1.5 if key == "output" else 2) if long_context else 1
+        ) for key, rate in base.items()
+    }
 
 
 def _deepseek_rates(*, flash: tuple[float, float, float], pro: tuple[float, float, float]) -> dict:
@@ -69,6 +93,7 @@ DEFAULT_PRICING = {
         "gemini-1.5-flash":      {"input": 0.075, "output": 0.30, "note": "Legacy"},
     },
     "openai": {
+        **OPENAI_EDITORIAL_PRICING,
         "gpt-4o":           {"input": 2.50,  "output": 10.00},
         "gpt-4o-mini":      {"input": 0.15,  "output": 0.60},
         "gpt-4.1":          {"input": 2.00,  "output": 8.00},
@@ -122,6 +147,8 @@ def get_default_pricing(
     Lookup is case-insensitive and tolerates minor variants in model names.
     """
     provider_name = provider.lower()
+    if provider_name == "openai" and model.lower().startswith("gpt-6"):
+        return get_openai_editorial_pricing(model)
     if provider_name == "deepseek":
         tier = str(pricing_tier or "off_peak").strip().lower().replace("-", "_")
         provider_data = DEEPSEEK_PRICING_TIERS.get(tier)
@@ -153,4 +180,7 @@ def _strip_note(entry: dict) -> dict:
         result["input_cache_hit"] = entry["input_cache_hit"]
     if "input_cache_miss" in entry:
         result["input_cache_miss"] = entry["input_cache_miss"]
+    for key in ("input_cache_write_30m", "input_cache_write_12h"):
+        if key in entry:
+            result[key] = entry[key]
     return result

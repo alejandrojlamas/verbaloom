@@ -18,6 +18,11 @@ from src.core.pricing import (
     get_default_pricing,
 )
 from src.utils.branding import default_data_dir, env_value
+from src.core.pricing.pricing_data import (
+    OPENAI_EDITORIAL_PRICING, OPENAI_PRICING_VERSION, OPENAI_PRICING_SOURCE,
+    get_openai_editorial_pricing,
+)
+from .budget import SpendBudget
 
 
 def _default_data_dir() -> Path:
@@ -41,12 +46,18 @@ def _pricing_for(
     model: str,
     *,
     occurred_at: float | None = None,
+    prompt_tokens: int = 0,
+    service_tier: str = "default",
 ) -> tuple[Optional[dict[str, float]], str]:
     provider = (provider or "").lower()
     if provider == "ollama":
         return {"input": 0.0, "output": 0.0}, "local"
     pricing_tier = None
     source = "default_table"
+    if provider == "openai" and model.lower() in OPENAI_EDITORIAL_PRICING:
+        rates = get_openai_editorial_pricing(model, prompt_tokens=prompt_tokens,
+                                            service_tier=service_tier)
+        return (rates, f"{OPENAI_PRICING_VERSION}_{service_tier}") if rates else (None, "unknown")
     if provider == "deepseek":
         now = (
             datetime.fromtimestamp(float(occurred_at), tz=timezone.utc)
@@ -75,7 +86,7 @@ def _cost_for(
     prompt_cache_miss_tokens: int = 0,
     occurred_at: float | None = None,
 ) -> tuple[float, float, float, str]:
-    pricing, source = _pricing_for(provider, model, occurred_at=occurred_at)
+    pricing, source = _pricing_for(provider, model, occurred_at=occurred_at, prompt_tokens=prompt_tokens)
     if not pricing:
         return 0.0, 0.0, 0.0, source
     input_cost, output_cost, total_cost = calculate_usage_cost(
@@ -145,6 +156,7 @@ class TokenUsageStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_translation ON token_usage_events(translation_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_book ON token_usage_events(book_name)")
             self._ensure_columns(conn)
+            SpendBudget.ensure_schema(conn)
             self._repair_nonbillable_estimates(conn)
             self._reprice_current_deepseek_events(conn)
 
@@ -172,7 +184,7 @@ class TokenUsageStore:
                    input_cost_usd = 0,
                    output_cost_usd = 0,
                    total_cost_usd = 0,
-                   pricing_source = 'not_billed',
+                   pricing_source = 'usage_unknown',
                    estimated_tokens = 0
              WHERE status IN ('error', 'empty_response')
                AND estimated_tokens = 1
@@ -181,6 +193,9 @@ class TokenUsageStore:
                AND prompt_cache_miss_tokens = 0
             """
         )
+        conn.execute("""UPDATE token_usage_events SET pricing_source='usage_unknown'
+            WHERE pricing_source='not_billed' AND status IN ('error', 'empty_response')
+            AND total_tokens=0""")
 
     @staticmethod
     def _reprice_current_deepseek_events(conn: sqlite3.Connection) -> None:
@@ -242,7 +257,7 @@ class TokenUsageStore:
         metadata: Optional[dict[str, Any]] = None,
     ) -> int:
         context = context or {}
-        metadata = metadata or {}
+        metadata = dict(metadata or {})
         prompt_text = f"{system_prompt or ''}\n{prompt or ''}".strip()
         estimated = status.startswith("estimated") or bool((metadata or {}).get("estimated_from"))
         should_estimate = status == "ok" or status.startswith("estimated")
@@ -259,15 +274,39 @@ class TokenUsageStore:
         provider_total_tokens = max(0, int(total_tokens or 0))
         total_tokens = max(provider_total_tokens, prompt_tokens + completion_tokens)
         created_at = time.time()
-        input_cost, output_cost, total_cost, pricing_source = _cost_for(
-            provider,
-            model,
-            prompt_tokens,
-            completion_tokens,
+        parameters = metadata.get("parameters") or {}
+        service_tier = metadata.get("service_tier") or parameters.get("service_tier") or "default"
+        pricing, pricing_source = _pricing_for(
+            provider, model, occurred_at=metadata.get("started_at", created_at),
+            prompt_tokens=prompt_tokens, service_tier=service_tier,
+        )
+        raw_usage = metadata.get("raw_usage") or {}
+        cache_details = raw_usage.get("prompt_tokens_details") or raw_usage.get("input_tokens_details") or {}
+        write_details = cache_details.get("cache_write_tokens_details") or {}
+        writes = max(0, int(cache_details.get("cache_write_tokens") or 0))
+        write_12h = max(0, int(write_details.get("ttl_12h_tokens") or 0))
+        write_30m = max(0, int(write_details.get("ttl_30m_tokens", writes - write_12h)))
+        observed = metadata.get("usage_observed", bool(prompt_tokens or completion_tokens) and not estimated)
+        unknown = not observed and not estimated
+        if metadata.get("billing_uncertain") or (not observed and metadata.get("scope") == "http_attempt"):
+            unknown = True
+        if writes + prompt_cache_hit_tokens > prompt_tokens or write_12h + write_30m != writes:
+            unknown = True
+        input_cost, output_cost, total_cost = calculate_usage_cost(
+            pricing or {}, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
             prompt_cache_hit_tokens=prompt_cache_hit_tokens,
             prompt_cache_miss_tokens=prompt_cache_miss_tokens,
-            occurred_at=created_at,
+            cache_write_30m_tokens=write_30m, cache_write_12h_tokens=write_12h,
         )
+        if unknown:
+            pricing_source = "usage_unknown"
+        metadata.update({
+            "pricing_snapshot": pricing,
+            "pricing_url": OPENAI_PRICING_SOURCE if provider == "openai" and model in OPENAI_EDITORIAL_PRICING else None,
+            "cost_basis": "unknown" if unknown or pricing is None else ("estimated" if estimated else "provider_usage"),
+            "cash_paid_usd": None, "credits_applied_usd": None,
+            "cache_write_30m_tokens": write_30m, "cache_write_12h_tokens": write_12h,
+        })
 
         payload = {
             "created_at": created_at,
@@ -298,6 +337,7 @@ class TokenUsageStore:
             "metadata": json.dumps(metadata, ensure_ascii=False, sort_keys=True),
         }
         with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             cursor = conn.execute(
                 """
                 INSERT INTO token_usage_events (
@@ -322,7 +362,13 @@ class TokenUsageStore:
                 """,
                 payload,
             )
-            return int(cursor.lastrowid)
+            event_id = int(cursor.lastrowid)
+            if metadata.get("budget_reservation_id"):
+                SpendBudget.settle_in_transaction(
+                    conn, metadata["budget_reservation_id"], event_id=event_id,
+                    actual_usd=total_cost if metadata["cost_basis"] == "provider_usage" else None,
+                )
+            return event_id
 
     def summary(self, limit: int = 80) -> dict[str, Any]:
         recent_window_seconds = 300
@@ -339,7 +385,8 @@ class TokenUsageStore:
                     COALESCE(SUM(input_cost_usd), 0) AS input_cost_usd,
                     COALESCE(SUM(output_cost_usd), 0) AS output_cost_usd,
                     COALESCE(SUM(total_cost_usd), 0) AS total_cost_usd,
-                    COALESCE(SUM(estimated_tokens), 0) AS estimated_events
+                    COALESCE(SUM(estimated_tokens), 0) AS estimated_events,
+                    COALESCE(SUM(pricing_source IN ('unknown', 'usage_unknown')), 0) AS unknown_cost_events
                 FROM token_usage_events
             """)
             by_book = self._all(conn, """
@@ -493,21 +540,18 @@ class TokenUsageStore:
             "db_path": str(self.db_path),
         }
 
-    def events(self, limit: int = 200, translation_id: Optional[str] = None) -> list[dict[str, Any]]:
+    def events(self, limit: int = 200, translation_id: Optional[str] = None,
+               process_id: Optional[str] = None) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit or 200), 1000))
+        filters, values = [], []
+        for key, value in (("translation_id", translation_id), ("process_id", process_id)):
+            if value:
+                filters.append(key + "=?")
+                values.append(value)
+        where = " WHERE " + " AND ".join(filters) if filters else ""
         with self._lock, self._connect() as conn:
-            if translation_id:
-                return self._all(conn, """
-                    SELECT * FROM token_usage_events
-                    WHERE translation_id=?
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (translation_id, limit))
-            return self._all(conn, """
-                SELECT * FROM token_usage_events
-                ORDER BY created_at DESC
-                LIMIT ?
-            """, (limit,))
+            return self._all(conn, "SELECT * FROM token_usage_events" + where
+                             + " ORDER BY created_at DESC LIMIT ?", (*values, limit))
 
     @staticmethod
     def _one(conn: sqlite3.Connection, query: str, args: tuple = ()) -> dict[str, Any]:

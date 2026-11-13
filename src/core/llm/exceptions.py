@@ -26,21 +26,6 @@ class RepetitionLoopError(Exception):
     pass
 
 
-class ContentRiskError(Exception):
-    """Raised when a provider refuses otherwise valid book content.
-
-    Retrying the identical payload wastes requests because this is not a network
-    failure. Translation orchestration may recover by reducing the semantic
-    unit, while quality stages can record a transparent local-only audit when
-    every deterministic fidelity check passes.
-    """
-
-    def __init__(self, message: str, provider: str = None):
-        super().__init__(message)
-        self.provider = provider
-        self.retryable_with_smaller_unit = True
-
-
 class RateLimitError(Exception):
     """
     Raised when the API returns HTTP 429 (Too Many Requests) and all retry
@@ -74,6 +59,33 @@ class InsufficientCreditsError(RateLimitError):
     def __init__(self, message: str, provider: str = None):
         super().__init__(message, retry_after=None, provider=provider)
         self.retryable = False
+
+
+class ProviderActionRequiredError(RateLimitError):
+    """Non-transient provider rejection that must reach the durable job boundary.
+
+    Inherits the existing provider-stop signal so legacy format adapters do not
+    swallow it as a missing candidate. The reason, not the historical base class
+    name, determines the visible state. Never split/rephrase to evade refusal.
+    """
+
+    def __init__(self, message: str, *, reason: str, provider: str, response=None):
+        super().__init__(message, provider=provider)
+        self.retryable = False
+        self.reason = reason
+        self.response = response
+
+
+class ContentRiskError(ProviderActionRequiredError):
+    """Legacy refusal signal, preserved as a non-retryable review requirement.
+
+    Keep the public name for older integrations. A refusal never authorizes
+    smaller requests, target-only reconstruction or local-only approval.
+    """
+
+    def __init__(self, message: str, provider: str = None):
+        super().__init__(message, reason="provider_refusal", provider=provider)
+        self.retryable_with_smaller_unit = False
 
 
 class DeepSeekPeakPricingError(RateLimitError):

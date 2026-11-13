@@ -13,6 +13,7 @@ Token counts are derived from string length so cost/token fields are stable
 too (the recorder strips them anyway).
 """
 
+import json
 import re
 from typing import Optional
 
@@ -137,6 +138,27 @@ class FakeEchoProvider(LLMProvider):
         timeout: int = 0,
         system_prompt: Optional[str] = None,
     ) -> Optional[LLMResponse]:
+        if "<COMBINED_QUALITY_AUDIT_JSON>" in (system_prompt or ""):
+            # This fixture characterizes progress, not editorial accuracy.
+            # A neutral, well-formed judgment leaves the local decision intact;
+            # returning translation prose here used to exercise fail-open code.
+            return LLMResponse(content=json.dumps({
+                "editorial": {
+                    "decision": "flag", "confidence": 0, "reason": "Synthetic neutral judgment.",
+                    "issues": [], "missing_from_source": [], "added_not_in_source": [],
+                    "weird_symbols": [], "structure_score": 0,
+                },
+                "fidelity": {
+                    "verdict": "warn", "confidence": 0, "reason": "Synthetic neutral judgment.",
+                    "issues": [], "missing_from_source": [], "added_not_in_source": [],
+                    "changed_facts": [], "censored_or_softened": [], "structure_issues": [],
+                    "evidence_source": [], "evidence_candidate": [],
+                },
+                "profile": {
+                    "scores": {}, "overall_decision": "warn", "issues": [],
+                    "glossary_suggestions": [], "summary": "No active profile in this fixture.",
+                },
+            }))
         source = _extract_source_block(prompt)
         translated = _pseudo_translate_to_french(source)
         content = f"{TRANSLATE_TAG_IN}{translated}{TRANSLATE_TAG_OUT}"

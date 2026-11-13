@@ -33,9 +33,15 @@ def test_parse_combined_audit_normalizes_axis_payloads():
     raw = f"""
 {COMBINED_AUDIT_TAG_IN}
 {{
-  "editorial": {{"verdict": "pass", "confidence": 0.91, "reason": "safe"}},
-  "fidelity": {{"decision": "repair", "confidence": 0.8, "reason": "one omission"}},
-  "profile": {{"decision": "warn", "scores": {{"content_fidelity": 9.2}}, "issues": []}}
+  "editorial": {{"verdict": "pass", "confidence": 0.91, "reason": "safe",
+    "issues": [], "missing_from_source": [], "added_not_in_source": [],
+    "weird_symbols": [], "structure_score": 0.9}},
+  "fidelity": {{"decision": "repair", "confidence": 0.8, "reason": "one omission",
+    "issues": ["omission"], "missing_from_source": ["a clause"], "added_not_in_source": [],
+    "changed_facts": [], "censored_or_softened": [], "structure_issues": [],
+    "evidence_source": ["source clause"], "evidence_candidate": []}},
+  "profile": {{"decision": "warn", "scores": {{"content_fidelity": 9.2}}, "issues": [],
+    "glossary_suggestions": [], "summary": "One issue on another axis."}}
 }}
 {COMBINED_AUDIT_TAG_OUT}
 """

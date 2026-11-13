@@ -18,6 +18,8 @@ import { FileUpload, generateOutputFilename, normalizeOutputFormat, resolveOutpu
 import { TranslationTracker } from './translation-tracker.js?v=20260929-eta';
 import { t } from '../i18n/i18n.js';
 import { DeepSeekPricingManager } from '../providers/deepseek-pricing-manager.js?v=20260903';
+import { PipelineSettings } from '../ui/pipeline-settings.js';
+import { SubmissionReceipt } from './submission-receipt.js';
 
 async function waitForTranslationTracker(timeoutMs = 8000) {
     if (TranslationTracker.isInitialized && TranslationTracker.isInitialized()) {
@@ -89,8 +91,9 @@ function getTranslationConfig(file) {
     const sourceLanguageVal = file.sourceLanguage;
     const targetLanguageVal = file.targetLanguage;
 
-    const provider = DomHelpers.getValue('llmProvider');
-    const currentModel = DomHelpers.getValue('model') || '';
+    const primary = PipelineSettings.primary();
+    const provider = primary?.provider || DomHelpers.getValue('llmProvider');
+    const currentModel = primary?.model || DomHelpers.getValue('model') || '';
 
     // Regenerate output filename at translation time so placeholders like
     // {model}, {date}, {datetime} reflect the current run. The value stored
@@ -286,7 +289,7 @@ function getTranslationConfig(file) {
         }
     }
 
-    return config;
+    return PipelineSettings.apply(config);
 }
 
 /**
@@ -318,11 +321,23 @@ function isTerminalFileError(file) {
     return String(file?.status || '').toLowerCase().includes('error');
 }
 
+function showSubmissionMessage(key, type) {
+    MessageLogger.showMessage(t(key), type);
+    const text = document.querySelector('#messages .message-text');
+    if (text) text.dataset.i18n = key;
+}
+
 export const BatchController = {
     /**
      * Start batch translation
      */
     async startBatchTranslation() {
+        if (SubmissionReceipt.read()) {
+            await this.recoverPendingSubmission();
+            return;
+        }
+        const startButton = DomHelpers.getElement('translateBtn');
+        if (startButton) delete startButton.dataset.i18n;
         if (!TranslationTracker.isInitialized || !TranslationTracker.isInitialized()) {
             const ready = await waitForTranslationTracker();
             if (!ready) {
@@ -365,12 +380,17 @@ export const BatchController = {
             }
         }
 
-        const selectedModel = DomHelpers.getValue('model');
+        try {
+            const credentials = PipelineSettings.validateCredentials();
+            if (!credentials.valid) return earlyValidationFail(credentials.message);
+        }
+        catch { return earlyValidationFail(t('settings:pipe_invalid')); }
+        const selectedModel = PipelineSettings.primary()?.model || DomHelpers.getValue('model');
         if (!selectedModel) {
             return earlyValidationFail(t('translation:validation_model'));
         }
 
-        const provider = DomHelpers.getValue('llmProvider');
+        const provider = PipelineSettings.primary()?.provider || DomHelpers.getValue('llmProvider');
         if (!await DeepSeekPricingManager.ensureProviderAvailable(provider)) {
             return;
         }
@@ -435,7 +455,7 @@ export const BatchController = {
      */
     async processNextFileInQueue() {
         const currentJob = StateManager.getState('translation.currentJob');
-        if (currentJob) return;
+        if (currentJob || this.pendingSubmission || SubmissionReceipt.read()) return;
 
         const filesToProcess = StateManager.getState('files.toProcess') || [];
         const fileToTranslate = filesToProcess.find(f => f.status === 'Queued');
@@ -446,7 +466,7 @@ export const BatchController = {
 
             const translateBtn = DomHelpers.getElement('translateBtn');
             if (translateBtn) {
-                translateBtn.disabled = filesToProcess.length === 0 || !StatusManager.isConnected();
+                translateBtn.disabled = filesToProcess.length === 0 || !StatusManager.canSubmit();
                 translateBtn.innerHTML = t('translation:start_batch_with_icon');
             }
 
@@ -500,8 +520,8 @@ export const BatchController = {
         ));
         updateFileStatusInList(fileToTranslate.name, 'Preparing...');
 
-        const provider = DomHelpers.getValue('llmProvider');
-        const endpoint = effectiveEndpointForProvider(provider);
+        const provider = PipelineSettings.primary()?.provider || DomHelpers.getValue('llmProvider');
+        const endpoint = PipelineSettings.endpoint() || effectiveEndpointForProvider(provider);
         const apiKeyValidation = ApiKeyUtils.validateForProvider(provider, endpoint);
 
         if (!apiKeyValidation.valid) {
@@ -523,10 +543,26 @@ export const BatchController = {
             return;
         }
 
-        const config = getTranslationConfig(fileToTranslate);
-
+        const submission = { file: fileToTranslate, cancelled: false };
+        this.pendingSubmission = submission;
         try {
+            const config = getTranslationConfig(fileToTranslate);
+            await PipelineSettings.verifyAccess(config);
+            if (submission.cancelled || !StateManager.getState('translation.isBatchActive')) return;
+            submission.receipt = SubmissionReceipt.begin(fileToTranslate);
+            config.submission_id = submission.receipt.submissionId;
             const data = await ApiClient.startTranslation(config);
+            const receipt = SubmissionReceipt.read();
+            // A concurrent reconciliation may already have claimed or stopped it.
+            if (receipt?.submissionId !== submission.receipt.submissionId) return;
+            if (receipt.cancelRequested) {
+                if (this.reconcilingSubmission) await this.reconcilingSubmission;
+                await this.recoverPendingSubmission();
+                return;
+            }
+            SubmissionReceipt.clear(receipt.submissionId);
+            const startButton = DomHelpers.getElement('translateBtn');
+            if (startButton) delete startButton.dataset.i18n;
 
             StateManager.setState('translation.currentJob', {
                 fileRef: fileToTranslate,
@@ -562,6 +598,20 @@ export const BatchController = {
             window.dispatchEvent(event);
 
         } catch (error) {
+            if (submission.receipt) {
+                // A timeout, disconnect or 5xx cannot prove that POST failed.
+                // Never start a second job to compensate for missing transport evidence.
+                if (error.status >= 400 && error.status < 500 && error.status !== 409) {
+                    SubmissionReceipt.clear(submission.receipt.submissionId);
+                } else {
+                    await this.recoverPendingSubmission();
+                    return;
+                }
+            }
+            if (submission.cancelled) {
+                this.stopBatch();
+                return;
+            }
             if (error.data?.code === 'deepseek_peak_pricing') {
                 DeepSeekPricingManager.handleBlockedResponse(error.data);
                 fileToTranslate.status = 'Queued';
@@ -580,7 +630,82 @@ export const BatchController = {
             MessageLogger.showMessage(t('translation:init_error_msg', { name: fileToTranslate.name, error: error.message }), 'error');
             updateFileStatusInList(fileToTranslate.name, 'Initiation Error');
             StateManager.setState('translation.currentJob', null);
+            this.pendingSubmission = null;
             this.processNextFileInQueue();
+        } finally {
+            if (this.pendingSubmission === submission) this.pendingSubmission = null;
+        }
+    },
+
+    async cancelPendingSubmission() {
+        if (SubmissionReceipt.read()) {
+            SubmissionReceipt.cancel();
+            if (this.pendingSubmission) this.pendingSubmission.cancelled = true;
+            await this.recoverPendingSubmission();
+            return true;
+        }
+        if (!this.pendingSubmission) return false;
+        this.stopBatch();
+        return true;
+    },
+
+    async recoverPendingSubmission() {
+        if (this.reconcilingSubmission) return this.reconcilingSubmission;
+        this.reconcilingSubmission = this._recoverPendingSubmission();
+        try { return await this.reconcilingSubmission; }
+        finally { this.reconcilingSubmission = null; }
+    },
+
+    async _recoverPendingSubmission() {
+        const receipt = SubmissionReceipt.read();
+        if (!receipt) return;
+        StateManager.setState('translation.isBatchActive', false);
+        try {
+            const job = await ApiClient.getTranslationStatus(receipt.translationId);
+            if (job.translation_id !== receipt.translationId) throw new Error('Submission identity mismatch');
+            if (SubmissionReceipt.read()?.submissionId !== receipt.submissionId) return;
+            const cancel = SubmissionReceipt.read().cancelRequested;
+            const active = ['running', 'queued', 'pricing_wait', 'provider_wait', 'rate_limited'].includes(job.status);
+            if (cancel && active) {
+                await ApiClient.interruptTranslation(receipt.translationId);
+            }
+            SubmissionReceipt.clear(receipt.submissionId);
+            const startButton = DomHelpers.getElement('translateBtn');
+            if (startButton) delete startButton.dataset.i18n;
+            this.pendingSubmission = null;
+            this.removeFileFromProcessingList(receipt.file.name);
+            if (active && !job.persisted_only) {
+                StateManager.setState('translation.currentJob', {
+                    fileRef: receipt.file, translationId: receipt.translationId,
+                });
+                StateManager.setState('translation.isBatchActive', !cancel);
+                this.updateTranslationTitle(receipt.file);
+                ProgressManager.show();
+                DomHelpers.show('interruptBtn');
+                TranslationTracker.startLiveProgressPolling();
+                window.dispatchEvent(new CustomEvent('translationStarted', {
+                    detail: { file: receipt.file, translationId: receipt.translationId },
+                }));
+                if (cancel) MessageLogger.showMessage(t('translation:interrupt_request_sent'), 'info');
+            } else {
+                this.stopBatch();
+                showSubmissionMessage('settings:pipe_submission_saved', 'info');
+                if (window.loadResumableJobs) window.loadResumableJobs();
+            }
+        } catch {
+            // One bounded lookup, not an unbounded heartbeat. Keep the receipt
+            // and cancellation intent across refresh; another Start checks it.
+            StateManager.setState('translation.currentJob', null);
+            ProgressManager.hide();
+            updateFileStatusInList(receipt.file.name, 'Submission pending');
+            showSubmissionMessage('settings:pipe_submission_unknown', 'warning');
+            const button = DomHelpers.getElement('translateBtn');
+            if (button) {
+                button.disabled = false;
+                button.dataset.i18n = 'settings:pipe_submission_check';
+                button.textContent = t('settings:pipe_submission_check');
+            }
+            DomHelpers.show('interruptBtn');
         }
     },
 
@@ -596,6 +721,12 @@ export const BatchController = {
      * Stop batch translation
      */
     stopBatch() {
+        if (this.pendingSubmission) {
+            this.pendingSubmission.cancelled = true;
+            updateFileStatusInList(this.pendingSubmission.file.name, 'Queued');
+            this.pendingSubmission = null;
+            FileUpload.notifyFileListChanged();
+        }
         StateManager.setState('translation.isBatchActive', false);
         StateManager.setState('translation.currentJob', null);
 
@@ -607,7 +738,7 @@ export const BatchController = {
         const translateBtn = DomHelpers.getElement('translateBtn');
         const filesToProcess = StateManager.getState('files.toProcess') || [];
         if (translateBtn) {
-            translateBtn.disabled = filesToProcess.length === 0 || !StatusManager.isConnected();
+            translateBtn.disabled = filesToProcess.length === 0 || !StatusManager.canSubmit();
             translateBtn.innerHTML = t('translation:start_batch_with_icon');
         }
 

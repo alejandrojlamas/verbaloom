@@ -26,8 +26,7 @@ from .providers.mistral import MistralProvider
 from .providers.deepseek import DeepSeekProvider
 from .providers.poe import PoeProvider
 from .providers.litellm import LiteLLMProvider
-from src.core.usage.tracking_provider import UsageTrackingProvider
-from src.utils.provider_security import endpoint_allows_saved_key
+from src.utils.provider_security import endpoint_allows_saved_key, endpoint_origin
 
 
 def _require_key(raw, error_message: str):
@@ -43,6 +42,9 @@ def _require_key(raw, error_message: str):
 
 
 def _with_usage_tracking(provider: LLMProvider, provider_type: str) -> LLMProvider:
+    # Keep cold ledger imports independent from the eagerly exported factory.
+    from src.core.usage.tracking_provider import UsageTrackingProvider
+
     return UsageTrackingProvider(provider, provider_type)
 
 
@@ -97,7 +99,7 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
     elif provider_type.lower() == "openai":
         api_endpoint = kwargs.get("api_endpoint") or kwargs.get("endpoint") or ""
         # Distinguish official OpenAI from local llama.cpp/vLLM/LM Studio for log clarity
-        pname = "openai" if "api.openai.com" in api_endpoint else "openai-compatible"
+        pname = "openai" if endpoint_origin(api_endpoint) == "https://api.openai.com" else "openai-compatible"
         return _with_usage_tracking(OpenAICompatibleProvider(
             api_endpoint=api_endpoint,
             model=kwargs.get("model", DEFAULT_MODEL),
@@ -105,6 +107,8 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
             context_window=kwargs.get("context_window") or OLLAMA_NUM_CTX,
             log_callback=kwargs.get("log_callback"),
             provider_name=pname,
+            reasoning_effort=kwargs.get("reasoning_effort", "none"),
+            max_output_tokens=kwargs.get("max_output_tokens", 8192),
         ), pname)
     elif provider_type.lower() == "gemini":
         api_key = _require_key(
@@ -146,7 +150,8 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
             api_key=api_key,
             model=kwargs.get("model", DEEPSEEK_MODEL),
             api_endpoint=DEEPSEEK_API_ENDPOINT,
-            disable_thinking=kwargs.get("deepseek_disable_thinking", DEEPSEEK_DISABLE_THINKING)
+            disable_thinking=kwargs.get("deepseek_disable_thinking", DEEPSEEK_DISABLE_THINKING),
+            max_output_tokens=kwargs.get("max_output_tokens"),
         ), "deepseek")
     elif provider_type.lower() == "poe":
         api_key = _require_key(

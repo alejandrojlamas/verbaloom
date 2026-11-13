@@ -15,9 +15,9 @@ from typing import Any, Mapping, Optional
 from src.prompts.security import UNTRUSTED_BOOK_CONTENT_SECTION
 from src.utils.json_extraction import extract_tagged_payload, loads_first_json_object
 
-from .book_profiles.audit import ProfileAuditResult
-from .editorial_quality import QualityDecision
-from .fidelity_supervisor import FidelityDecision
+from .book_profiles.audit import ProfileAuditResult, validate_profile_audit_payload
+from .editorial_quality import QualityDecision, parse_source_aware_guard_response
+from .fidelity_supervisor import FidelityDecision, parse_fidelity_audit_response
 
 COMBINED_AUDIT_TAG_IN = "<COMBINED_QUALITY_AUDIT_JSON>"
 COMBINED_AUDIT_TAG_OUT = "</COMBINED_QUALITY_AUDIT_JSON>"
@@ -53,6 +53,7 @@ def build_combined_quality_audit_prompt(
     profile_policy: str = "",
     profile_audit_prompt: str = "",
     glossary_block: str = "",
+    profile_score_fields: tuple[str, ...] = (),
 ) -> CombinedAuditPrompt:
     """Build one JSON audit prompt covering editorial, fidelity, and profile axes."""
 
@@ -72,6 +73,9 @@ Audit the candidate against the source in three axes at once:
 3. profile: does the candidate satisfy the active book profile and approved glossary?
 
 Do not rewrite the text. Do not improve it. Return only JSON wrapped in {COMBINED_AUDIT_TAG_IN} and {COMBINED_AUDIT_TAG_OUT}.
+Include every schema field with its declared type. Empty issue arrays mean no changes needed.
+Confidence and structure_score are numbers from 0 to 1. Profile scores are numbers from 0 to 10.
+Required profile score dimensions: {", ".join(profile_score_fields) or '(no active profile)'}.
 
 Use the local prechecks as hints, not as final truth. If the source is visibly damaged by OCR or pagination,
 judge semantic content and meaningful structure rather than preserving extraction damage. For same-language
@@ -176,7 +180,9 @@ Return the combined JSON assessment now."""
     return CombinedAuditPrompt(system=system.strip(), user=user.strip())
 
 
-def parse_combined_quality_audit_response(text: str) -> Optional[dict[str, Any]]:
+def parse_combined_quality_audit_response(
+    text: str, *, profile_score_fields: tuple[str, ...] = (),
+) -> Optional[dict[str, Any]]:
     """Parse and normalize a combined quality audit JSON payload."""
 
     if not text:
@@ -191,8 +197,8 @@ def parse_combined_quality_audit_response(text: str) -> Optional[dict[str, Any]]
 
     editorial = editorial_assessment_from_combined(parsed)
     fidelity = fidelity_assessment_from_combined(parsed)
-    profile = profile_payload_from_combined(parsed)
-    if not any((editorial, fidelity, profile)):
+    profile = profile_payload_from_combined(parsed, score_fields=profile_score_fields)
+    if not editorial or not fidelity or ((profile_score_fields or "profile" in parsed) and not profile):
         return None
 
     normalized = dict(parsed)
@@ -220,18 +226,7 @@ def editorial_assessment_from_combined(payload: Mapping[str, Any]) -> Optional[d
         "fail": "reject",
         "repair_needed": "repair",
     }.get(decision, decision)
-    if decision not in {"accept", "reject", "repair", "flag"}:
-        decision = "flag"
-    return {
-        "decision": decision,
-        "confidence": _float(raw.get("confidence"), 0.0, 1.0),
-        "reason": str(raw.get("reason") or raw.get("summary") or "").strip(),
-        "issues": _string_list(raw.get("issues")),
-        "missing_from_source": _string_list(raw.get("missing_from_source")),
-        "added_not_in_source": _string_list(raw.get("added_not_in_source")),
-        "weird_symbols": _string_list(raw.get("weird_symbols")),
-        "structure_score": _optional_float(raw.get("structure_score")),
-    }
+    return parse_source_aware_guard_response(json.dumps({**raw, "decision": decision}))
 
 
 def fidelity_assessment_from_combined(payload: Mapping[str, Any]) -> Optional[dict[str, Any]]:
@@ -245,24 +240,12 @@ def fidelity_assessment_from_combined(payload: Mapping[str, Any]) -> Optional[di
         "repair": "repair_needed",
         "flag": "warn",
     }.get(verdict, verdict)
-    if verdict not in {"pass", "warn", "fail", "repair_needed"}:
-        verdict = "warn"
-    return {
-        "verdict": verdict,
-        "confidence": _float(raw.get("confidence"), 0.0, 1.0),
-        "reason": str(raw.get("reason") or raw.get("summary") or "").strip(),
-        "issues": _string_list(raw.get("issues")),
-        "missing_from_source": _string_list(raw.get("missing_from_source")),
-        "added_not_in_source": _string_list(raw.get("added_not_in_source")),
-        "changed_facts": _string_list(raw.get("changed_facts")),
-        "censored_or_softened": _string_list(raw.get("censored_or_softened")),
-        "structure_issues": _string_list(raw.get("structure_issues")),
-        "evidence_source": _string_list(raw.get("evidence_source")),
-        "evidence_candidate": _string_list(raw.get("evidence_candidate")),
-    }
+    return parse_fidelity_audit_response(json.dumps({**raw, "verdict": verdict}))
 
 
-def profile_payload_from_combined(payload: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+def profile_payload_from_combined(
+    payload: Mapping[str, Any], *, score_fields: tuple[str, ...] = (),
+) -> Optional[dict[str, Any]]:
     raw = payload.get("profile")
     if not isinstance(raw, Mapping):
         return None
@@ -270,13 +253,11 @@ def profile_payload_from_combined(payload: Mapping[str, Any]) -> Optional[dict[s
     decision = str(
         result.get("overall_decision") or result.get("decision") or result.get("verdict") or ""
     ).strip().lower()
-    if decision not in {"pass", "warn", "fail"}:
-        decision = "warn"
     result["overall_decision"] = decision
-    result.setdefault("scores", {})
-    result.setdefault("issues", [])
-    result.setdefault("glossary_suggestions", [])
-    result.setdefault("summary", "")
+    try:
+        validate_profile_audit_payload(result, score_fields=score_fields)
+    except ValueError:
+        return None
     return result
 
 
@@ -333,30 +314,3 @@ def _worst_from_axes(
     if profile:
         rank = max(rank, {"pass": 0, "warn": 1, "fail": 2}.get(str(profile.get("overall_decision")), 1))
     return ("pass", "warn", "fail")[rank]
-
-
-def _string_list(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value.strip()] if value.strip() else []
-    if isinstance(value, (list, tuple, set)):
-        return [str(item).strip() for item in value if str(item).strip()]
-    return [str(value).strip()] if str(value).strip() else []
-
-
-def _float(value: Any, minimum: float, maximum: float) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        number = minimum
-    return max(minimum, min(maximum, number))
-
-
-def _optional_float(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None

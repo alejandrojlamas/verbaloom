@@ -8,12 +8,17 @@ OpenAI API and compatible endpoints (llama.cpp, LM Studio, vLLM, OpenAI, etc.).
 from typing import List, Optional, Callable, Union
 import asyncio
 import json
+import time
+from urllib.parse import urlparse
 import httpx
 
 from ..base import LLMProvider, LLMResponse
-from ..exceptions import ContextOverflowError
+from ..exceptions import ContextOverflowError, InsufficientCreditsError, ProviderActionRequiredError, RateLimitError
+from .openai_contract import EDITORIAL_MODELS, text_parameters, normalize_completion, normalize_usage
+from src.utils.provider_security import endpoint_origin
 from ..rate_limit_handler import handle_rate_limit
 from ..utils.context_detection import ContextDetector
+from ..attempts import observe_attempt, reserve_attempt
 
 from src.config import (
     REQUEST_TIMEOUT,
@@ -25,10 +30,13 @@ from src.config import (
 class OpenAICompatibleProvider(LLMProvider):
     """OpenAI-compatible API provider (works with llama.cpp, LM Studio, vLLM, OpenAI, etc.)"""
 
+    supports_attempt_reservations = True
+
     def __init__(self, api_endpoint: str, model: str,
                  api_key: Optional[Union[str, List[str]]] = None,
                  context_window: int = OLLAMA_NUM_CTX, log_callback: Optional[Callable] = None,
-                 provider_name: str = "openai-compatible"):
+                 provider_name: str = "openai-compatible",
+                 reasoning_effort: str = "none", max_output_tokens: int = 8192):
         # Skip pool creation if no key (local servers like llama.cpp don't need one)
         super().__init__(model, api_keys=api_key, provider_name=provider_name)
         self.api_endpoint = self._normalize_endpoint(api_endpoint)
@@ -36,14 +44,19 @@ class OpenAICompatibleProvider(LLMProvider):
         self.log_callback = log_callback
         self._detected_context_size: Optional[int] = None
         self._context_detector = ContextDetector()
+        self.provider_name = provider_name
+        self.reasoning_effort = reasoning_effort
+        self.max_output_tokens = max_output_tokens
+        if self._is_official_openai_endpoint():
+            text_parameters(model, effort=reasoning_effort, max_output_tokens=max_output_tokens)
 
     def _is_official_openai_endpoint(self) -> bool:
         """Check if the endpoint is the official OpenAI API."""
-        return "api.openai.com" in self.api_endpoint
+        return endpoint_origin(self.api_endpoint) == "https://api.openai.com"
 
     def _is_local_endpoint(self) -> bool:
         """Check if the endpoint is a local server (llama.cpp, vLLM, LM Studio, etc.)."""
-        return "localhost" in self.api_endpoint or "127.0.0.1" in self.api_endpoint
+        return urlparse(self.api_endpoint).hostname in {"localhost", "127.0.0.1", "::1"}
 
     @staticmethod
     def _normalize_endpoint(endpoint: str) -> str:
@@ -79,7 +92,8 @@ class OpenAICompatibleProvider(LLMProvider):
         return endpoint
 
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT,
-                      system_prompt: Optional[str] = None) -> Optional[LLMResponse]:
+                      system_prompt: Optional[str] = None,
+                      temperature: Optional[float] = None) -> Optional[LLMResponse]:
         """
         Generate text using an OpenAI compatible API.
 
@@ -102,6 +116,11 @@ class OpenAICompatibleProvider(LLMProvider):
             "messages": messages,
             "stream": False,
         }
+        if self._is_official_openai_endpoint():
+            payload.update(text_parameters(
+                self.model, effort=self.reasoning_effort,
+                max_output_tokens=self.max_output_tokens, temperature=temperature,
+            ))
 
         # Only add thinking-disable params for local servers (llama.cpp, vLLM, LM Studio)
         # Skip for official OpenAI API and cloud providers (NVIDIA NIM, etc.)
@@ -125,23 +144,48 @@ class OpenAICompatibleProvider(LLMProvider):
             headers = {"Content-Type": "application/json"}
             if current_key:
                 headers["Authorization"] = f"Bearer {current_key}"
+            result = None
+            response = None
+            attempt_status = "error"
+            error_type = ""
+            error_reason = ""
+            reservation_id = reserve_attempt(endpoint=self.api_endpoint, payload=payload,
+                                             attempt=attempt + 1)
+            started_at = time.time()
+            started = time.perf_counter()
+            http_finished = started
             try:
-                response = await client.post(
-                    self.api_endpoint,
-                    json=payload,
-                    headers=headers,
-                    timeout=timeout
-                )
+                try:
+                    response = await client.post(
+                        self.api_endpoint, json=payload, headers=headers, timeout=timeout,
+                    )
+                finally:
+                    http_finished = time.perf_counter()
                 response.raise_for_status()
-
-                response_json = response.json()
-                response_text = response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-                # Extract token usage if available
-                usage = response_json.get("usage", {})
-                prompt_tokens = usage.get("prompt_tokens", 0)
-                completion_tokens = usage.get("completion_tokens", 0)
-                context_used = prompt_tokens + completion_tokens
+                body = response.json()
+                result = LLMResponse(content="", status="incomplete", **normalize_usage(body),
+                                     request_id=response.headers.get("x-request-id", ""),
+                                     response_id=str(body.get("id") or ""),
+                                     response_model=str(body.get("model") or ""),
+                                     service_tier=str(body.get("service_tier") or ""))
+                result = normalize_completion(
+                    body, request_id=response.headers.get("x-request-id", ""),
+                    latency_ms=int((time.perf_counter()-started)*1000),
+                    context_limit=self.context_window,
+                )
+                if self._is_official_openai_endpoint() and not result.finish_reason:
+                    raise ValueError("Official OpenAI response is missing finish_reason")
+                if result.status == "refused":
+                    attempt_status = "refused"
+                    raise ProviderActionRequiredError(
+                        "The provider refused this passage; review is required.",
+                        reason="provider_refusal", provider=self.provider_name, response=result,
+                    )
+                if not result.content.strip() and not result.was_truncated:
+                    raise ValueError("Empty completion content")
+                prompt_tokens = result.prompt_tokens
+                completion_tokens = result.completion_tokens
+                context_used = result.context_used
 
                 if self.log_callback and (prompt_tokens or completion_tokens):
                     self.log_callback("token_usage",
@@ -149,16 +193,18 @@ class OpenAICompatibleProvider(LLMProvider):
                         f"total={context_used}")
 
                 self._retry_manager.record_attempt_result(True)
-                return LLMResponse(
-                    content=response_text,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    context_used=context_used,
-                    context_limit=self.context_window,
-                    was_truncated=False  # OpenAI API doesn't provide truncation info
-                )
+                attempt_status = "incomplete" if result.was_truncated else "ok"
+                return result
 
+            except (RateLimitError, ContextOverflowError) as e:
+                error_type = type(e).__name__
+                error_reason = getattr(e, "reason", "")
+                raise
+            except asyncio.CancelledError:
+                error_type = "cancelled_in_flight"
+                raise
             except httpx.TimeoutException as e:
+                error_type = "ambiguous_timeout"
                 RED = '\033[91m'
                 YELLOW = '\033[93m'
                 RESET = '\033[0m'
@@ -200,12 +246,14 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 return None
             except httpx.HTTPStatusError as e:
+                error_type = "http_error"
                 RED = '\033[91m'
                 YELLOW = '\033[93m'
                 RESET = '\033[0m'
 
                 error_message = str(e)
                 error_body = ""
+                error_code = ""
                 if hasattr(e, 'response') and hasattr(e.response, 'text'):
                     error_body = e.response.text[:500]
                     try:
@@ -213,11 +261,24 @@ class OpenAICompatibleProvider(LLMProvider):
                         error_json = e.response.json()
                         if "error" in error_json:
                             if isinstance(error_json["error"], dict):
+                                error_code = str(error_json["error"].get("code") or error_json["error"].get("type") or "")
                                 error_message = error_json["error"].get("message", str(e))
                             else:
                                 error_message = str(error_json.get("error", e))
                     except Exception:
                         error_message = f"{e} - {error_body}"
+
+                if e.response.status_code == 402 or error_code in {
+                    "insufficient_quota", "billing_hard_limit_reached", "billing_not_active",
+                }:
+                    raise InsufficientCreditsError(
+                        "Provider quota or billing requires attention.", provider=self.provider_name,
+                    )
+                if e.response.status_code in {401, 403, 404}:
+                    reason = {401: "authentication_error", 403: "permission_denied", 404: "model_unavailable"}[e.response.status_code]
+                    raise ProviderActionRequiredError(
+                        f"Provider request blocked: {reason}.", reason=reason, provider=self.provider_name,
+                    )
 
                 # Handle rate limiting (429) — rotate key or sleep, raise if exhausted
                 if (hasattr(e, 'response') and e.response is not None
@@ -229,10 +290,12 @@ class OpenAICompatibleProvider(LLMProvider):
                     continue
 
                 # Detect context overflow errors
-                context_overflow_keywords = ["context_length", "maximum context", "token limit",
-                                              "too many tokens", "reduce the length", "max_tokens",
-                                              "context", "truncate", "length", "too long"]
-                if any(keyword in error_message.lower() for keyword in context_overflow_keywords):
+                context_overflow_keywords = ["context_length_exceeded", "maximum context length",
+                                             "context window exceeded", "too many tokens"]
+                if e.response.status_code == 400 and (
+                    error_code == "context_length_exceeded" or
+                    any(keyword in error_message.lower() for keyword in context_overflow_keywords)
+                ):
                     RED = '\033[91m'
                     YELLOW = '\033[93m'
                     RESET = '\033[0m'
@@ -251,6 +314,14 @@ class OpenAICompatibleProvider(LLMProvider):
                     else:
                         print(f"{RED}Context size exceeded: {error_message}{RESET}")
                     raise ContextOverflowError(error_message)
+
+                if e.response.status_code == 429:
+                    raise RateLimitError("Provider rate limit reached.", provider=self.provider_name)
+                if 400 <= e.response.status_code < 500 and e.response.status_code not in {408, 409}:
+                    raise ProviderActionRequiredError(
+                        "Provider rejected the request configuration.",
+                        reason="invalid_request", provider=self.provider_name,
+                    )
 
                 # Handle other HTTP errors with detailed information
                 RED = '\033[91m'
@@ -295,6 +366,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 return None
             except json.JSONDecodeError as e:
+                error_type = "invalid_json"
                 RED = '\033[91m'
                 YELLOW = '\033[93m'
                 RESET = '\033[0m'
@@ -331,6 +403,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 return None
             except Exception as e:
+                error_type = type(e).__name__
                 RED = '\033[91m'
                 YELLOW = '\033[93m'
                 RESET = '\033[0m'
@@ -363,10 +436,36 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 return None
 
+            finally:
+                http_status = response.status_code if response is not None else None
+                observe_attempt(
+                    response=result, status=attempt_status,
+                    metadata={
+                        "attempt": attempt + 1,
+                        "elapsed_ms": int((http_finished - started) * 1000),
+                        "started_at": started_at,
+                        "budget_reservation_id": reservation_id,
+                        "http_status": http_status,
+                        "request_id": response.headers.get("x-request-id", "") if response is not None else "",
+                        "error": error_type,
+                        "reason": error_reason,
+                        "usage_unknown": not bool(result and result.raw_usage),
+                        "billing_uncertain": not bool(result and result.raw_usage) and (
+                            http_status is None or http_status >= 500 or http_status == 200
+                        ),
+                        "parameters": {key: payload[key] for key in (
+                            "model", "reasoning_effort", "max_completion_tokens", "temperature", "stream",
+                            "service_tier", "prompt_cache_options",
+                        ) if key in payload},
+                    },
+                )
+
         return None
 
     async def get_model_context_size(self) -> int:
         """Query server to get model's context size using ContextDetector."""
+        if self._is_official_openai_endpoint() and self.model in EDITORIAL_MODELS:
+            return 1_050_000
         if self._detected_context_size:
             return self._detected_context_size
 

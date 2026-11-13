@@ -535,7 +535,17 @@ def parse_source_aware_guard_response(response_text: str) -> Optional[dict[str, 
 
     decision = str(parsed.get("decision") or "").strip().lower()
     if decision not in {"accept", "reject", "repair", "flag"}:
-        decision = "flag"
+        return None
+    for key in ("confidence", "structure_score"):
+        value = parsed.get(key)
+        if type(value) not in (int, float) or not 0 <= value <= 1:
+            return None
+    if not isinstance(parsed.get("reason"), str) or not parsed["reason"].strip():
+        return None
+    for key in ("issues", "missing_from_source", "added_not_in_source", "weird_symbols"):
+        values = parsed.get(key)
+        if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+            return None
     return {
         "decision": decision,
         "confidence": _coerce_confidence(parsed.get("confidence")),

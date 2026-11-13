@@ -236,11 +236,12 @@ def _text_is_trivial(text: str) -> bool:
     return not stripped or bool(_TRIVIAL_TEXT_RE.match(stripped))
 
 
-def test_template_has_no_hardcoded_user_visible_text() -> None:
-    """All user-visible copy in the main template must be routed through i18n."""
-    assert TEMPLATE.is_file(), f"Template not found at {TEMPLATE}"
+@pytest.mark.parametrize("template", [TEMPLATE, *sorted(TEMPLATE.parent.glob("components/**/*.html"))])
+def test_template_has_no_hardcoded_user_visible_text(template) -> None:
+    """User-visible copy in the main template and its components uses i18n."""
+    assert template.is_file(), f"Template not found at {template}"
 
-    src = _strip_jinja_preserving_lines(TEMPLATE.read_text(encoding="utf-8"))
+    src = _strip_jinja_preserving_lines(template.read_text(encoding="utf-8"))
     tree = lhtml.document_fromstring(src)
 
     offenders: list[str] = []
@@ -311,6 +312,18 @@ def test_template_has_no_hardcoded_user_visible_text() -> None:
         "_HARDCODE_ALLOWLIST in this test with a comment explaining why):\n"
         + "\n".join(offenders)
     )
+
+
+@pytest.mark.parametrize("locale", SUPPORTED_LOCALES)
+def test_pipeline_locale_placeholders_and_template_keys(locale):
+    source = _load_namespace("en", "settings")
+    target = _load_namespace(locale, "settings")
+    component = (TEMPLATE.parent / "components/pipeline-settings.html").read_text(encoding="utf-8")
+    for key in re.findall(r'data-i18n="settings:([^"]+)"', component):
+        assert key in target
+    for key, value in source.items():
+        if key.startswith("pipe_"):
+            assert set(re.findall(r"\{\{(\w+)\}\}", value)) == set(re.findall(r"\{\{(\w+)\}\}", target[key]))
 
 
 # ---------------------------------------------------------------------------

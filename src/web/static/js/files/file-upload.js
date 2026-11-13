@@ -1086,6 +1086,10 @@ export const FileUpload = {
                 const statusSpan = document.createElement('span');
                 statusSpan.className = 'file-status';
                 statusSpan.textContent = `(${file.status})`;
+                if (file.status === 'Submission pending') {
+                    statusSpan.dataset.i18n = 'settings:pipe_submission_pending';
+                    statusSpan.textContent = t('settings:pipe_submission_pending');
+                }
 
                 infoSpan.appendChild(statusSpan);
 
@@ -1160,7 +1164,7 @@ export const FileUpload = {
             // Enable translate button if not batch active and LLM is connected
             const isBatchActive = StateManager.getState('translation.isBatchActive') || false;
             if (translateBtn) {
-                translateBtn.disabled = isBatchActive || !StatusManager.isConnected();
+                translateBtn.disabled = isBatchActive || !StatusManager.canSubmit();
             }
         } else {
             // Hide file info section

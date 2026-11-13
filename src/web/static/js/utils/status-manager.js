@@ -7,6 +7,7 @@
 import { DomHelpers } from '../ui/dom-helpers.js';
 import { StateManager } from '../core/state-manager.js';
 import { t } from '../i18n/i18n.js';
+import { PipelineSettings } from '../ui/pipeline-settings.js';
 
 /**
  * Status types and their visual representations
@@ -43,6 +44,7 @@ const STATUS_TYPES = {
  * Current status
  */
 let currentStatus = 'checking';
+let currentText = null;
 
 export const StatusManager = {
     /**
@@ -51,6 +53,10 @@ export const StatusManager = {
     initialize() {
         // Set initial checking state
         this.setStatus('checking');
+        window.addEventListener('pipelineChanged', () => this.setStatus(currentStatus, currentText));
+        window.addEventListener('localeChanged', () => {
+            if (PipelineSettings.isEnabled()) this.setStatus(currentStatus, currentText);
+        });
     },
 
     /**
@@ -59,17 +65,19 @@ export const StatusManager = {
      * @param {string} customText - Optional custom text to override default
      */
     setStatus(status, customText = null) {
-        const statusInfo = STATUS_TYPES[status];
+        const rolesEnabled = PipelineSettings.isEnabled();
+        const statusInfo = STATUS_TYPES[rolesEnabled ? 'waiting' : status];
         if (!statusInfo) {
             return;
         }
 
         currentStatus = status;
+        currentText = customText;
 
         // Update text
         const statusText = DomHelpers.getElement('providerStatusText');
         if (statusText) {
-            const text = customText || t(statusInfo.textKey);
+            const text = rolesEnabled ? t('settings:pipe_roles_status') : customText || t(statusInfo.textKey);
             statusText.textContent = text;
             statusText.style.color = statusInfo.color;
             // The pill truncates long text with an ellipsis; expose the full
@@ -87,7 +95,7 @@ export const StatusManager = {
         }
 
         // Open Settings foldout on connection problems
-        if (status === 'disconnected' || status === 'error' || status === 'waiting') {
+        if (!rolesEnabled && (status === 'disconnected' || status === 'error' || status === 'waiting')) {
             this.openSettingsFoldout();
         }
 
@@ -103,7 +111,7 @@ export const StatusManager = {
         const translateBtn = document.getElementById('translateBtn');
         if (!translateBtn) return;
 
-        const isConnected = status === 'connected';
+        const isConnected = this.canSubmit();
         const filesToProcess = StateManager.getState('files.toProcess') || [];
         const isBatchActive = StateManager.getState('translation.isBatchActive') || false;
 
@@ -123,6 +131,12 @@ export const StatusManager = {
      */
     isConnected() {
         return currentStatus === 'connected';
+    },
+
+    canSubmit() {
+        if (!PipelineSettings.isEnabled()) return this.isConnected();
+        try { return !!PipelineSettings.snapshot({ reportValidity: false }); }
+        catch { return false; }
     },
 
     /**

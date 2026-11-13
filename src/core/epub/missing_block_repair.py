@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from src.core.fidelity_supervisor import target_language_gate_issues
 from src.core.llm.factory import create_llm_provider
+from src.core.llm.exceptions import RateLimitError
 from src.core.llm.request_deadline import await_llm_call
 from src.core.llm_output_guard import guard_llm_output
 
@@ -127,6 +128,7 @@ async def repair_epub_missing_blocks_with_llm(
                     llm.generate,
                     user_prompt,
                     provider=llm,
+                    role="structure_repair",
                     request_timeout=request_budget,
                     deadline=request_budget,
                     system_prompt=system_prompt,
@@ -159,6 +161,8 @@ async def repair_epub_missing_blocks_with_llm(
                     )
                     continue
                 replacements[(finding.file_href, finding.block_index)] = candidate
+            except RateLimitError:
+                raise
             except Exception as exc:
                 report.rejected += 1
                 report.errors.append(
