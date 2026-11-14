@@ -1,5 +1,5 @@
 import { FileUpload } from '../files/file-upload.js';
-import { BatchController } from './batch-controller.js?v=20260705-transform-flow';
+import { BatchController } from './batch-controller.js?v=20261114-publication';
 import { ApiClient } from '../core/api-client.js';
 import { DomHelpers } from '../ui/dom-helpers.js';
 import { MessageLogger } from '../ui/message-logger.js';

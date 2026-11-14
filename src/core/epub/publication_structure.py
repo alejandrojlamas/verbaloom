@@ -286,6 +286,16 @@ def _metadata_value(root: etree._Element, local_name: str) -> str:
     return _clean_text(str(value or ""))
 
 
+def _package_identifier(root: etree._Element) -> str:
+    identifier_id = root.get("unique-identifier")
+    if not identifier_id:
+        return _metadata_value(root, "identifier")
+    return str(root.xpath(
+        "string(./*[local-name()='metadata']/*[local-name()='identifier' and @id=$id])",
+        id=identifier_id,
+    )).strip()
+
+
 def _cover_image_item(root: etree._Element) -> Optional[etree._Element]:
     cover_id = str(
         root.xpath(
@@ -1238,7 +1248,7 @@ def finish_epub_publication(
             ncx_path,
             href=ncx_href,
             title=title,
-            identifier=_metadata_value(root, "identifier"),
+            identifier=_package_identifier(root),
             entries=entries,
         )
         report.ncx_href = ncx_href

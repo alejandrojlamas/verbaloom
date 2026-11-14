@@ -15,7 +15,8 @@ from typing import Any
 
 from src.api.resume_schedule import resume_schedule_from_config
 from src.api.services.path_validator import PathValidator
-from src.config import NIM_API_ENDPOINT, OPENAI_API_ENDPOINT
+from src.config import NIM_API_ENDPOINT, OPENAI_API_ENDPOINT, OUTPUT_DIR
+from src.core.quality_assurance.publication import artifact_sha256, require_sha256
 from src.core.recovery_policy import (
     recovery_budget,
     recovery_counter,
@@ -127,6 +128,7 @@ def restore_jobs_after_restart(
     *,
     enabled: bool = True,
     max_auto_resumes: int = 1,
+    output_dir: str | Path = OUTPUT_DIR,
 ) -> tuple[StartupRecoveryReport, list[dict[str, Any]]]:
     """Restore resumable jobs and restart the most recent stale active job.
 
@@ -137,6 +139,31 @@ def restore_jobs_after_restart(
     checkpoint_manager = state_manager.checkpoint_manager
     stale_ids = checkpoint_manager.get_stale_active_job_ids()
     report = StartupRecoveryReport()
+    output_root = Path(output_dir).resolve()
+    # A worker can stop after linking the file but before updating SQLite.
+    # Only the exact validated bytes at the recorded destination prove delivery.
+    for translation_id in stale_ids:
+        job = checkpoint_manager.get_job(translation_id)
+        config = dict((job or {}).get("config") or {})
+        intent = config.get("_publication_intent")
+        quality = config.get("quality_assurance_result") or {}
+        if (not isinstance(intent, dict) or config.get("_manual_pause_requested")
+                or quality.get("publishable") is not True):
+            continue
+        name = intent.get("filename")
+        if not isinstance(name, str) or not PathValidator.validate_filename(name)[0]:
+            continue
+        candidate = output_root / name
+        try:
+            expected = require_sha256(intent.get("sha256"))
+            if candidate.is_symlink() or artifact_sha256(candidate) != expected:
+                continue
+        except (OSError, ValueError):
+            continue
+        config.update(output_filename=name, _job_output_filename=name, output_filepath=str(candidate))
+        config.pop("publication_error", None)
+        if checkpoint_manager.update_job_config(translation_id, config):
+            checkpoint_manager.mark_completed(translation_id, quality_gate_passed=True)
     report.reset_count = checkpoint_manager.reset_running_jobs_on_startup()
     resumable_jobs = state_manager.get_resumable_jobs()
 

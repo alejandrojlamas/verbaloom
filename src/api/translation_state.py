@@ -375,6 +375,7 @@ class TranslationStateManager:
                     "inline_refinement": summary_stats.get('inline_refinement', False),
                     "stage_progress": summary_stats.get('stage_progress'),
                     "live_status": summary_stats.get('live_status'),
+                    "publication_error": summary_stats.get('publication_error') or config.get('publication_error'),
                     "live_status_kind": summary_stats.get('live_status_kind'),
                     "live_activity_event": summary_stats.get('live_activity_event'),
                     "last_activity_at": summary_stats.get('last_activity_at'),

@@ -550,8 +550,6 @@ def test_native_epub_finisher_produces_epubcheck_valid_epub3(tmp_path: Path):
 
 def test_native_epub_finisher_produces_epubcheck_valid_epub2(tmp_path: Path):
     epubcheck = shutil.which("epubcheck") or "/opt/homebrew/bin/epubcheck"
-    if not Path(epubcheck).exists():
-        return
     (tmp_path / "META-INF").mkdir()
     (tmp_path / "META-INF" / "container.xml").write_text(
         '<?xml version="1.0"?><container version="1.0" '
@@ -565,6 +563,7 @@ def test_native_epub_finisher_produces_epubcheck_valid_epub2(tmp_path: Path):
              xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0"
              unique-identifier="bookid">
       <metadata>
+        <dc:identifier id="isbn">9780000000002</dc:identifier>
         <dc:identifier id="bookid">urn:test:native-professional-epub2</dc:identifier>
         <dc:title>Libro de prueba</dc:title><dc:creator>Ana Torres</dc:creator>
         <dc:language>es</dc:language>
@@ -576,13 +575,19 @@ def test_native_epub_finisher_produces_epubcheck_valid_epub2(tmp_path: Path):
     <html xmlns="http://www.w3.org/1999/xhtml"><head><title>Capítulo uno</title></head>
       <body><div><h1>Capítulo uno</h1><p>La historia comienza aquí.</p></div></body>
     </html>'''.encode())
-    finish_epub_publication(
+    report = finish_epub_publication(
         opf_tree=opf,
         opf_dir=tmp_path,
         content_files=["chapter.xhtml"],
         parsed_xhtml_docs={str(tmp_path / "chapter.xhtml"): document},
         target_language="Spanish",
     )
+    ncx = etree.parse(str(tmp_path / report.ncx_href))
+    assert ncx.xpath("string(//*[local-name()='meta' and @name='dtb:uid']/@content)") == (
+        "urn:test:native-professional-epub2"
+    )
+    if not Path(epubcheck).exists():
+        return
     opf.write(tmp_path / "content.opf", encoding="utf-8", xml_declaration=True)
     (tmp_path / "chapter.xhtml").write_bytes(
         etree.tostring(document, encoding="utf-8", xml_declaration=True)

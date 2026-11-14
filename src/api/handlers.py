@@ -46,6 +46,7 @@ from src.core.epub.metadata_localizer import (
     localize_epub_metadata,
 )
 from src.core.epub.missing_block_repair import repair_epub_missing_blocks_with_llm
+from src.core.epub.paragraph_alignment import repair_epub_paragraph_alignment
 from src.core.epub.publication_gate import audit_epub_publication
 from src.core.fidelity_supervisor import fidelity_report_path
 from src.core.final_artifact_audit import audit_and_clean_final_artifact
@@ -1899,6 +1900,18 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         }
         if event.status.value == 'started':
             phase_stats['stage_progress'] = None
+            closing_label = {
+                JobPhase.ASSEMBLE: 'Ensamblando el archivo de salida',
+                JobPhase.AUDIT: 'Validando el archivo antes de guardarlo',
+                JobPhase.REPAIR: 'Revisando reparaciones finales',
+                JobPhase.PUBLISH: 'Guardando el archivo final',
+            }.get(event.phase)
+            if closing_label:
+                phase_stats.update({
+                    'live_status': closing_label,
+                    'live_status_kind': 'active',
+                    'last_activity_at': time.time(),
+                })
         if (
             event.status.value == 'started'
             and event.phase in {
@@ -2853,6 +2866,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         source_is_epub = Path(input_path_for_translate_module or '').suffix.lower() == '.epub'
         output_is_epub = final_output_format == 'epub' and Path(output_filepath_on_server or '').suffix.lower() == '.epub'
+        strict_epub_publication = bool(
+            source_is_epub and output_is_epub
+            and str(config.get('file_type') or '').lower() == 'epub'
+            and not config.get('bilingual_output')
+            and not (config.get('prompt_options') or {}).get('plain_text_mode')
+            and (config.get('prompt_options') or {}).get('strict_epub_publication_gate', True) is not False
+        )
 
         def _ready_for_final_audits() -> bool:
             current_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
@@ -2901,7 +2921,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     f"⛔ No se pudieron localizar los metadatos EPUB: {metadata_error}",
                 )
                 operation_success = False
-                state_manager.set_translation_field(translation_id, 'status', 'partial')
+                state_manager.update_stats(translation_id, {'publication_error': 'No se pudieron localizar los metadatos EPUB.'})
 
         if (
             os.path.exists(output_filepath_on_server)
@@ -2947,11 +2967,40 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     f"⚠️ Chequeo final de artefactos no pudo ejecutarse: {artifact_error}"
                 )
                 operation_success = False
-                state_manager.set_translation_field(translation_id, 'status', 'partial')
+                state_manager.update_stats(translation_id, {'publication_error': 'Falló el chequeo final del archivo.'})
 
         if (
-            source_is_epub
-            and output_is_epub
+            strict_epub_publication
+            and os.path.exists(output_filepath_on_server)
+            and not state_manager.get_translation_field(translation_id, 'interrupted')
+            and _ready_for_final_audits()
+        ):
+            try:
+                realigned = await engine.run_phase(
+                    JobPhase.REPAIR,
+                    repair_epub_paragraph_alignment,
+                    input_path_for_translate_module,
+                    output_filepath_on_server,
+                    config=config,
+                    log_callback=_log_message_callback,
+                    message="Realineando párrafos antes de validar el EPUB.",
+                    metadata={'output_format': 'epub', 'scope': 'paragraph_alignment'},
+                )
+                if realigned:
+                    _log_message_callback(
+                        "final_paragraph_alignment_repaired",
+                        f"Se realinearon {realigned} zona(s) del EPUB sin reescribir la traducción.",
+                    )
+            except RateLimitError:
+                raise
+            except Exception as alignment_error:
+                _log_message_callback(
+                    "final_paragraph_alignment_warning",
+                    f"No se pudo realinear el EPUB: {type(alignment_error).__name__}",
+                )
+
+        if (
+            source_is_epub and output_is_epub
             and os.path.exists(output_filepath_on_server)
             and not state_manager.get_translation_field(translation_id, 'interrupted')
             and _ready_for_final_audits()
@@ -3049,14 +3098,6 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         publication_report = None
         quality_run = None
-        strict_epub_publication = bool(
-            final_output_format == 'epub'
-            and str(config.get('file_type') or '').lower() == 'epub'
-            and Path(input_path_for_translate_module or '').suffix.lower() == '.epub'
-            and not config.get('bilingual_output')
-            and not (config.get('prompt_options') or {}).get('plain_text_mode')
-            and (config.get('prompt_options') or {}).get('strict_epub_publication_gate', True) is not False
-        )
         if (
             strict_epub_publication
             and os.path.exists(output_filepath_on_server)
@@ -3085,9 +3126,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     state_manager.update_stats(translation_id, {
                         **audit_stats,
                         'quality_degraded': True,
+                        'publication_error': '; '.join(publication_report.errors[:4]),
                     })
-                    state_manager.set_translation_field(translation_id, 'status', 'partial')
-                    checkpoint_manager.mark_partial(translation_id)
                     _log_message_callback(
                         "epub_publication_gate_failed",
                         "⛔ El EPUB ensamblado no cumple el contrato completo; "
@@ -3117,12 +3157,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     _log_message_callback(
                         "epub_publication_gate_passed",
                         f"✅ EPUB validado: {publication_report.audited_units}/"
-                        f"{publication_report.source_units} unidades AUDITED; EPUBCheck sin errores.",
+                        f"{publication_report.source_units} unidades AUDITED; "
+                        "sin errores nuevos en los controles de publicación.",
                     )
             except Exception as publication_error:
                 operation_success = False
-                state_manager.set_translation_field(translation_id, 'status', 'partial')
-                checkpoint_manager.mark_partial(translation_id)
+                state_manager.update_stats(translation_id, {'publication_error': 'No se pudo ejecutar la validación EPUB.'})
                 _log_message_callback(
                     "epub_publication_gate_error",
                     f"⛔ No se pudo validar el EPUB completo; publicación bloqueada: {publication_error}",
@@ -3189,9 +3229,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                         'quality_gate_status': quality_run.report.status.value,
                         'quality_report_dir': str(quality_run.paths.root),
                         'quality_repair_units': len(quality_run.report.repair_units),
+                        'publication_error': 'El archivo no pasó los controles de calidad del libro.',
                     })
-                    state_manager.set_translation_field(translation_id, 'status', 'partial')
-                    checkpoint_manager.mark_partial(translation_id)
                     _log_message_callback(
                         "universal_quality_gate_failed",
                         "⛔ La entrega no pasó los controles universales; "
@@ -3206,16 +3245,27 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     )
             except Exception as quality_error:
                 operation_success = False
-                state_manager.set_translation_field(translation_id, 'status', 'partial')
-                checkpoint_manager.mark_partial(translation_id)
+                state_manager.update_stats(translation_id, {'publication_error': 'No se pudo ejecutar el control de calidad.'})
                 _log_message_callback(
                     "universal_quality_gate_error",
                     f"⛔ No se pudo demostrar la integridad del libro; publicación bloqueada: {quality_error}",
                 )
 
         publishable = False
+        completion_recorded = False
         if os.path.exists(output_filepath_on_server):
             staged_output = Path(output_filepath_on_server)
+
+            def record_publication_intent(candidate: Path) -> None:
+                config['_publication_intent'] = {
+                    'filename': candidate.name,
+                    'sha256': quality_run.validated_output_sha256,
+                }
+                if not _persist_runtime_checkpoint_config(
+                    checkpoint_manager, translation_id, config, _log_message_callback,
+                ):
+                    raise OSError("Could not save the validated publication intent")
+
             with translation_lifecycle_guard(state_manager):
                 publishable = bool(
                     not state_manager.get_translation_field(translation_id, 'interrupted')
@@ -3231,23 +3281,32 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 output_filepath_on_server = str(atomic_publish(
                     staged_output, destination,
                     expected_sha256=quality_run.validated_output_sha256 if publishable else None,
+                    before_commit=record_publication_intent if publishable else None,
                 ))
                 config['output_filename'] = Path(output_filepath_on_server).name
                 if publishable:
                     config['_job_output_filename'] = config['output_filename']
+                    config['output_filepath'] = output_filepath_on_server
+                    config.pop('publication_error', None)
+                    state_manager.update_translation(translation_id, {
+                        'publication_committed': True, 'output_filepath': output_filepath_on_server,
+                    })
+                    if _persist_runtime_checkpoint_config(
+                        checkpoint_manager, translation_id, config, _log_message_callback,
+                    ):
+                        completion_recorded = checkpoint_manager.mark_completed(
+                            translation_id, quality_gate_passed=True,
+                        )
+                        if completion_recorded:
+                            config.pop('_publication_intent', None)
                 else:
                     operation_success = False
-                    if (not state_manager.get_translation_field(translation_id, 'interrupted')
-                            and state_manager.get_translation_field(translation_id, 'status')
-                            in {'running', 'processing', 'partial'}):
-                        state_manager.set_translation_field(translation_id, 'status', 'partial')
-                        checkpoint_manager.mark_partial(translation_id)
-            if quality_run is not None:
-                quality_run.update_output_path(output_filepath_on_server)
             _persist_runtime_checkpoint_config(checkpoint_manager, translation_id, config, _log_message_callback)
             try:
+                if quality_run is not None:
+                    quality_run.update_output_path(output_filepath_on_server)
                 publish_report_sidecars(staged_output, Path(output_filepath_on_server))
-            except OSError as report_error:
+            except Exception as report_error:
                 _log_message_callback("publication_report_copy_warning",
                     f"Report copies remain in private staging: {report_error}")
             if not publishable:
@@ -3301,7 +3360,10 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         # Clean up temporary text file if created
         if temp_txt_file_path and os.path.exists(temp_txt_file_path):
-            os.remove(temp_txt_file_path)
+            try:
+                os.remove(temp_txt_file_path)
+            except OSError as cleanup_error:
+                _log_message_callback("cleanup_warning", f"Temporal conservado: {type(cleanup_error).__name__}")
 
         state_manager.set_translation_field(translation_id, 'output_filepath', output_filepath_on_server)
 
@@ -3539,6 +3601,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 else:
                     if finalization_only:
                         final_stats = _finalization_recovery_exhausted_stats(final_stats)
+                        final_stats['eta_status'] = 'unavailable'
+                        config['publication_error'] = final_stats.get('publication_error') or (
+                            'La validación no aprobó el archivo final.'
+                        )
+                        _persist_runtime_checkpoint_config(
+                            checkpoint_manager, translation_id, config, _log_message_callback,
+                        )
                         partial_message = (
                             "⚠️ El texto está completo, pero la validación final "
                             "bloqueó la publicación; checkpoint conservado"
@@ -3554,20 +3623,30 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                             f"{stats_summary} — checkpoint kept for retry"
                         )
                     state_manager.update_stats(translation_id, final_stats)
-                    state_manager.set_translation_field(translation_id, 'status', 'partial')
                     _log_message_callback("summary_partial", partial_message)
                     final_status_payload['status'] = 'partial'
                     checkpoint_manager.mark_partial(translation_id)
+                    state_manager.set_translation_field(translation_id, 'status', 'partial')
                     # Skip cleanup_completed_job — we want the checkpoint to survive for retry.
             else:
+                if not completion_recorded and not checkpoint_manager.mark_completed(
+                    translation_id, quality_gate_passed=True,
+                ):
+                    # Keep the verified intent for startup reconciliation.
+                    _log_message_callback("published_checkpoint_warning",
+                        "El archivo está guardado; su registro de recuperación sigue pendiente.")
                 state_manager.set_translation_field(translation_id, 'status', 'completed')
                 _log_message_callback(
                     "summary_completed",
                     f"✅ {'Transformation' if is_transform_job else 'Translation'} completed in {elapsed_time:.2f}s{stats_summary}",
                 )
                 final_status_payload['status'] = 'completed'
-                await asyncio.to_thread(notify, EVENT_SUCCESS,
-                    _notification_context(config, translation_id, elapsed_time))
+                try:
+                    await asyncio.to_thread(notify, EVENT_SUCCESS,
+                        _notification_context(config, translation_id, elapsed_time))
+                except Exception as notification_error:
+                    _log_message_callback("publication_notification_warning",
+                        f"Notificación de entrega no enviada: {type(notification_error).__name__}")
 
                 qa_settings = config.get('quality_assurance') or {}
                 export_settings = qa_settings.get('export') or {}
@@ -3575,7 +3654,6 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     export_settings.get('keep_intermediate_files', True)
                 )
                 if keep_intermediate or config.get('_submission_fingerprint'):
-                    checkpoint_manager.mark_completed(translation_id, quality_gate_passed=True)
                     _log_message_callback(
                         "quality_checkpoint_preserved",
                         "Quality manifest and validated checkpoint preserved for traceability.",

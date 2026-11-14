@@ -1,5 +1,7 @@
 {
   "job_card_finalization_pending": "Pendiente de publicación",
+  "job_card_download_draft": "Descargar borrador",
+  "job_card_validating_saved": "Validando el archivo con el texto ya guardado…",
   "job_card_retry_finalization": "Validar y publicar",
   "job_card_text_progress": "Texto guardado: {{completed}} / {{total}} fragmentos",
   "source_language": "Idioma de origen",

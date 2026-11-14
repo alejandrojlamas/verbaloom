@@ -23,6 +23,13 @@ function destroyOverridePickers() {
     overridePickers.clear();
 }
 
+function formatCheckpointDate(value, locale) {
+    // SQLite CURRENT_TIMESTAMP is UTC, even when its serialized value has no offset.
+    const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+        ? value.replace(' ', 'T') + 'Z' : value;
+    return new Date(iso).toLocaleString(locale);
+}
+
 /**
  * Format resumable job card HTML
  * @param {Object} job - Job data
@@ -56,9 +63,9 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
 
     const naText = t('translation:job_card_na');
     const dateLocale = getCurrentLocale();
-    const createdDate = job.created_at ? new Date(job.created_at).toLocaleString(dateLocale) : naText;
-    const pausedDate = job.paused_at ? new Date(job.paused_at).toLocaleString(dateLocale) :
-                       job.updated_at ? new Date(job.updated_at).toLocaleString(dateLocale) : naText;
+    const createdDate = job.created_at ? formatCheckpointDate(job.created_at, dateLocale) : naText;
+    const stoppedAt = finalizationPending ? job.updated_at : (job.paused_at || job.updated_at);
+    const pausedDate = stoppedAt ? formatCheckpointDate(stoppedAt, dateLocale) : naText;
     const stoppedOrPausedLine = isError || finalizationPending
         ? t('translation:job_card_stopped', { date: pausedDate })
         : t('translation:job_card_paused', { date: pausedDate });
@@ -112,11 +119,18 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
                             ${hasActiveTranslation ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                         ${t(finalizationPending ? 'translation:job_card_retry_finalization' : 'translation:job_card_resume_btn')}
                     </button>
+                    ${finalizationPending && job.draft_filename ? `
+                    <a class="btn btn-secondary" href="${DomHelpers.escapeHtml(ApiClient.getFileDownloadUrl(job.draft_filename))}">
+                        ${t('translation:job_card_download_draft')}
+                    </a>` : ''}
                     <button class="btn btn-danger" onclick="deleteCheckpoint('${job.translation_id}')" title="${t('translation:job_card_delete_title')}">
                         ${t('translation:job_card_delete_btn')}
                     </button>
                 </div>
             </div>
+            ${finalizationPending && job.publication_error ? `
+                <p class="resumable-job-filename">${DomHelpers.escapeHtml(job.publication_error)}</p>
+            ` : ''}
 
             <div style="margin-bottom: 10px;">
                 <div style="display: flex; justify-content: space-between; font-size: 13px; color: #6b7280; margin-bottom: 5px;">
@@ -132,13 +146,13 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
                     <span>${t('translation:job_card_created', { date: createdDate })}</span>
                     <span>${stoppedOrPausedLine}</span>
                 </div>
-                <button class="resume-change-model" data-tid="${job.translation_id}"
+                ${finalizationPending ? '' : `<button class="resume-change-model" data-tid="${job.translation_id}"
                         title="${t('translation:resume_change_model_title')}"
                         ${hasActiveTranslation ? 'disabled' : ''}
                         style="display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 2px 4px; font-size: 12px; color: #3b82f6; cursor: pointer; white-space: nowrap;${hasActiveTranslation ? ' opacity: 0.5; cursor: not-allowed;' : ''}">
                     <span class="material-symbols-outlined" style="font-size: 0.95rem;">tune</span>
                     <span data-i18n="translation:resume_change_model">Change model</span>
-                </button>
+                </button>`}
             </div>
 
             <div class="resume-override" data-tid="${job.translation_id}"
@@ -357,11 +371,14 @@ export const ResumeManager = {
 
             const data = await ApiClient.resumeJob(translationId, overrides);
 
-            MessageLogger.showMessage(
-                t('translation:resume_success', { chunk: data.resume_from_chunk }),
-                'success'
-            );
-            MessageLogger.addLog(t('translation:resume_success_log', { id: translationId, chunk: data.resume_from_chunk }));
+            if (data.finalization_only) {
+                const message = t('translation:job_card_validating_saved');
+                MessageLogger.showMessage(message, 'info');
+                MessageLogger.addLog(message);
+            } else {
+                MessageLogger.showMessage(t('translation:resume_success', { chunk: data.resume_from_chunk }), 'success');
+                MessageLogger.addLog(t('translation:resume_success_log', { id: translationId, chunk: data.resume_from_chunk }));
+            }
 
             // Fetch job details to get filename and file type
             const jobData = await ApiClient.getTranslationStatus(translationId);
@@ -411,6 +428,12 @@ export const ResumeManager = {
                 ? jobData.stats.percent
                 : (jobData.progress || 0);
             ProgressManager.updateProgress(Math.min(99, resumedPercent));
+            if (data.finalization_only) {
+                ProgressManager.updateLiveStatus({
+                    live_status: t('translation:job_card_validating_saved'),
+                    live_status_kind: 'active'
+                });
+            }
 
             // Emit event for translation started
             const event = new CustomEvent('translationResumed', { detail: { translationId, jobData } });

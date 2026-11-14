@@ -1,5 +1,7 @@
 {
   "job_card_finalization_pending": "Publication pending",
+  "job_card_download_draft": "Download draft",
+  "job_card_validating_saved": "Validating the file using the saved text…",
   "job_card_retry_finalization": "Validate and publish",
   "job_card_text_progress": "Saved text: {{completed}} / {{total}} chunks",
   "source_language": "Source Language",

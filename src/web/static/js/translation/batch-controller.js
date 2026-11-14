@@ -15,7 +15,7 @@ import { StatusManager } from '../utils/status-manager.js';
 import { ProgressManager } from './progress-manager.js?v=20260929-eta';
 import { renderTranslationTitle } from './progress-title.js?v=20260705-transform-flow';
 import { FileUpload, generateOutputFilename, normalizeOutputFormat, resolveOutputExtension } from '../files/file-upload.js';
-import { TranslationTracker } from './translation-tracker.js?v=20260929-eta';
+import { TranslationTracker } from './translation-tracker.js?v=20261114-publication';
 import { t } from '../i18n/i18n.js';
 import { DeepSeekPricingManager } from '../providers/deepseek-pricing-manager.js?v=20260903';
 import { PipelineSettings } from '../ui/pipeline-settings.js';
@@ -453,7 +453,7 @@ export const BatchController = {
     /**
      * Process next file in queue
      */
-    async processNextFileInQueue() {
+    async processNextFileInQueue({ partial = false } = {}) {
         const currentJob = StateManager.getState('translation.currentJob');
         if (currentJob || this.pendingSubmission || SubmissionReceipt.read()) return;
 
@@ -485,7 +485,7 @@ export const BatchController = {
                 DomHelpers.setText('currentFileProgressTitle', t('translation:batch_completed_with_errors_title', {
                     defaultValue: 'Batch Finished With Errors'
                 }));
-            } else {
+            } else if (!partial && !filesToProcess.some(file => file.status === 'Partial')) {
                 MessageLogger.showMessage(t('translation:batch_completed'), 'success');
                 MessageLogger.addLog(t('translation:batch_completed_log'));
                 DomHelpers.setText('currentFileProgressTitle', t('translation:batch_completed_title'));

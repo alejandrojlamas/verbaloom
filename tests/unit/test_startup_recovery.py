@@ -1,4 +1,5 @@
 from copy import deepcopy
+import pytest
 
 from src.api.blueprints.translation_routes import (
     _checkpoint_has_resumable_work,
@@ -25,6 +26,9 @@ class _CheckpointManager:
 
     def load_checkpoint(self, translation_id):
         return deepcopy(self.checkpoints.get(translation_id))
+
+    def get_job(self, translation_id):
+        return (self.load_checkpoint(translation_id) or {}).get("job")
 
     def get_preserved_input_path(self, translation_id):
         checkpoint = self.checkpoints.get(translation_id) or {}
@@ -88,6 +92,45 @@ def _checkpoint(source_path, *, status="running", manual=False, resume_index=4):
             "progress": {"total_chunks": 10, "completed_chunks": resume_index},
         },
     }
+
+
+@pytest.mark.parametrize("delivery", ["matching", "changed", "missing", "symlink"])
+def test_restart_recovers_only_validated_committed_bytes(tmp_path, delivery):
+    import hashlib
+
+    from src.api.translation_state import TranslationStateManager
+    from src.persistence.checkpoint_manager import CheckpointManager
+
+    db = str(tmp_path / "jobs.db")
+    uploads = tmp_path / "uploads"
+    published = tmp_path / "book.epub"
+    payload = b"validated EPUB fixture"
+    manager = CheckpointManager(db, "old-server", uploads_dir=uploads)
+    assert manager.start_job("publishing", "txt", {
+        "file_type": "txt", "text": "saved source",
+        "quality_assurance_result": {"publishable": True, "status": "PASSED"},
+        "_publication_intent": {"filename": published.name, "sha256": hashlib.sha256(payload).hexdigest()},
+    })
+    if delivery == "symlink":
+        external = tmp_path / "elsewhere.epub"
+        external.write_bytes(payload)
+        published.symlink_to(external)
+    elif delivery != "missing":
+        published.write_bytes(payload if delivery == "matching" else b"different file")
+    manager.close()
+    manager = CheckpointManager(db, "new-server", uploads_dir=uploads)
+    state = TranslationStateManager(manager)
+    try:
+        _, resumable = restore_jobs_after_restart(state, lambda *_: None, enabled=False, output_dir=tmp_path)
+        job = manager.get_job("publishing")
+        if delivery == "matching":
+            assert job["status"] == "completed"
+            assert job["config"]["output_filepath"] == str(published)
+            assert not resumable
+        else:
+            assert job["status"] == "interrupted"
+    finally:
+        manager.close()
 
 
 def test_startup_auto_resumes_one_genuinely_active_job(tmp_path):

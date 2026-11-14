@@ -42,10 +42,10 @@ import { UsageManager } from './usage/usage-manager.js?v=20260613-live-usage';
 // ========================================
 // Translation Modules
 // ========================================
-import { TranslationTracker } from './translation/translation-tracker.js?v=20260929-eta';
-import { BatchController } from './translation/batch-controller.js?v=20260929-eta';
+import { TranslationTracker } from './translation/translation-tracker.js?v=20261114-publication';
+import { BatchController } from './translation/batch-controller.js?v=20261114-publication';
 import { ProgressManager } from './translation/progress-manager.js?v=20260929-eta';
-import { ResumeManager } from './translation/resume-manager.js?v=20260929-eta';
+import { ResumeManager } from './translation/resume-manager.js?v=20261114-publication';
 import { QuickTestManager } from './translation/quick-test.js?v=20260628-transform-glossary';
 import { TextTransformManager } from './translation/text-transform-manager.js?v=20260705-transform-flow';
 import { ProfilePrepManager } from './translation/profile-prep-manager.js?v=20260710-profile-recovery';
@@ -331,8 +331,8 @@ function wireModuleEvents() {
     });
 
     // Process next file in queue (from TranslationTracker)
-    window.addEventListener('processNextFile', () => {
-        BatchController.processNextFileInQueue();
+    window.addEventListener('processNextFile', ({ detail }) => {
+        BatchController.processNextFileInQueue(detail);
     });
 
     // WebSocket events -> module handlers

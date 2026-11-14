@@ -27,6 +27,7 @@ _INTERNAL_RUNTIME_KEYS = {
     "_candidate_results",
     "_source_guard_refs",
     "_source_guard_refs_loaded",
+    "_publication_intent",
 }
 
 _VERBOSE_LOG_DATA_KEYS = {

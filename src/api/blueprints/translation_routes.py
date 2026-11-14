@@ -519,7 +519,8 @@ def create_translation_blueprint(
         start_translation_job: Function to start translation jobs
     """
     bp = Blueprint('translation', __name__)
-    managed_uploads = Path(output_dir or OUTPUT_DIR) / 'uploads'
+    output_root = Path(output_dir or OUTPUT_DIR)
+    managed_uploads = output_root / 'uploads'
 
     @bp.route('/api/translate', methods=['POST'])
     def start_translation_request():
@@ -899,6 +900,8 @@ def create_translation_blueprint(
 
             job_data = state_manager.get_translation(translation_id)
             status = job_data.get('status')
+            if job_data.get('publication_committed'):
+                return jsonify({"error": "The final file has already been saved."}), 409
             recovery_was_scheduled = bool(
                 state_manager.get_translation_field(
                     translation_id, 'recovery_scheduled'
@@ -992,7 +995,13 @@ def create_translation_blueprint(
         for job in resumable_jobs:
             cfg = job.get('config')
             if isinstance(cfg, dict):
+                job['publication_error'] = cfg.get('publication_error')
                 job['config'] = _client_safe_config(cfg)
+            name = str(job.get('output_filename') or '')
+            if name.startswith('[partial] ') and PathValidator.validate_filename(name)[0]:
+                draft = output_root / name
+                if draft.is_file() and not draft.is_symlink():
+                    job['draft_filename'] = name
         return jsonify({"resumable_jobs": resumable_jobs})
 
     @bp.route('/api/resume/<translation_id>', methods=['POST'])
@@ -1204,6 +1213,10 @@ def create_translation_blueprint(
                 else "Translation resumed successfully"
             ),
             "resume_from_chunk": checkpoint_data['resume_from_index'],
+            "finalization_only": bool(
+                checkpoint_data.get('checkpoint_complete')
+                and not checkpoint_data.get('failed_chunk_indices')
+            ),
             "model": config.get('model'),
             "llm_provider": config.get('llm_provider'),
             "worker_state": start_result,

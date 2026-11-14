@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -36,7 +37,8 @@ def require_sha256(value: object) -> str:
 
 
 def atomic_publish(
-    source: str | Path, destination: str | Path, *, expected_sha256: str | None = None
+    source: str | Path, destination: str | Path, *, expected_sha256: str | None = None,
+    before_commit: Callable[[Path], None] | None = None,
 ) -> Path:
     """Publish a caller-validated snapshot without replacing any existing entry.
 
@@ -44,6 +46,7 @@ def atomic_publish(
     delivered file. The exclusive hard link is the commit point; a check followed
     by replace would still overwrite a concurrent delivery. Unsupported
     filesystems fail closed and retain the source, never fall back to overwrite.
+    The optional callback records the chosen path before that commit point.
     """
     source = Path(source)
     if expected_sha256 is not None:
@@ -71,6 +74,10 @@ def atomic_publish(
                     f"{destination.stem} ({index}){destination.suffix}"
                 )
             )
+            if before_commit is not None:
+                if os.path.lexists(candidate):
+                    continue
+                before_commit(candidate)
             try:
                 os.link(temporary, candidate)
             except FileExistsError:

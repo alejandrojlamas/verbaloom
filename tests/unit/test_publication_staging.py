@@ -95,6 +95,37 @@ def test_staging_hides_drafts_and_reports_follow_committed_name(tmp_path):
     assert source.exists()
 
 
+def test_persists_the_exact_chosen_filename_before_publication(tmp_path):
+    source = tmp_path / "candidate.epub"
+    desired = tmp_path / "book.epub"
+    source.write_bytes(b"validated")
+    desired.write_bytes(b"previous")
+    seen = []
+
+    def record(candidate):
+        assert not candidate.exists()
+        seen.append(candidate)
+
+    published = publication.atomic_publish(
+        source, desired, expected_sha256=publication.artifact_sha256(source), before_commit=record,
+    )
+    assert seen == [published]
+    assert published.read_bytes() == b"validated"
+    assert desired.read_bytes() == b"previous"
+
+
+def test_does_not_expose_artifact_when_recording_intent_fails(tmp_path):
+    source = tmp_path / "candidate.epub"
+    source.write_bytes(b"validated")
+    desired = tmp_path / "book.epub"
+    with pytest.raises(OSError):
+        publication.atomic_publish(
+            source, desired, before_commit=Mock(side_effect=OSError("database unavailable")),
+        )
+    assert not desired.exists()
+    assert source.read_bytes() == b"validated"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("converted", [False, True])
 @pytest.mark.parametrize(
@@ -196,7 +227,7 @@ async def test_web_worker_keeps_previous_delivery_until_all_gates_pass(
             root=tmp_path / "qa", report_html=tmp_path / "qa/report.html"
         ),
         report=SimpleNamespace(
-            status=SimpleNamespace(value="PASS" if verdict == "pass" else "BLOCKED"),
+            status=SimpleNamespace(value="PASSED" if verdict == "pass" else "BLOCKED"),
             repair_units=[],
         ),
         update_output_path=Mock(),

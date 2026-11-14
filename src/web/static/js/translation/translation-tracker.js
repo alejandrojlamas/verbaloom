@@ -619,8 +619,10 @@ export const TranslationTracker = {
             this.updateActiveTranslationsState();
         } else if (data.status === 'partial') {
             MessageLogger.resetProgressTracking();
+            const partialMessage = data.stats?.live_status
+                || t('translation:job_card_partial_title', { count: data.stats?.failed_chunks || 0 });
             this.finishCurrentFileTranslation(
-                data.stats?.live_status || t('translation:job_card_partial_title', { count: data.stats?.failed_chunks || 0 }),
+                data.stats?.publication_error ? `${partialMessage}: ${data.stats.publication_error}` : partialMessage,
                 'warning',
                 data
             );
@@ -784,6 +786,7 @@ export const TranslationTracker = {
             text_transform_label: transformMeta.label,
             operation: transformMeta.isTransform ? 'transform' : undefined,
             live_status: job.live_status || this._deriveLiveStatus(job),
+            publication_error: job.publication_error,
             live_status_kind: job.live_status_kind || this._deriveLiveStatusKind(job),
             live_activity_event: job.live_activity_event,
             last_activity_at: job.last_activity_at,
@@ -980,6 +983,9 @@ export const TranslationTracker = {
         const currentFile = currentJob.fileRef;
         currentFile.status = resultData.status || 'unknown_error';
         currentFile.result = resultData.result;
+        if (resultData.status === 'partial') {
+            DomHelpers.hide('progressSection');
+        }
 
         MessageLogger.showMessage(statusMessage, messageType);
         this.updateFileStatusInList(
@@ -987,7 +993,7 @@ export const TranslationTracker = {
             resultData.status === 'completed' ? 'Completed' :
             resultData.status === 'interrupted' ? 'Interrupted' :
             resultData.status === 'rate_limited' ? 'Rate Limited' :
-            resultData.status === 'partial' ? t('translation:job_card_finalization_pending') : 'Error'
+            resultData.status === 'partial' ? 'Partial' : 'Error'
         );
 
         if (resultData.status === 'completed') {
@@ -1006,7 +1012,7 @@ export const TranslationTracker = {
             MessageLogger.addLog(t('translation:batch_paused_log'));
             this.resetUIToIdle();
         } else {
-            this.processNextFileInQueue();
+            this.processNextFileInQueue(resultData.status === 'partial');
         }
     },
 
@@ -1269,9 +1275,9 @@ export const TranslationTracker = {
     /**
      * Process next file in queue (delegates to batch-controller when available)
      */
-    processNextFileInQueue() {
+    processNextFileInQueue(partial = false) {
         // Trigger event for batch controller to handle
-        window.dispatchEvent(new CustomEvent('processNextFile'));
+        window.dispatchEvent(new CustomEvent('processNextFile', { detail: { partial } }));
     },
 
     /**
@@ -1322,6 +1328,15 @@ export const TranslationTracker = {
 
         try {
             const serverState = await ApiClient.getTranslationStatus(currentJob.translationId);
+            if (StateManager.getState('translation.currentJob')?.translationId !== currentJob.translationId) return;
+            if (['completed', 'partial'].includes(serverState.status)) {
+                this.handleTranslationUpdate({
+                    ...serverState,
+                    translation_id: currentJob.translationId,
+                    output_filename: serverState.config?.output_filename,
+                });
+                return;
+            }
             if (TERMINAL_STATUSES.has(serverState.status)
                 || !ACTIVE_STATUSES.has(serverState.status)) {
                 MessageLogger.addLog(t('translation:session_sync_log', { status: serverState.status || 'missing' }));
