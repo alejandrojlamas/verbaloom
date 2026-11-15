@@ -11,6 +11,7 @@ EDITORIAL_MODELS = {"gpt-6-luna": "GPT-6 Luna", "gpt-6.1-terra": "GPT-6.1 Terra"
 REASONING_EFFORTS = {"none", "low", "medium", "high", "xhigh", "max"}
 MAX_OUTPUT_TOKENS = 128_000
 MAX_CONTEXT_TOKENS = 1_050_000
+SERVICE_TIERS = ("default", "flex")
 
 
 def editorial_equivalent(model):
@@ -22,7 +23,8 @@ def editorial_equivalent(model):
     return DEEPSEEK_TIER_EQUIVALENTS.get(str(model or "").strip().lower(), model)
 
 
-def text_parameters(model, *, effort, max_output_tokens, temperature=None):
+def text_parameters(model, *, effort, max_output_tokens, temperature=None,
+                    service_tier="default"):
     if model not in EDITORIAL_MODELS:
         return {}
     if effort not in REASONING_EFFORTS:
@@ -31,8 +33,10 @@ def text_parameters(model, *, effort, max_output_tokens, temperature=None):
         raise TypeError("OpenAI output limit must be an integer")
     if not 1 <= max_output_tokens <= MAX_OUTPUT_TOKENS:
         raise ValueError("OpenAI output limit is outside the supported range")
+    if service_tier not in SERVICE_TIERS:
+        raise ValueError("Unsupported OpenAI service tier")
     result = {"reasoning_effort": effort, "max_completion_tokens": max_output_tokens,
-              "service_tier": "default", "prompt_cache_options": {"ttl": "30m"}}
+              "service_tier": service_tier, "prompt_cache_options": {"ttl": "30m"}}
     if effort == "none" and temperature is not None:
         result["temperature"] = temperature
     return result

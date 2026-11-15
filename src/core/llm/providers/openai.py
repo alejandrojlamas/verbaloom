@@ -47,12 +47,40 @@ class OpenAICompatibleProvider(LLMProvider):
         self.provider_name = provider_name
         self.reasoning_effort = reasoning_effort
         self.max_output_tokens = max_output_tokens
+        self._flex_blocked_until = 0.0
         if self._is_official_openai_endpoint():
             text_parameters(model, effort=reasoning_effort, max_output_tokens=max_output_tokens)
 
     def _is_official_openai_endpoint(self) -> bool:
         """Check if the endpoint is the official OpenAI API."""
         return endpoint_origin(self.api_endpoint) == "https://api.openai.com"
+
+    def _editorial_service_tier(self) -> str:
+        """Use the explicit deployment choice, with a capacity-only cooldown."""
+        import src.config as config
+
+        tier = config.OPENAI_SERVICE_TIER
+        if tier == "flex" and time.monotonic() < self._flex_blocked_until:
+            return "default"
+        return tier
+
+    @staticmethod
+    def _is_error_only_envelope(body) -> bool:
+        """Do not infer free rejection from a response carrying other evidence.
+
+        Error bodies are normally inspected before completion normalization.
+        Restrict zero-charge capacity handling to the standard error envelope
+        so usage, generated content or an unfamiliar shape cannot be discarded
+        and subsequently mistaken for an unbilled request.
+        """
+        if not isinstance(body, dict) or set(body) != {"error"}:
+            return False
+        error = body["error"]
+        return (
+            isinstance(error, dict)
+            and not set(error) - {"code", "type", "message", "param"}
+            and all(value is None or isinstance(value, str) for value in error.values())
+        )
 
     def _is_local_endpoint(self) -> bool:
         """Check if the endpoint is a local server (llama.cpp, vLLM, LM Studio, etc.)."""
@@ -120,6 +148,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload.update(text_parameters(
                 self.model, effort=self.reasoning_effort,
                 max_output_tokens=self.max_output_tokens, temperature=temperature,
+                service_tier=self._editorial_service_tier(),
             ))
 
         # Only add thinking-disable params for local servers (llama.cpp, vLLM, LM Studio)
@@ -149,7 +178,11 @@ class OpenAICompatibleProvider(LLMProvider):
             attempt_status = "error"
             error_type = ""
             error_reason = ""
-            reservation_id = reserve_attempt(endpoint=self.api_endpoint, payload=payload,
+            force_uncertain_billing = False
+            # Keep the sent tier intact for the ledger if a later attempt
+            # switches to standard processing after an explicit capacity error.
+            attempt_payload = payload
+            reservation_id = reserve_attempt(endpoint=self.api_endpoint, payload=attempt_payload,
                                              attempt=attempt + 1)
             started_at = time.time()
             started = time.perf_counter()
@@ -157,7 +190,7 @@ class OpenAICompatibleProvider(LLMProvider):
             try:
                 try:
                     response = await client.post(
-                        self.api_endpoint, json=payload, headers=headers, timeout=timeout,
+                        self.api_endpoint, json=attempt_payload, headers=headers, timeout=timeout,
                     )
                 finally:
                     http_finished = time.perf_counter()
@@ -254,6 +287,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 error_message = str(e)
                 error_body = ""
                 error_code = ""
+                error_json = None
                 if hasattr(e, 'response') and hasattr(e.response, 'text'):
                     error_body = e.response.text[:500]
                     try:
@@ -280,7 +314,41 @@ class OpenAICompatibleProvider(LLMProvider):
                         f"Provider request blocked: {reason}.", reason=reason, provider=self.provider_name,
                     )
 
-                # Handle rate limiting (429) — rotate key or sleep, raise if exhausted
+                if (e.response.status_code == 429
+                        and error_code == "resource_unavailable"
+                        and attempt_payload.get("service_tier") == "flex"):
+                    if not self._is_error_only_envelope(error_json):
+                        error_type = "ambiguous_capacity_rejection"
+                        error_reason = "flex_capacity_evidence_conflict"
+                        force_uncertain_billing = True
+                        raise ProviderActionRequiredError(
+                            "OpenAI Flex returned inconsistent capacity-error evidence; "
+                            "billing remains uncertain and no fallback was sent.",
+                            reason=error_reason, provider=self.provider_name,
+                        )
+                    import src.config as config
+
+                    error_reason = "flex_unavailable"
+                    self._flex_blocked_until = (
+                        time.monotonic() + config.OPENAI_FLEX_COOLDOWN_SECONDS
+                    )
+                    if attempt >= MAX_TRANSLATION_ATTEMPTS - 1:
+                        raise RateLimitError(
+                            "OpenAI Flex capacity unavailable; request-attempt limit reached.",
+                            provider=self.provider_name,
+                        )
+                    if self.log_callback:
+                        self.log_callback(
+                            "openai_flex_fallback",
+                            "OpenAI Flex reported unavailable capacity; retrying on the "
+                            "standard tier within the configured request and spend limits.",
+                        )
+                    payload = {**attempt_payload, "service_tier": "default"}
+                    continue
+
+                # Handle genuine rate limiting (429) unchanged. A timeout is
+                # also left to the existing retry/deadline policy: it does not
+                # prove that an unbilled request failed for lack of capacity.
                 if (hasattr(e, 'response') and e.response is not None
                         and e.response.status_code == 429 and self._key_pool):
                     await handle_rate_limit(
@@ -454,13 +522,15 @@ class OpenAICompatibleProvider(LLMProvider):
                         "error": error_type,
                         "reason": error_reason,
                         "usage_unknown": not bool(result and result.raw_usage),
-                        "billing_uncertain": not bool(result and result.raw_usage) and (
-                            http_status is None or http_status >= 500 or http_status == 200
+                        "billing_uncertain": force_uncertain_billing or (
+                            not bool(result and result.raw_usage) and (
+                                http_status is None or http_status >= 500 or http_status == 200
+                            )
                         ),
-                        "parameters": {key: payload[key] for key in (
+                        "parameters": {key: attempt_payload[key] for key in (
                             "model", "reasoning_effort", "max_completion_tokens", "temperature", "stream",
                             "service_tier", "prompt_cache_options",
-                        ) if key in payload},
+                        ) if key in attempt_payload},
                     },
                 )
 

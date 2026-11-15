@@ -633,6 +633,20 @@ is then paid for again on resume, so the default persists each unit. The write
 is a local atomic JSON replace and is negligible next to one model request.
 """
 
+OPENAI_SERVICE_TIER = os.getenv('OPENAI_SERVICE_TIER', 'default').strip().lower()
+"""Optional processing tier for official OpenAI editorial models.
+
+The standard tier remains the default. Flex can trade latency and availability
+for lower prices; only an explicit resource-unavailable response is eligible
+for standard-tier fallback. Invalid tiers fail before the provider request.
+"""
+
+OPENAI_FLEX_COOLDOWN_SECONDS = max(
+    0,
+    int(os.getenv('OPENAI_FLEX_COOLDOWN_SECONDS', '600')),
+)
+"""Time to use the standard tier after Flex explicitly reports no capacity."""
+
 EPUB_DEFER_FAILED_FILES = os.getenv('EPUB_DEFER_FAILED_FILES', 'true').lower() == 'true'
 """Keep translating the remaining XHTML files after one file fails.
 

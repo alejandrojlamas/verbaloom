@@ -287,11 +287,31 @@ class TokenUsageStore:
         write_12h = max(0, int(write_details.get("ttl_12h_tokens") or 0))
         write_30m = max(0, int(write_details.get("ttl_30m_tokens", writes - write_12h)))
         observed = metadata.get("usage_observed", bool(prompt_tokens or completion_tokens) and not estimated)
+        # Only the official Flex capacity rejection is documented as unbilled.
+        # Missing usage by itself proves nothing: all other failed/uncertain
+        # requests retain their allowance, including ordinary rate limits.
+        unbilled_capacity = (
+            provider == "openai"
+            and model in OPENAI_EDITORIAL_PRICING
+            and status == "error"
+            and metadata.get("scope") == "http_attempt"
+            and metadata.get("http_status") == 429
+            and metadata.get("error") == "http_error"
+            and metadata.get("reason") == "flex_unavailable"
+            and parameters.get("service_tier") == "flex"
+            and metadata.get("billing_uncertain") is False
+            and not observed and not estimated and not raw_usage
+            and not prompt_tokens and not completion_tokens and not total_tokens
+            and not prompt_cache_hit_tokens and not prompt_cache_miss_tokens
+            and not response_content
+        )
         unknown = not observed and not estimated
         if metadata.get("billing_uncertain") or (not observed and metadata.get("scope") == "http_attempt"):
             unknown = True
         if writes + prompt_cache_hit_tokens > prompt_tokens or write_12h + write_30m != writes:
             unknown = True
+        if unbilled_capacity:
+            unknown = False
         input_cost, output_cost, total_cost = calculate_usage_cost(
             pricing or {}, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
             prompt_cache_hit_tokens=prompt_cache_hit_tokens,
@@ -303,7 +323,9 @@ class TokenUsageStore:
         metadata.update({
             "pricing_snapshot": pricing,
             "pricing_url": OPENAI_PRICING_SOURCE if provider == "openai" and model in OPENAI_EDITORIAL_PRICING else None,
-            "cost_basis": "unknown" if unknown or pricing is None else ("estimated" if estimated else "provider_usage"),
+            "cost_basis": "unbilled_rejection" if unbilled_capacity else (
+                "unknown" if unknown or pricing is None else ("estimated" if estimated else "provider_usage")
+            ),
             "cash_paid_usd": None, "credits_applied_usd": None,
             "cache_write_30m_tokens": write_30m, "cache_write_12h_tokens": write_12h,
         })
@@ -366,7 +388,9 @@ class TokenUsageStore:
             if metadata.get("budget_reservation_id"):
                 SpendBudget.settle_in_transaction(
                     conn, metadata["budget_reservation_id"], event_id=event_id,
-                    actual_usd=total_cost if metadata["cost_basis"] == "provider_usage" else None,
+                    actual_usd=total_cost if metadata["cost_basis"] in {
+                        "provider_usage", "unbilled_rejection",
+                    } else None,
                 )
             return event_id
 

@@ -2983,6 +2983,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     output_filepath_on_server,
                     config=config,
                     log_callback=_log_message_callback,
+                    cache_path=(checkpoint_manager.uploads_dir / translation_id / "paragraph_alignment.json"),
                     message="Realineando párrafos antes de validar el EPUB.",
                     metadata={'output_format': 'epub', 'scope': 'paragraph_alignment'},
                 )

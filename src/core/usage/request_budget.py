@@ -6,6 +6,7 @@ from src.core.llm.providers.openai_contract import (
     EDITORIAL_MODELS,
     MAX_CONTEXT_TOKENS,
     MAX_OUTPUT_TOKENS,
+    SERVICE_TIERS,
 )
 from src.core.pricing.pricing_data import (
     DEEPSEEK_PRICING_EFFECTIVE_AT,
@@ -23,6 +24,8 @@ def request_bound(provider, endpoint, payload):
 
     Deliberately conservative: the pilot can serialize Terra requests within
     USD 5. Unknown contracts/tier/tool charges fail before network activity.
+    Flex keeps the same standard-rate bound; a fallback reserves another
+    attempt before sending any bytes, and uncertain attempts retain theirs.
     """
     if provider == "deepseek":
         return _deepseek_bound(endpoint, payload)
@@ -43,7 +46,7 @@ def request_bound(provider, endpoint, payload):
         or endpoint_origin(endpoint) != "https://api.openai.com"
         or payload.get("model") not in EDITORIAL_MODELS
         or set(payload) - allowed
-        or payload.get("service_tier") != "default"
+        or payload.get("service_tier") not in SERVICE_TIERS
         or payload.get("prompt_cache_options") != {"ttl": "30m"}
         or payload.get("stream") is not False
         or type(output) is not int
