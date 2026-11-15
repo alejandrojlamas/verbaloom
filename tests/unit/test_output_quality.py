@@ -3,6 +3,20 @@ import zipfile
 from src.core.output_quality import analyze_output_file
 
 
+def test_output_diagnostic_preserves_stretched_word_without_flagging_a_pronoun(tmp_path):
+    output = tmp_path / "dialogue.txt"
+    text = "—¡Oh, Dio-os! —gritó, alargando la palabra."
+    output.write_text(text, encoding="utf-8")
+    report = analyze_output_file(output)
+    assert report["status"] == "pass"
+    assert report["mexican_spanish"]["total"] == 0
+    assert output.read_text(encoding="utf-8") == text
+    output.write_text(text + "\n—os dije que volvería.", encoding="utf-8")
+    report = analyze_output_file(output)
+    assert report["status"] == "fail"
+    assert report["mexican_spanish"]["counts"]["os_pronoun"] == 1
+
+
 def test_analyze_output_file_reports_mexican_editorial_suggestions(tmp_path):
     output = tmp_path / "under_the_volcano.txt"
     output.write_text(

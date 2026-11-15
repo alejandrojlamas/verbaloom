@@ -85,3 +85,9 @@ proof from `technical_identifiers.py`; intact URL punctuation is not a spacing
 error, while joined prose immediately before or after it remains a failure.
 Entity comparison still rejects a modified URL. No paragraph or quality gate
 is exempted, and literal spans are recalculated after every formatter pass.
+
+The optional download diagnostic also misread a hyphenated, elongated word
+ending in `-os` as the standalone regional pronoun. Its shared locale matcher
+now treats hyphen-linked syllables as part of a word while retaining ordinary
+pronouns after dialogue dashes, spaces, and punctuation. This only corrects
+diagnostic token boundaries; it does not alter the published book.

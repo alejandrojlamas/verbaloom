@@ -1,3 +1,5 @@
+import pytest
+
 from src.core.locale_quality import (
     build_mexican_spanish_repair_instructions,
     build_spanish_modernization_repair_instructions,
@@ -7,6 +9,18 @@ from src.core.locale_quality import (
     is_mexican_spanish_target,
     mexican_spanish_issue_catalog,
 )
+
+
+@pytest.mark.parametrize("text", ["¡Oh, Dio-os!", "¡Oh, Dio‐os!", "¡Oh, Dio‑os!", "os-curo"])
+def test_os_pronoun_does_not_match_hyphenated_word_syllables(text):
+    assert count_mexican_spanish_issues(text).get("os_pronoun", 0) == 0
+    assert "os_pronoun" not in collect_mexican_spanish_issue_examples(text)
+
+
+@pytest.mark.parametrize("text", ["—os dije", "-os dije", "¿os dije?", "(os dije)", "dijo—os dije", "os, dije"])
+def test_os_pronoun_remains_detectable_at_dialogue_and_punctuation_boundaries(text):
+    assert count_mexican_spanish_issues(text)["os_pronoun"] == 1
+    assert collect_mexican_spanish_issue_examples(text)["os_pronoun"] == ["os"]
 
 
 def test_detects_peninsular_forms_for_mexican_spanish_guard():

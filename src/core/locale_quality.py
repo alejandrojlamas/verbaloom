@@ -24,7 +24,8 @@ _MEXICAN_SPANISH_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("chiton", re.compile(r"\bchit[oó]n\b", re.IGNORECASE)),
     ("avispaos", re.compile(r"\bavisaos\b|\bavispaos\b", re.IGNORECASE)),
     ("vosotros", re.compile(r"\bvosotros\b|\bvosotras\b", re.IGNORECASE)),
-    ("os_pronoun", re.compile(r"\bos\b", re.IGNORECASE)),
+    # Hyphen-linked syllables belong to a word; dialogue dashes remain punctuation.
+    ("os_pronoun", re.compile(r"(?<!\w[-\u2010\u2011])\bos\b(?![-\u2010\u2011]\w)", re.IGNORECASE)),
     ("sois", re.compile(r"\bsois\b", re.IGNORECASE)),
     ("estais", re.compile(r"\best[aá]is\b", re.IGNORECASE)),
     ("habeis", re.compile(r"\bhab[eé]is\b|\bhabr[eé]is\b", re.IGNORECASE)),
