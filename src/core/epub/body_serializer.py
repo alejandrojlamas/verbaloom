@@ -4,12 +4,89 @@ Body serialization for simplified EPUB processing
 This module handles extracting and replacing the content of <body> elements
 in XHTML documents, enabling full-document translation instead of per-element processing.
 """
-from lxml import etree
-from typing import Tuple, Optional
+from copy import deepcopy
 import re
+from typing import Optional, Tuple
+
+from lxml import etree
 
 from src.utils.unified_logger import info, LogType
 from .exceptions import XmlParsingError, BodyExtractionError
+
+_SMALL_CAPS_CLASS = re.compile(r"small[0-9]*|small[-_]?caps?|smallcaps[0-9]*", re.I)
+_DROP_CAP_CLASS = re.compile(r"drop[-_]?cap(?:ital)?s?[0-9]*|lettrine[0-9]*|initial[-_]letter", re.I)
+_HEADINGS = {f"h{i}" for i in range(1, 7)}
+
+
+def _join_decorative_initials(body: etree._Element) -> None:
+    """Make typographically split words atomic for translation, keeping the DOM."""
+    for block in body.iter():
+        if not isinstance(block.tag, str):
+            continue
+        tag = etree.QName(block).localname
+        if tag not in _HEADINGS and tag != "p":
+            continue
+        if any(
+            isinstance(ancestor.tag, str) and etree.QName(ancestor).localname in {"pre", "code"}
+            for ancestor in block.iterancestors()
+        ):
+            continue
+        # Keep page anchors in place, including those before a chapter title.
+        children = list(block)
+        preceding, attribute = block, "text"
+        while children:
+            first = children[0]
+            if (
+                (getattr(preceding, attribute) or "").strip()
+                or not isinstance(first.tag, str) or etree.QName(first).localname != "a"
+                or first.text or len(first) or not first.get("id") or set(first.attrib) != {"id"}
+            ):
+                break
+            preceding, attribute = children.pop(0), "tail"
+        if not children:
+            continue
+        prefix = getattr(preceding, attribute) or ""
+
+        if tag in _HEADINGS and all(
+            isinstance(child.tag, str) and etree.QName(child).localname == "span"
+            and not len(child) and set(child.attrib) == {"class"}
+            and all(_SMALL_CAPS_CLASS.fullmatch(name) for name in child.get("class").split())
+            and child.get("class").strip()
+            for child in children
+        ):
+            # Require a word broken between an uppercase initial and its span.
+            # Without that evidence, these are ordinary editorial styles.
+            left = prefix
+            split_word = False
+            for child in children:
+                right = child.text or ""
+                initial = re.search(r"(?<!\w)([^\W\d_])$", left)
+                if initial and initial.group().isupper() and right[:1].isalpha():
+                    split_word = True
+                left = child.tail or ""
+            if split_word:
+                setattr(preceding, attribute, prefix + "".join(
+                    (child.text or "") + (child.tail or "") for child in children
+                ))
+                for child in children:
+                    child.text = child.tail = None
+            continue
+
+        first = children[0]
+        if (
+            prefix.strip(" \t\r\n\u00a0\"'\u00ab\u2018\u201c") or not isinstance(first.tag, str)
+            or etree.QName(first).localname != "span" or len(first)
+            or set(first.attrib) != {"class"}
+            or not any(_DROP_CAP_CLASS.fullmatch(name) for name in first.get("class").split())
+        ):
+            continue
+        letter = (first.text or "").strip()
+        rest = first.tail or ""
+        if len(letter) == 1 and letter.isupper() and rest.lstrip()[:1].isalpha():
+            # Respect a real space (e.g. a drop cap on the article "A").
+            # A fused lexical word is otherwise sent intact, not split by tags.
+            first.tail = letter + rest
+            first.text = None
 
 
 def normalize_whitespace(html: str) -> str:
@@ -86,7 +163,9 @@ def normalize_whitespace(html: str) -> str:
 
 def extract_body_html(
     doc_root: etree._Element,
-    normalize: bool = True
+    normalize: bool = True,
+    *,
+    join_decorative_initials: bool = False,
 ) -> Tuple[str, Optional[etree._Element]]:
     """
     Extract the HTML content of <body> as a string.
@@ -94,6 +173,8 @@ def extract_body_html(
     Args:
         doc_root: Root of the parsed XHTML document
         normalize: If True, normalize excessive whitespace (default: True)
+        join_decorative_initials: Move ornamental initial letters into readable
+            words for the model without mutating the original DOM.
 
     Returns:
         Tuple (body_inner_html, body_element)
@@ -108,7 +189,11 @@ def extract_body_html(
         return "", None
 
     # Serialize the inner content of body (without the <body> tag itself)
-    inner_html = etree.tostring(body, encoding='unicode', method='html')
+    serialized_body = body
+    if join_decorative_initials:
+        serialized_body = deepcopy(body)
+        _join_decorative_initials(serialized_body)
+    inner_html = etree.tostring(serialized_body, encoding='unicode', method='html')
 
     # Remove the outer <body> tags
     # <body class="x">content</body> → content

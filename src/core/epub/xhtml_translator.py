@@ -1876,7 +1876,7 @@ def _setup_translation(
         Tuple of (body_html, body_element, tag_preserver)
     """
     # Extract body
-    body_html, body_element = extract_body_html(doc_root)
+    body_html, body_element = extract_body_html(doc_root, join_decorative_initials=True)
 
     # Initialize tag preserver (use container if provided, otherwise create directly)
     if container is not None:
@@ -3579,7 +3579,7 @@ candidate with every placeholder preserved."""
         if log_callback:
             log_callback(
                 "epub_audit_local_repair_unchanged",
-                "Issue-local repair returned the same candidate; stopping without a rewrite",
+                "Issue-local repair returned the same candidate",
             )
         return PlaceholderManager.restore_to_global(candidate_text, list(chunk.get("global_indices") or []))
     repaired_global = PlaceholderManager.restore_to_global(
@@ -3864,11 +3864,6 @@ async def _audit_epub_unit(
             "Saved provider refusal requires review; the request was not repeated.",
             reason="provider_refusal", provider=getattr(llm_client, "provider_type", ""),
         )
-    # Older checkpoints stopped at the first non-improving repair even when
-    # another round was already permitted. Keep all saved candidates/counters.
-    if (journal.get("stop_reason") in {"repair_attempts_exhausted", "repair_no_improvement"}
-            and bounded_count(record.get("audit_repair_attempts", 0)) < repair_rounds):
-        journal["stop_reason"] = ""
     if journal.get("stop_reason") == "audit_attempts_exhausted":
         # Re-evaluate the saved counters against an explicitly larger allowance.
         # judge() still enforces both per-phase and cumulative limits before I/O.
@@ -3903,6 +3898,11 @@ async def _audit_epub_unit(
                         "epub_audit_local_recheck",
                         f"Revalidated saved audit unit {idx + 1} against the current language gate",
                     )
+        if journal.get("stop_reason") and bounded_count(record.get("audit_repair_attempts", 0)) < repair_rounds:
+            # Older checkpoints could stop before the reserved rounds were used.
+            if stop_reason == "repair_repeated_candidate":
+                journal["repeated_repair_base"] = best["hash"]
+            journal["stop_reason"] = ""
     if journal.get("stop_reason"):
         if journal["stop_reason"] in {"repair_attempts_exhausted", "repair_no_improvement", "repair_repeated_candidate"}:
             return await finish_repair(journal["stop_reason"])
@@ -3964,6 +3964,14 @@ async def _audit_epub_unit(
                     if key.startswith("judge_") and key not in {"judge_model", "judge_provider", "judge_confidence"}
                 }
                 break
+        if journal.get("repeated_repair_base") == best["hash"]:
+            repair_feedback = {
+                **(repair_feedback or {}),
+                "repeated_candidate": (
+                    "The previous repair repeated an already rejected candidate. "
+                    "Locate the cited defect in its sentence and make a different, minimal correction."
+                ),
+            }
 
         repair_options = build_fidelity_retry_prompt_options(audit_options, best_decision)
         repair_options["repair_until_pass"] = False
@@ -4012,7 +4020,11 @@ async def _audit_epub_unit(
             continue
         entry = new_candidate(repaired, origin="fidelity_repair", base_hash=best["hash"])
         if any(prior["hash"] == entry["hash"] for prior in entries):
-            return await finish_repair("repair_repeated_candidate")
+            journal["repeated_repair_base"] = best["hash"]
+            if bounded_count(record.get("audit_repair_attempts", 0)) >= repair_rounds:
+                return await finish_repair("repair_repeated_candidate")
+            save("repair_rejected", reason="repair_repeated_candidate")
+            continue
         entries.append(entry)
         journal["pending"] = len(entries) - 1
         # Keep the selected reviewed text in the translation prefix. The paid
@@ -4182,8 +4194,15 @@ async def translate_xhtml_simplified(
                 prompt_options.pop('fidelity_repair_policy', None)
 
     prompt_options = with_profile_dependency(prompt_options)
-    current_body_html, _current_body = extract_body_html(doc_root)
-    current_source_document_hash = text_sha256(current_body_html or "")
+    current_body_html, _current_body = extract_body_html(doc_root, join_decorative_initials=True)
+    normalized_source_hash = text_sha256(current_body_html or "")
+    current_source_document_hash = normalized_source_hash
+    if resume_state and resume_state.source_document_hash != current_source_document_hash:
+        legacy_body, _ = extract_body_html(doc_root)
+        legacy_hash = text_sha256(legacy_body or "")
+        if resume_state.source_document_hash == legacy_hash:
+            # Existing translated prefixes still refer to their original slots.
+            current_source_document_hash = legacy_hash
     current_stage_fingerprints = build_epub_stage_fingerprints(
         source_language=source_language,
         target_language=target_language,
@@ -4272,6 +4291,9 @@ async def translate_xhtml_simplified(
                     "Checkpoint ignored because its source hash, prompt, model, or pipeline version is stale.",
                 )
             resume_state = None
+
+    if not resume_state:
+        current_source_document_hash = normalized_source_hash
 
     # === RESUME FROM PARTIAL STATE ===
     if resume_state:

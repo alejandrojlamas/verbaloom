@@ -325,8 +325,37 @@ async def test_same_or_invalid_repairs_are_finite_across_resume(
             await run(chunks, candidates)
         chunks = json.loads(json.dumps(chunks))
     assert calls.count("audit") == 1
-    assert calls.count("repair") == (1 if replacement else 2)
+    assert calls.count("repair") == 2
     assert candidates == [ORIGINAL]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_duplicate_candidate_does_not_skip_remaining_repair(monkeypatch, legacy):
+    chunks, candidates = fixture()
+    audits, feedback = [], []
+
+    async def audit(source, candidate, **kwargs):
+        audits.append(candidate)
+        return verdict(source, candidate, candidate == REPAIRED, ["tense"] if candidate != REPAIRED else [])
+
+    async def repair(**kwargs):
+        feedback.append(kwargs["repair_feedback"])
+        return ORIGINAL if len(feedback) == 1 else REPAIRED
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+    monkeypatch.setattr(subject, "_repair_audited_candidate", repair)
+    if legacy:
+        with pytest.raises(ChunkTranslationFailedError, match="repair_repeated_candidate"):
+            await run(chunks, candidates, options={**OPTIONS, "max_repair_rounds": 1})
+        chunks = json.loads(json.dumps(chunks))
+        chunks[0]["unit"]["audit_repair"].pop("repeated_repair_base")
+
+    assert await run(chunks, candidates) == [REPAIRED]
+    assert audits == [ORIGINAL, REPAIRED]
+    assert len(feedback) == 2
+    assert "repeated_candidate" in feedback[-1]
+    assert chunks[0]["unit"]["audit_repair_attempts"] == 2
 
 
 @pytest.mark.asyncio

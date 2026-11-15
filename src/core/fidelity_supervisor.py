@@ -941,7 +941,17 @@ def _source_language_residual_issue(
     ambiguous_short_phrases: list[tuple[str, float]] = []
     ambiguous_vocatives: list[tuple[str, float]] = []
     bibliographic_metadata: list[tuple[str, float]] = []
+    postal_metadata: list[tuple[str, float]] = []
     if copied_phrases:
+        shared_contacts = _shared_printed_postal_contacts(analysis_source, analysis_candidate)
+        postal_metadata = [
+            item for item in copied_phrases
+            if any(
+                f" {' '.join(_ordered_surface_tokens(item[0])).casefold()} " in contact
+                for contact in shared_contacts
+            )
+        ]
+        copied_phrases = [item for item in copied_phrases if item not in postal_metadata]
         bibliographic_metadata = [
             item
             for item in copied_phrases
@@ -1045,7 +1055,7 @@ def _source_language_residual_issue(
 
     contextual_phrases = (
         stylized_sound_effects + ambiguous_short_phrases + ambiguous_vocatives
-        + contextual_dialogue + bibliographic_metadata
+        + contextual_dialogue + bibliographic_metadata + postal_metadata
     )
     source_tokens = _surface_token_map(analysis_source)
     candidate_tokens = _surface_token_map(analysis_candidate)
@@ -2401,6 +2411,30 @@ _LANGUAGE_NEUTRAL_LITERAL_RE = re.compile(
     r"|@[a-z0-9_](?:[a-z0-9_.-]{0,63})"
     r")"
 )
+_POSTAL_NAME = r"[A-Z][\w'\u2019.-]*"
+_PRINTED_POSTAL_CONTACT_RE = re.compile(
+    rf"(?<!\S)(?:{_POSTAL_NAME}\s+){{0,7}}"
+    rf"\d{{1,6}}\s+(?:{_POSTAL_NAME}\s+){{1,5}}"
+    r"(?i:Street|St|Road|Rd|Avenue|Ave|Boulevard|Blvd|Lane|Ln|Drive|Dr|Way)\.?\s*,?\s*"
+    r"(?:(?i:Suite|Ste|Unit|Apt)\.?\s*[#\w-]{1,8}\s*,?\s*)?"
+    rf"(?:{_POSTAL_NAME}\s+){{0,4}}{_POSTAL_NAME}\s*,\s*[A-Z]{{2}}\s+\d{{5}}(?:-\d{{4}})?"
+    r"(?:\s+(?i:tel(?:ephone)?|fax|phone)\.?\s*:?\s*"
+    r"(?:\+1[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}){1,2}(?!\w)"
+)
+
+
+def _shared_printed_postal_contacts(source: str, candidate: str) -> set[str]:
+    """Use only unchanged, self-contained postal and phone records as context."""
+    def records(text):
+        return {match.group().casefold(): match.group() for match in _PRINTED_POSTAL_CONTACT_RE.finditer(text)}
+
+    originals = records(source)
+    return {
+        " " + " ".join(_ordered_surface_tokens(originals[key])).casefold() + " "
+        for key in records(candidate).keys() & originals.keys()
+    }
+
+
 _BIBLIOGRAPHIC_PUBLISHER_YEAR_RE = re.compile(
     r":\s*[^.;\n]{2,100},\s*(?:1[5-9]\d{2}|20\d{2})\b",
     re.IGNORECASE,

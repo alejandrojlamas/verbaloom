@@ -282,7 +282,8 @@ def test_glossary_terms_named_like_credentials_are_still_dependencies(term):
 
 
 async def resume(
-    monkeypatch, saved, *, options=None, max_retries=3, saver=None, **kwargs
+    monkeypatch, saved, *, options=None, max_retries=3, saver=None, doc=None,
+    expected_text=TRANSLATION, **kwargs
 ):
     calls = []
 
@@ -301,7 +302,8 @@ async def resume(
         snapshots.append(json.loads(json.dumps(value.to_dict())))
         return True if saver is None else saver(job, href, value)
 
-    doc = root()
+    if doc is None:
+        doc = root()
     success, _stats = await subject.translate_xhtml_simplified(
         doc,
         "English",
@@ -318,7 +320,7 @@ async def resume(
         translation_id=kwargs.get("translation_id", "book-one"),
         file_href=kwargs.get("file_href", "Text/chapter.xhtml"),
     )
-    assert success and doc.find("body").text == TRANSLATION
+    assert success and "".join(doc.find("body").itertext()).strip() == expected_text
     assert calls == []
     return snapshots
 
@@ -339,6 +341,26 @@ async def test_entrypoint_preserves_approved_units_after_allowance_change(
     assert record["review_attempts"] == 1
     assert record["audit_attempts"] == 1
     assert record["audit_status"] == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_resume_keeps_approved_units_with_pre_normalization_source_hash(monkeypatch):
+    doc = etree.XML(b'<html><body><h2>O<span class="small">BJECTIVE</span></h2></body></html>')
+    old_body, _ = subject.extract_body_html(doc)
+    assert old_body != subject.extract_body_html(doc, join_decorative_initials=True)[0]
+    masked, tag_map, placeholder_format = subject._preserve_tags(old_body, subject.TagPreserver())
+    chunks = subject._create_chunks(masked, tag_map, 450)
+    assert len(chunks) == 1
+    translated = chunks[0]["text"].replace("BJECTIVE", "BJETIVO")
+    saved = state()
+    saved.source_document_hash = text_sha256(old_body)
+    saved.chunks, saved.global_tag_map, saved.placeholder_format = chunks, tag_map, placeholder_format
+    saved.translated_chunks = [translated]
+    record = ensure_unit_records(chunks, saved.file_href, fingerprints=saved.stage_fingerprints)[0]
+    mark_audited(record, translated, review={"status": "pass"}, audit={"status": "pass"})
+    assert saved.validate()
+
+    await resume(monkeypatch, saved, doc=doc, expected_text="OBJETIVO")
 
 
 @pytest.mark.asyncio
