@@ -152,13 +152,20 @@ Write in natural Mexican Spanish / neutral Latin American Spanish.
 
 
 def _literary_style_contract_section(target_language: str, prompt_options: Optional[dict] = None) -> str:
-    """Return a stable cross-chunk style contract for Spanish literary output."""
+    """Preserve narrative effects across chunks and apply target conventions."""
     options = prompt_options or {}
     if options.get("literary_style_contract") is False:
         return ""
+    preservation = (
+        "# LITERARY FIDELITY\n"
+        "Unless the requested transformation says otherwise, preserve ambiguity, irony, social register, "
+        "and contrasts between narration and dialogue without adding explanations. Carry speaker, addressee and "
+        "formality through interruptions. Keep distinct catchphrases distinct and intentional repetitions intact. "
+        "Translate sentences across inline tags; emphasis marks meaning, not word boundaries."
+    )
     if not is_spanish_target(target_language):
-        return ""
-    return """
+        return preservation
+    return preservation + "\n\n" + """
 # LITERARY STYLE CONTRACT
 
 Use this contract consistently across every chunk of Spanish literary prose.

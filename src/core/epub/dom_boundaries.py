@@ -322,6 +322,11 @@ def compare_xhtml_boundaries(
                 continue
             if not _visible_tokens_need_space(output_values, left, right):
                 continue
+            # Source spacing cannot determine target morphology at an inline
+            # tag. Restore it only when both neighboring text slots agree.
+            if any(source_values[index].strip() != output_values[index].strip()
+                   for index in range(left, right + 1)):
+                continue
             finding = BoundaryFinding(
                 file_href=file_href,
                 block_index=block_index,

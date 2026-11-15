@@ -24,12 +24,11 @@ def is_non_translatable(text: str) -> bool:
     - Whitespace only (spaces, tabs, newlines)
     - Non-breaking spaces and invisible Unicode characters
     - Simple numbers (digits, with optional dots/dashes for numbering)
-    - Roman numerals (I, II, III, IV, etc.)
 
     Does NOT include:
     - Punctuation alone (could be meaningful)
     - Emojis or symbols
-    - Any alphabetic text (except roman numerals)
+    - Any alphabetic text, including isolated pronouns and Roman-looking words
 
     Args:
         text: Text to check
@@ -45,11 +44,18 @@ def is_non_translatable(text: str) -> bool:
     if not stripped:
         return True  # Whitespace only
 
-    # Check if it's just numbers/roman numerals with optional formatting
-    # Matches: "1", "1.", "1.2", "42", "III", "IV.", "1-", "1)", "(1)"
-    # Also matches invisible Unicode characters
-    non_translatable_pattern = r'^[\d\.\-\–\—\)\(\s\u00A0\u2000-\u200F\u2028\u2029IVXLCDM]+$'
-    return bool(re.match(non_translatable_pattern, stripped, re.IGNORECASE))
+    if all(character.isspace() or "\u2000" <= character <= "\u200f" for character in stripped):
+        return True
+
+    # Alphabetic runs are language, not markup. The old case-insensitive
+    # [IVXLCDM] test hid words such as "did", "civil" and "mix", and the
+    # pronoun "I", especially inside emphasis. Even a syntactically valid
+    # Roman numeral can be a word. Leave these visible to the translator;
+    # chapter numbering is preserved by the translation/structural contract.
+    # Do not protect punctuation alone, which may need target-language changes.
+    numeric = r"[\d.\-–—)(\s\u00A0\u2000-\u200F\u2028\u2029]+"
+    return bool(re.fullmatch(numeric, stripped) and any(c.isdigit() for c in stripped))
+
 
 class TagPreserver:
     """

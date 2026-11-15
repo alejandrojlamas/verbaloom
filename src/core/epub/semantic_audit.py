@@ -19,8 +19,8 @@ from .publication_gate import EpubSnapshot
 from .unit_contract import text_sha256
 
 
-SEMANTIC_AUDIT_PROMPT_VERSION = "epub-semantic-audit-2026-07-12-v1"
-SEMANTIC_ADJUDICATION_PROMPT_VERSION = "epub-semantic-adjudication-2026-07-12-v2"
+SEMANTIC_AUDIT_PROMPT_VERSION = "epub-semantic-audit-v2"
+SEMANTIC_ADJUDICATION_PROMPT_VERSION = "epub-semantic-adjudication-v3"
 _MATERIAL_FIELDS = (
     "missing_from_source",
     "added_not_in_source",
@@ -28,6 +28,7 @@ _MATERIAL_FIELDS = (
     "censored_or_softened",
     "terminology_errors",
     "structure_issues",
+    "source_language_residual",
 )
 
 
@@ -90,10 +91,8 @@ class SemanticAuditReport:
         )
 
 
-def _cache_key(source_hash: str, candidate_hash: str, model: str) -> str:
-    return text_sha256(
-        f"{SEMANTIC_AUDIT_PROMPT_VERSION}\0{model}\0{source_hash}\0{candidate_hash}"
-    )
+def _cache_key(version: str, model: str, *evidence: Any) -> str:
+    return text_sha256(json.dumps([version, model, *evidence], ensure_ascii=False, sort_keys=True))
 
 
 def _load_cache(path: Path) -> dict[str, Any]:
@@ -187,14 +186,16 @@ async def audit_epub_units_semantically(
     results_by_id: dict[str, dict[str, Any]] = {}
     for source_unit, output_unit in zip(source.units, output.units):
         unit_id = source_unit.unit_id
-        key = _cache_key(source_unit.source_hash, text_sha256(output_unit.text), model)
+        payload = _audit_payload(source_unit, output_unit)
+        key = _cache_key(SEMANTIC_AUDIT_PROMPT_VERSION, model, source_language, target_language,
+                         unit_id, payload)
         unit_meta[unit_id] = (source_unit, output_unit, key)
         cached = entries.get(key)
         if isinstance(cached, dict) and cached.get("unit_id") == unit_id:
             results_by_id[unit_id] = dict(cached)
             report.cache_hits += 1
         else:
-            pending.append(StructuredUnit(unit_id, _audit_payload(source_unit, output_unit)))
+            pending.append(StructuredUnit(unit_id, payload))
 
     instructions = f"""You are an independent bilingual semantic auditor for a complete EPUB.
 Compare each SOURCE_TEXT in {source_language} against its CANDIDATE_TEXT in {target_language}.
@@ -315,17 +316,6 @@ async def adjudicate_semantic_audit(
         unit_id = str(first.get("unit_id") or "")
         source_unit = source_by_id[unit_id]
         output_unit = output_by_position[(source_unit.file_href, source_unit.ordinal)]
-        key = text_sha256(
-            f"{SEMANTIC_ADJUDICATION_PROMPT_VERSION}\0{model}\0"
-            f"{source_language}\0{target_language}\0"
-            f"{source_unit.source_hash}\0{text_sha256(output_unit.text)}\0"
-            f"{text_sha256(json.dumps(first_audit, ensure_ascii=False, sort_keys=True))}"
-        )
-        cached = entries.get(key)
-        if isinstance(cached, dict) and cached.get("unit_id") == unit_id:
-            results[unit_id] = dict(cached)
-            report.cache_hits += 1
-            continue
         position = source_position[unit_id]
         previous_source = source.units[position - 1] if position > 0 else None
         previous_output = output.units[position - 1] if position > 0 else None
@@ -338,7 +328,7 @@ async def adjudicate_semantic_audit(
             text = str(unit.text or "")
             return text[:1_200] if len(text) <= 1_200 else text[:600] + " ... " + text[-600:]
 
-        pending.append(StructuredUnit(unit_id, {
+        payload = {
             "source_language": source_language,
             "target_language": target_language,
             "source_text": source_unit.text,
@@ -348,8 +338,14 @@ async def adjudicate_semantic_audit(
             "next_source_text": neighbor_text(next_source, file_href=source_unit.file_href),
             "next_candidate_text": neighbor_text(next_output, file_href=source_unit.file_href),
             "first_audit": first_audit,
-            "adjudication_cache_key": key,
-        }))
+        }
+        key = _cache_key(SEMANTIC_ADJUDICATION_PROMPT_VERSION, model, unit_id, payload)
+        cached = entries.get(key)
+        if isinstance(cached, dict) and cached.get("unit_id") == unit_id:
+            results[unit_id] = dict(cached)
+            report.cache_hits += 1
+            continue
+        pending.append(StructuredUnit(unit_id, {**payload, "adjudication_cache_key": key}))
 
     instructions = f"""You are the adjudicator of a prior bilingual fidelity audit.
 Determine whether FIRST_AUDIT identified an objective source-to-candidate error or only a stylistic

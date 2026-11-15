@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import html
 from io import BytesIO
@@ -78,6 +78,7 @@ class _NavigationEntry:
     label: str
     target: str
     source_target: str = ""
+    aliases: tuple[str, ...] = ()
 
 
 def _qname(namespace: str, local: str) -> str:
@@ -97,7 +98,15 @@ def _clean_text(value: str) -> str:
 
 
 def _element_text(node: etree._Element) -> str:
-    return _clean_text(" ".join(node.itertext()))
+    parts = []
+    for event, element in etree.iterwalk(node, events=("start", "end", "comment", "pi")):
+        if event == "start":
+            if _local_name(element) == "br":
+                parts.append(" ")
+            parts.append(element.text or "")
+        elif element is not node:
+            parts.append(element.tail or "")
+    return _clean_text("".join(parts))
 
 
 def _add_class(node: etree._Element, class_name: str) -> bool:
@@ -664,8 +673,10 @@ def _mark_chapter_container(node: etree._Element, *, epub3: bool) -> None:
 
 def _resolve_navigation_target(document_href: str, href: str) -> str:
     parsed = urlsplit(href)
-    if parsed.scheme or not parsed.path:
+    if parsed.scheme or parsed.netloc or not href:
         return ""
+    if not parsed.path:
+        return f"{document_href}#{unquote(parsed.fragment)}" if parsed.fragment else ""
     base_dir = posixpath.dirname(document_href) or "."
     path = posixpath.normpath(posixpath.join(base_dir, unquote(parsed.path)))
     return f"{path}#{unquote(parsed.fragment)}" if parsed.fragment else path
@@ -723,6 +734,100 @@ def _existing_navigation_entries(
     return entries
 
 
+_VISIBLE_NAV_CONTENT = {"audio", "br", "canvas", "hr", "iframe", "img", "math",
+                        "object", "picture", "svg", "table", "video"}
+
+
+def _opening_heading(
+    target_node: etree._Element | None,
+    headings: set[etree._Element],
+) -> etree._Element | None:
+    """Resolve a container/empty anchor to its opening heading, not by label.
+
+    Publishers often link to body/section IDs rather than the heading ID. Only
+    whitespace or empty anchors may precede that heading. Never equate distinct
+    mid-chapter anchors, even when their visible labels happen to match.
+    """
+    if target_node is None:
+        return None
+    if target_node in headings:
+        return target_node
+    for ancestor in target_node.iterancestors():
+        if ancestor in headings:
+            return ancestor
+    if _local_name(target_node) in {"body", "section", "article", "div"}:
+        for event, element in etree.iterwalk(target_node, events=("start", "end", "comment", "pi")):
+            if event == "start":
+                if element in headings:
+                    return element
+                if _local_name(element) in _VISIBLE_NAV_CONTENT or (element.text or "").strip():
+                    return None
+            elif element is not target_node and (element.tail or "").strip():
+                # A container tail occurs after all its descendants, not at
+                # its start; treating only leaf tails can merge a real preface.
+                return None
+    if (_local_name(target_node) in {"a", "span"} and not len(target_node)
+            and not _element_text(target_node) and not (target_node.tail or "").strip()):
+        sibling = target_node.getnext()
+        while sibling is not None:
+            if isinstance(sibling.tag, str):
+                if sibling in headings:
+                    return sibling
+                if (_local_name(sibling) not in {"a", "span"} or len(sibling)
+                        or _element_text(sibling)):
+                    break
+            if (sibling.tail or "").strip():
+                break
+            sibling = sibling.getnext()
+    return None
+
+
+def _entry_lookup(entries):
+    lookup = {}
+    for entry in entries:
+        for target in (entry.target, entry.source_target, *entry.aliases):
+            if target:
+                lookup[target] = entry
+    return lookup
+
+
+def _dedupe_sibling_points(parent, local_name, target_of):
+    """Coalesce duplicate navigation targets locally, retaining nested branches."""
+    seen = {}
+    for node in list(parent):
+        if not isinstance(node.tag, str) or _local_name(node) != local_name:
+            continue
+        target = target_of(node)
+        if target and target in seen:
+            keeper = seen[target]
+            if local_name == "navpoint":
+                for child in list(node):
+                    if isinstance(child.tag, str) and _local_name(child) == "navpoint":
+                        keeper.append(child)
+            else:
+                # A TOC li may own another ol. Retain that hierarchy instead
+                # of silently dropping the duplicate entry's child chapters.
+                for branch in list(node):
+                    if isinstance(branch.tag, str) and _local_name(branch) == "ol":
+                        existing = next(iter(keeper.xpath("./*[local-name()='ol']")), None)
+                        if existing is None:
+                            keeper.append(branch)
+                        else:
+                            for child in list(branch):
+                                existing.append(child)
+            parent.remove(node)
+        elif target:
+            seen[target] = node
+    for node in list(parent):
+        if not isinstance(node.tag, str):
+            continue
+        if local_name == "navpoint" and _local_name(node) == "navpoint":
+            _dedupe_sibling_points(node, local_name, target_of)
+        elif local_name == "li":
+            for branch in node.xpath("./*[local-name()='ol']"):
+                _dedupe_sibling_points(branch, local_name, target_of)
+
+
 def _navigation_entries(
     *,
     opf_root: etree._Element,
@@ -754,49 +859,44 @@ def _navigation_entries(
             entries.extend(existing_entries.get(normalized_href, []))
             continue
         represented_ids: set[str] = set()
+        represented_headings: dict[str, int] = {}
         document_headings = _heading_candidates(root)
+        heading_set = set(document_headings)
         document_entries = existing_entries.get(normalized_href, [])
+        targets_by_id = {}
+        for node in root.xpath("//*[@id]"):
+            targets_by_id.setdefault(node.get("id"), node)
+        body = next(iter(root.xpath("//*[local-name()='body']")), None)
         for existing in document_entries:
             _target_path, _separator, fragment = existing.target.partition("#")
-            target_node = next(
-                iter(root.xpath("//*[@id=$fragment]", fragment=fragment)),
-                None,
-            ) if fragment else None
-            if target_node is not None:
-                target_id = str(target_node.get("id") or fragment)
-                label = existing.label
-                if _local_name(target_node) in {"h1", "h2", "h3"}:
-                    label = _element_text(target_node) or label
-                    _add_class(target_node, _CHAPTER_TITLE_CLASS)
-                    _mark_chapter_container(target_node, epub3=epub3)
-                    marked_headings += 1
-            elif not fragment and len(document_headings) == 1 and len(document_entries) == 1:
-                target_node = document_headings[0]
-                target_id = _ensure_unique_id(
-                    root,
-                    target_node,
-                    f"verbaloom-chapter-{len(entries) + 1:03d}",
+            target_node = targets_by_id.get(fragment) if fragment else body
+            heading = _opening_heading(target_node, heading_set)
+            label = existing.label
+            target = existing.target
+            if heading is not None:
+                heading_id = _ensure_unique_id(
+                    root, heading, f"verbaloom-chapter-{len(entries) + 1:03d}",
                 )
-                label = _element_text(target_node) or existing.label
-                _add_class(target_node, _CHAPTER_TITLE_CLASS)
-                _mark_chapter_container(target_node, epub3=epub3)
-                marked_headings += 1
-            else:
-                body = next(iter(root.xpath("//*[local-name()='body']")), None)
-                if body is None:
+                represented_ids.add(heading_id)
+                label = _element_text(heading) or label
+                if heading_id in represented_headings:
+                    index = represented_headings[heading_id]
+                    kept = entries[index]
+                    entries[index] = replace(
+                        kept, aliases=tuple(dict.fromkeys((*kept.aliases, existing.target))),
+                    )
                     continue
-                target_id = _ensure_unique_id(
-                    root, body, f"verbaloom-section-{len(entries) + 1:03d}",
-                ) if fragment else ""
-                label = existing.label
-            represented_ids.add(target_id)
-            entries.append(
-                _NavigationEntry(
-                    label=label,
-                    target=f"{normalized_href}#{target_id}" if target_id else normalized_href,
-                    source_target=existing.target,
-                )
-            )
+                represented_headings[heading_id] = len(entries)
+                _add_class(heading, _CHAPTER_TITLE_CLASS)
+                _mark_chapter_container(heading, epub3=epub3)
+                marked_headings += 1
+                if not fragment and len(document_entries) == 1:
+                    target = f"{normalized_href}#{heading_id}"
+            elif target_node is not None:
+                represented_ids.add(str(target_node.get("id") or fragment))
+            # Never retarget an unresolved source anchor to the body: leave it
+            # visible to link validation rather than concealing the broken link.
+            entries.append(_NavigationEntry(label=label, target=target, source_target=existing.target))
 
         for heading in document_headings:
             target_id = _ensure_unique_id(
@@ -903,7 +1003,7 @@ def _write_navigation(
         body = etree.SubElement(root, _qname(XHTML_NS, "body"))
     tocs = [node for node in body.xpath(".//*[local-name()='nav']") if "toc" in _nav_type(node).split()]
     anchors = tocs[0].xpath(".//*[local-name()='a'][@href]") if len(tocs) == 1 else []
-    by_source = {entry.source_target: entry for entry in entries if entry.source_target}
+    by_source = _entry_lookup(entries)
     if anchors:
         # A publisher's TOC already carries hierarchy and precise chapter anchors.
         for anchor in anchors:
@@ -912,7 +1012,12 @@ def _write_navigation(
                 anchor.set("href", _relative_target(href, entry.target))
                 if len(anchor) == 0 and entry.label:
                     anchor.text = entry.label
-        count = len(anchors)
+        for ordered in tocs[0].xpath("./*[local-name()='ol']"):
+            _dedupe_sibling_points(
+                ordered, "li",
+                lambda item: item.xpath("string(./*[local-name()='a']/@href)"),
+            )
+        count = len(tocs[0].xpath(".//*[local-name()='a'][@href]"))
     else:
         for node in tocs:
             node.getparent().remove(node)
@@ -1003,17 +1108,59 @@ def _write_ncx(
     if nav_map is None:
         nav_map = etree.Element(_qname(namespace, "navMap"))
         doc_title.addnext(nav_map)
-    else:
-        for child in list(nav_map):
-            nav_map.remove(child)
+    lookup = _entry_lookup(entries)
+    represented = set()
+    for point in nav_map.xpath(".//*[local-name()='navPoint']"):
+        content = next(iter(point.xpath("./*[local-name()='content']")), None)
+        if content is None:
+            continue
+        entry = lookup.get(_resolve_navigation_target(href, content.get("src") or ""))
+        if entry is None:
+            continue
+        content.set("src", _relative_target(href, entry.target))
+        label = next(iter(point.xpath("./*[local-name()='navLabel']/*[local-name()='text']")), None)
+        if label is not None:
+            label.text = entry.label
+        represented.add(entry.target)
+    occupied = set(root.xpath("//@id"))
     for index, entry in enumerate(entries, start=1):
+        if entry.target in represented:
+            continue
         point = etree.SubElement(nav_map, _qname(namespace, "navPoint"))
-        point.set("id", f"navpoint-{index:03d}")
-        point.set("playOrder", str(index))
+        identifier_base = f"navpoint-{index:03d}"
+        point_id, suffix = identifier_base, 2
+        while point_id in occupied:
+            point_id = f"{identifier_base}-{suffix}"
+            suffix += 1
+        occupied.add(point_id)
+        point.set("id", point_id)
         label = etree.SubElement(point, _qname(namespace, "navLabel"))
         etree.SubElement(label, _qname(namespace, "text")).text = entry.label
         content = etree.SubElement(point, _qname(namespace, "content"))
         content.set("src", _relative_target(href, entry.target))
+        represented.add(entry.target)
+    _dedupe_sibling_points(
+        nav_map, "navpoint",
+        lambda point: point.xpath("string(./*[local-name()='content']/@src)"),
+    )
+    # NCX permits the same destination in different branches or in the page
+    # list. All references to one destination must share the same playOrder.
+    order_by_target = {}
+    points = root.xpath(
+        "//*[local-name()='navPoint' or local-name()='pageTarget' or local-name()='navTarget']"
+    )
+    for point in points:
+        destination = point.xpath("string(./*[local-name()='content']/@src)")
+        if not destination:
+            continue
+        key = _resolve_navigation_target(href, destination) or destination
+        order_by_target.setdefault(key, len(order_by_target) + 1)
+        point.set("playOrder", str(order_by_target[key]))
+    depth = next(iter(head.xpath("./*[local-name()='meta' and @name='dtb:depth']")), None)
+    if depth is not None:
+        nesting = (1 + sum(_local_name(ancestor) == "navpoint" for ancestor in point.iterancestors())
+                   for point in nav_map.xpath(".//*[local-name()='navPoint']"))
+        depth.set("content", str(max(nesting, default=0)))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(
         etree.tostring(
@@ -1214,6 +1361,17 @@ def finish_epub_publication(
             ),
         )
         report.navigation_href = nav_href
+        compatibility_id = _spine(root).get("toc")
+        compatibility_item = next((item for item in _manifest_items(root)
+                                   if compatibility_id and item.get("id") == compatibility_id
+                                   and item.get("media-type") == "application/x-dtbncx+xml"), None)
+        if compatibility_item is not None:
+            compatibility_href = str(compatibility_item.get("href") or "")
+            compatibility_path = _safe_resource_path(package_root_path, opf_dir_path, compatibility_href)
+            if compatibility_path is not None and compatibility_path.is_file():
+                _write_ncx(compatibility_path, href=compatibility_href, title=title,
+                           identifier=_package_identifier(root), entries=entries)
+                report.ncx_href = compatibility_href
     else:
         ncx_item = next(
             (

@@ -77,6 +77,20 @@ def test_does_not_insert_space_when_source_boundary_has_none(body):
     assert etree.tostring(output_root) == before
 
 
+@pytest.mark.parametrize(("source", "target"), [
+    ("tell <em>you</em>", "decir<em>te</em>"),
+    ("the <em>man</em>", "l'<em>homme</em>"),
+    ("a <em>word</em>", "\u4e00<em>\u8bcd</em>"),
+    ("and <em>book</em>", "\u0648<em>\u0643\u062a\u0627\u0628</em>"),
+])
+def test_source_whitespace_cannot_split_translated_morphology(source, target):
+    original, translated = _root(f"<p>{source}</p>"), _root(f"<p>{target}</p>")
+    before = etree.tostring(translated)
+    report = compare_xhtml_boundaries(original, translated, repair=True)
+    assert not report.findings and report.repaired_boundaries == 0
+    assert etree.tostring(translated) == before
+
+
 def test_partial_inline_slot_reflow_is_not_a_structural_mismatch():
     source_root = _root("<p>Primero <em>segundo</em> tercero</p>")
     output_root = _root("<p>Primero segundo tercero<em></em></p>")

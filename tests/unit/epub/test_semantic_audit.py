@@ -22,8 +22,9 @@ def _unit(unit_id, order, text):
 
 
 class Provider:
-    def __init__(self):
+    def __init__(self, residual=False):
         self.calls = 0
+        self.residual = residual
 
     async def make_request(self, user, _model, system_prompt=""):
         self.calls += 1
@@ -39,7 +40,7 @@ class Provider:
             "censored_or_softened": [],
             "terminology_errors": [],
             "structure_issues": [],
-            "source_language_residual": False,
+            "source_language_residual": self.residual,
         } for item in requested]
         return SimpleNamespace(content="<UNIT_RESULTS_JSON>" + json.dumps({"units": units}) + "</UNIT_RESULTS_JSON>", was_truncated=False)
 
@@ -73,6 +74,49 @@ async def test_semantic_audit_covers_every_aligned_unit_and_resumes_from_cache(t
     assert first_calls == 1
     assert provider.calls == first_calls
     assert second.cache_hits == 2
+
+
+@pytest.mark.asyncio
+async def test_semantic_audit_rejects_pass_with_residue_and_binds_language(tmp_path):
+    source = SimpleNamespace(units=[_unit("u1", 0, "An emphasized word")])
+    output = SimpleNamespace(units=[_unit("u1", 0, "Una word enfatizada")])
+    provider = Provider(residual=True)
+    options = dict(provider=provider, model="test-model", source_language="English",
+                   cache_path=tmp_path / "audit.json")
+    first = await audit_epub_units_semantically(source, output, target_language="Spanish", **options)
+    assert first.failed == 1 and not first.complete
+    second = await audit_epub_units_semantically(source, output, target_language="Portuguese", **options)
+    assert second.cache_hits == 0
+    assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_adjudication_cache_binds_neighboring_text(tmp_path):
+    class Confirmed(Provider):
+        async def make_request(self, user, _model, system_prompt=""):
+            self.calls += 1
+            unit_id = json.loads(user)["requested_units"][0]["unit_id"]
+            return SimpleNamespace(content=json.dumps({"units": [{
+                "unit_id": unit_id, "verdict": "confirmed", "confidence": 0.99,
+                "reason": "Register changed.", "recommended_action": "repair",
+            }]}), was_truncated=False)
+
+    source = SimpleNamespace(units=[_unit("u1", 0, "May I come in?"), _unit("u2", 1, "Yes, sir.")])
+    output = SimpleNamespace(units=[_unit("u1", 0, "Puedo pasar?"), _unit("u2", 1, "Si, amigo.")])
+    provider = Confirmed()
+    options = dict(provider=provider, model="test-model", source_language="English",
+                   target_language="Spanish", cache_path=tmp_path / "adjudication.json")
+
+    async def audit():
+        report = SimpleNamespace(results=[{"unit_id": "u1", "accepted": False, "reason": "check register"}],
+                                 requests=0, validation_failures=0, recursive_splits=0, cache_hits=0)
+        return await adjudicate_semantic_audit(source, output, report, **options)
+
+    assert (await audit()).cache_hits == 0
+    assert (await audit()).cache_hits == 1
+    output.units[1].text = "Si, senor."
+    assert (await audit()).cache_hits == 0
+    assert provider.calls == 2
 
 
 @pytest.mark.asyncio

@@ -81,6 +81,9 @@ Use the local prechecks as hints, not as final truth. If the source is visibly d
 judge semantic content and meaningful structure rather than preserving extraction damage. For same-language
 modernization or transformation, accept safe syntax and diction updates, but reject changes to speaker/addressee,
 grammatical person, facts, chronology, relationships, intentional ambiguity, censorship, or unsupported explanation.
+Check transitions between dialogue and narration, loss of irony or register that changes meaning,
+and untranslated prose hidden by emphasis. Keep repetitions evidenced by the source;
+do not penalize defensible wording that preserves the meaning and effect.
 
 JSON schema:
 {{

@@ -3367,6 +3367,8 @@ Do not improve the translation. Do not rewrite. Audit whether the candidate pres
 
 Pay special attention to omissions, additions, censorship, euphemistic softening, changed facts, changed numbers,
 damaged names, changed chronology, lost causal links, lost formulas/citations, and structure loss.
+Check dialogue/narration boundaries, changes to speaker relationships or meaningful register,
+and untranslated words isolated by emphasis. Do not mistake source-supported repetition for duplication.
 Only put MATERIAL semantic losses in missing_from_source, added_not_in_source, changed_facts, or
 censored_or_softened. A natural target-locale equivalent, regional vocabulary that preserves meaning,
 minor punctuation preference, or stylistic alternative is not a material fidelity error; mention it only

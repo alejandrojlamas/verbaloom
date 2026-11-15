@@ -568,12 +568,32 @@ def test_native_epub_finisher_produces_epubcheck_valid_epub2(tmp_path: Path):
         <dc:title>Libro de prueba</dc:title><dc:creator>Ana Torres</dc:creator>
         <dc:language>es</dc:language>
       </metadata>
-      <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
-      <spine><itemref idref="chapter"/></spine>
+      <manifest>
+        <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+      </manifest>
+      <spine toc="ncx"><itemref idref="chapter"/></spine>
     </package>'''))
+    (tmp_path / "toc.ncx").write_text('''
+    <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+      <head><meta name="dtb:depth" content="2"/></head>
+      <docTitle><text>Test book</text></docTitle>
+      <navMap>
+        <navPoint id="first" playOrder="1"><navLabel><text>Chapter One</text></navLabel>
+          <content src="chapter.xhtml#start"/>
+        </navPoint>
+        <navPoint id="alias" playOrder="2"><navLabel><text>Chapter One</text></navLabel>
+          <content src="chapter.xhtml#heading"/>
+          <navPoint id="child" playOrder="3"><navLabel><text>Details</text></navLabel>
+            <content src="chapter.xhtml#details"/>
+          </navPoint>
+        </navPoint>
+      </navMap>
+    </ncx>''', encoding="utf-8")
     document = etree.fromstring('''
     <html xmlns="http://www.w3.org/1999/xhtml"><head><title>Capítulo uno</title></head>
-      <body><div><h1>Capítulo uno</h1><p>La historia comienza aquí.</p></div></body>
+      <body id="start"><div><h1 id="heading">Capítulo uno</h1><p>La historia comienza aquí.</p>
+        <h2 id="details">Detalles</h2><p>Primero esto.</p></div></body>
     </html>'''.encode())
     report = finish_epub_publication(
         opf_tree=opf,
@@ -583,6 +603,8 @@ def test_native_epub_finisher_produces_epubcheck_valid_epub2(tmp_path: Path):
         target_language="Spanish",
     )
     ncx = etree.parse(str(tmp_path / report.ncx_href))
+    assert ncx.xpath("//*[local-name()='content']/@src") == ["chapter.xhtml#start", "chapter.xhtml#details"]
+    assert ncx.xpath("//*[local-name()='navPoint']/*[local-name()='navPoint']/@id") == ["child"]
     assert ncx.xpath("string(//*[local-name()='meta' and @name='dtb:uid']/@content)") == (
         "urn:test:native-professional-epub2"
     )
