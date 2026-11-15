@@ -926,6 +926,12 @@ def _source_language_residual_issue(
     preserved, required_translation, required_phrases = (
         _language_gate_glossary_policy(prompt_options, source_text=source)
     )
+    required_phrase_hits = [
+        phrase
+        for phrase in sorted(required_phrases, key=lambda value: (-len(value), value.casefold()))
+        if _contains_profile_term(source, phrase)
+        and _contains_profile_term(candidate, phrase)
+    ]
     analysis_source = _strip_language_neutral_literals(source)
     analysis_candidate = _strip_language_neutral_literals(candidate)
     copied_phrases, contextual_dialogue = _copied_source_language_phrases(
@@ -942,7 +948,24 @@ def _source_language_residual_issue(
     ambiguous_vocatives: list[tuple[str, float]] = []
     bibliographic_metadata: list[tuple[str, float]] = []
     postal_metadata: list[tuple[str, float]] = []
+    word_form_examples: list[tuple[str, float]] = []
     if copied_phrases:
+        # Token overlap drops punctuation: three comma-separated word forms
+        # can otherwise look like a copied clause. Keep those exact examples
+        # for contextual review, without exempting their surrounding prose.
+        word_form_examples = [
+            item for item in copied_phrases
+            if not required_translation.intersection(
+                token.casefold() for token in _ordered_surface_tokens(item[0])
+            )
+            and not required_phrase_hits
+            and _has_contextual_language_review(prompt_options)
+            and _is_translated_word_form_enumeration(
+                item[0], source=analysis_source, candidate=analysis_candidate,
+                target_language=target_language,
+            )
+        ]
+        copied_phrases = [item for item in copied_phrases if item not in word_form_examples]
         shared_contacts = _shared_printed_postal_contacts(analysis_source, analysis_candidate)
         postal_metadata = [
             item for item in copied_phrases
@@ -1038,12 +1061,6 @@ def _source_language_residual_issue(
             f"fuente={source_language}; destino={target_language}; residuos={examples}",
         )
 
-    required_phrase_hits = [
-        phrase
-        for phrase in sorted(required_phrases, key=lambda value: (-len(value), value.casefold()))
-        if _contains_profile_term(source, phrase)
-        and _contains_profile_term(candidate, phrase)
-    ]
     if required_phrase_hits:
         examples = "; ".join(required_phrase_hits[:3])
         return FidelityIssue(
@@ -1055,7 +1072,7 @@ def _source_language_residual_issue(
 
     contextual_phrases = (
         stylized_sound_effects + ambiguous_short_phrases + ambiguous_vocatives
-        + contextual_dialogue + bibliographic_metadata + postal_metadata
+        + contextual_dialogue + bibliographic_metadata + postal_metadata + word_form_examples
     )
     source_tokens = _surface_token_map(analysis_source)
     candidate_tokens = _surface_token_map(analysis_candidate)
@@ -1909,6 +1926,67 @@ _METALANGUAGE_CUE_RE = re.compile(
     r"look\s+for|named|called)\b",
     re.IGNORECASE,
 )
+
+
+def _is_translated_word_form_enumeration(
+    phrase: str, *, source: str, candidate: str, target_language: str,
+) -> bool:
+    """Identify cited word forms, never exempt a sentence or a whole section.
+
+    Require the same individually comma-separated tokens in both documents,
+    an explicit source-local word-form cue, and translated sentence framing.
+    The caller keeps a warning for the mandatory contextual audit. A heading,
+    quotation marks, italics, or a favorable model verdict alone are insufficient.
+    """
+    words = _ordered_surface_tokens(phrase)
+    if len(words) < 3:
+        return False
+    marker = _target_language_marker_pattern(target_language)
+    if marker is None:
+        return False
+    enumeration = re.compile(
+        r"(?<!\w)" + r"\s*,\s*".join(re.escape(word) for word in words) + r"(?!\w)",
+        re.IGNORECASE,
+    )
+    # These describe the list's role, not an allowlist of its words. An
+    # incidental mention of spelling, or "forms" used as a verb, is not enough.
+    direct_introduction = re.compile(
+        r"\b(?:word[ -]forms?|spellings?|orthographic\s+forms?|"
+        r"grafías|graphies|schreibweisen|wortformen)\s*"
+        r"(?:(?:such\s+)?as|like|including|namely|como|(?:telles?\s+)?que|wie)?\s*:?\s*$",
+        re.IGNORECASE,
+    )
+    forms_introduction = re.compile(
+        r"^\s*(?:such\s+)?(?:forms?|formas|formes)\s+(?:as|like|como|telles?\s+que)\s*$"
+        r"|\b(?:forms?|formas|formes)\b[^.!?:\n]*:\s*$",
+        re.IGNORECASE,
+    )
+    linguistic_context = re.compile(
+        r"\b(?:word[ -]forms?|spell(?:ing|ings|ed)?|orthograph\w*|typograph\w*|"
+        r"manuscripts?|manuscrits?|manuscritos?|grafías|schreibweisen|wortformen)\b",
+        re.IGNORECASE,
+    )
+
+    def sentence(text, match):
+        start = max(text.rfind(mark, 0, match.start()) for mark in ".!?\n") + 1
+        ends = [text.find(mark, match.end()) for mark in ".!?\n"]
+        end = min((position for position in ends if position >= 0), default=len(text))
+        return text[start:end], text[start:match.start()]
+
+    for original in enumeration.finditer(source):
+        source_sentence, leader = sentence(source, original)
+        if not (
+            direct_introduction.search(leader)
+            or (forms_introduction.search(leader) and linguistic_context.search(source_sentence))
+        ):
+            continue
+        for translated in enumeration.finditer(candidate):
+            target_sentence, _ = sentence(candidate, translated)
+            if _count_markers(marker, target_sentence) >= max(
+                3, _count_markers(marker, source_sentence) + 2,
+            ):
+                return True
+    return False
 
 
 def _is_intentional_source_language_literal(source_segment: str, phrase: str) -> bool:

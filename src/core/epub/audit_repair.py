@@ -127,21 +127,48 @@ def repair_conflict_context(source, base_text, repaired_text, before, after):
         excerpts(before.judge_evidence_source, original)
         & excerpts(after.judge_evidence_source, original)
     )
-    distinct_base = [
-        value for value in excerpts(before.judge_evidence_candidate, base) if value not in repaired
-    ]
-    distinct_repair = [
-        value for value in excerpts(after.judge_evidence_candidate, repaired) if value not in base
-    ]
-    if not shared_source or not distinct_base or not distinct_repair:
+    base_evidence = excerpts(before.judge_evidence_candidate, base)
+    repair_evidence = excerpts(after.judge_evidence_candidate, repaired)
+    distinct_base = [value for value in base_evidence if value not in repaired]
+    distinct_repair = [value for value in repair_evidence if value not in base]
+    if not shared_source or not distinct_base:
         return None
-    return {
+    context = {
         "shared_source_evidence": sorted(shared_source),
         "previous_rendering_evidence": sorted(distinct_base),
         "repaired_rendering_evidence": sorted(distinct_repair),
         "previous_audit": before.to_dict(),
         "repair_audit": after.to_dict(),
     }
+    if distinct_repair:
+        return context
+
+    # A repair may change the previously cited defect while the next audit
+    # objects to a different, unchanged span both auditors cited. This is a
+    # disagreement to adjudicate, not proof that either candidate is correct.
+    # Require grounded source and candidate excerpts, a changed prior excerpt,
+    # and different objective findings; generic reasons or confidence changes
+    # alone must not buy another judgment.
+    unchanged_evidence = base_evidence & repair_evidence
+
+    def findings(decision):
+        return {
+            (name, normalize(value))
+            for name in (
+                "judge_missing_from_source", "judge_added_not_in_source",
+                "judge_changed_facts", "judge_censored_or_softened",
+                "judge_structure_issues",
+            )
+            for value in getattr(decision, name)
+            if normalize(value)
+        }
+
+    previous_findings, repair_findings = findings(before), findings(after)
+    if (not unchanged_evidence or not previous_findings or not repair_findings
+            or previous_findings == repair_findings):
+        return None
+    context["unchanged_rendering_evidence"] = sorted(unchanged_evidence)
+    return context
 
 
 def strictly_better(previous, candidate) -> bool:

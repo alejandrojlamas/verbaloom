@@ -937,6 +937,112 @@ async def test_conflicting_repairs_adjudicated_once_and_reused(monkeypatch, outc
     assert chunks[0]["unit"]["audit_repair_attempts"] == 1
 
 
+def unchanged_evidence_fixture():
+    source = "The traveler saw one boat. He wanted the captain to trust him."
+    original = "El viajero vio dos barcos. Quería ganarse la confianza del capitán."
+    repaired = "El viajero vio un barco. Quería ganarse la confianza del capitán."
+    before, _ = verdict(source, original, False, ["Changed the number of boats"])
+    before.judge_evidence_source = ["saw one boat", "wanted the captain to trust him"]
+    before.judge_evidence_candidate = ["vio dos barcos", "Quería ganarse la confianza del capitán"]
+    after, _ = verdict(source, repaired, False, ["Reversed who wanted to be trusted"])
+    after.judge_evidence_source = ["wanted the captain to trust him"]
+    after.judge_evidence_candidate = ["Quería ganarse la confianza del capitán"]
+    return source, original, repaired, before, after
+
+
+@pytest.mark.parametrize("missing", [
+    "source_anchor", "candidate_anchor", "changed_prior_anchor", "new_finding",
+    "prior_finding", "objective_finding", "semantic_only",
+])
+def test_unchanged_evidence_conflict_requires_grounded_changed_findings(missing):
+    from src.core.epub.audit_repair import repair_conflict_context
+
+    source, original, repaired, before, after = unchanged_evidence_fixture()
+    assert repair_conflict_context(source, original, repaired, before, after) is not None
+    if missing == "source_anchor":
+        after.judge_evidence_source = ["This quotation does not occur in the source"]
+    elif missing == "candidate_anchor":
+        after.judge_evidence_candidate = ["This quotation does not occur in the translation"]
+    elif missing == "changed_prior_anchor":
+        before.judge_evidence_candidate = after.judge_evidence_candidate[:]
+    elif missing == "new_finding":
+        after.judge_changed_facts = before.judge_changed_facts[:]
+    elif missing == "prior_finding":
+        before.judge_changed_facts = []
+    elif missing == "objective_finding":
+        after.judge_changed_facts = []
+        after.judge_reason = "I prefer a different wording"
+    else:
+        after.issues.append(FidelityIssue("source_language_residual", "reject", "Untranslated text"))
+    assert repair_conflict_context(source, original, repaired, before, after) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["pass", "fail", "warn", "low_confidence", "budget"])
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_changed_finding_on_unchanged_span_uses_one_bounded_adjudication(
+    monkeypatch, outcome, legacy,
+):
+    from src.core.epub import audit_repair
+
+    source, original, repaired, before, after = unchanged_evidence_fixture()
+    chunks = [{"text": source, "local_tag_map": {}, "global_indices": []}]
+    record, = ensure_unit_records(chunks, "Text/chapter.xhtml")
+    mark_reviewed(record, original, review={"status": "pass"})
+    candidates, calls = [original], []
+
+    async def audit(source, candidate, **kwargs):
+        phase = kwargs["phase"].removeprefix("final_epub_unit_")
+        calls.append(phase)
+        if phase == "repair_adjudication":
+            assert candidate == repaired
+            context = kwargs["prompt_options"]["_fidelity_adjudication_context"]["repair_conflict"]
+            assert context["shared_source_evidence"] == ["wanted the captain to trust him"]
+            assert context["previous_rendering_evidence"] == ["vio dos barcos"]
+            assert context["repaired_rendering_evidence"] == []
+            assert context["unchanged_rendering_evidence"] == [
+                "quería ganarse la confianza del capitán",
+            ]
+            decision, response = verdict(source, candidate, outcome != "fail")
+            if outcome == "warn":
+                decision.judge_decision = "warn"
+            elif outcome == "low_confidence":
+                decision.judge_confidence = 0.7
+            return decision, response
+        return before if candidate == original else after, LLMResponse(content="assessment")
+
+    async def repair(**kwargs):
+        calls.append("repair")
+        return repaired
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+    monkeypatch.setattr(subject, "_repair_audited_candidate", repair)
+    options = {**OPTIONS, "fidelity_adjudicate_rejections": True}
+    if outcome == "budget":
+        options["epub_audit_max_attempts"] = 3
+    if legacy:
+        # Old journals contain all paid evidence; they need no new repair.
+        with monkeypatch.context() as old_code:
+            old_code.setattr(audit_repair, "repair_conflict_context", lambda *_: None)
+            with pytest.raises(ChunkTranslationFailedError, match="repair_repeated_candidate"):
+                await run(chunks, candidates, options=options)
+        chunks = json.loads(json.dumps(chunks))
+    for _ in range(2):
+        if outcome == "pass":
+            assert await run(chunks, candidates, options=options) == [repaired]
+            assert validate_publishable_units(chunks)[0]
+        else:
+            with pytest.raises(ChunkTranslationFailedError):
+                await run(chunks, candidates, options=options)
+            assert candidates == [original]
+            assert not validate_publishable_units(chunks)[0]
+        chunks = json.loads(json.dumps(chunks))
+    assert calls.count("repair") == 2
+    assert calls.count("repair_adjudication") == int(outcome != "budget")
+    assert chunks[0]["unit"]["audit_repair_attempts"] == 2
+    assert chunks[0]["unit"]["audit_attempts"] == (3 if outcome == "budget" else 4)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("field", ["audit_attempts", "audit_repair_attempts"])
 @pytest.mark.parametrize("value", [None, -1, "2", True, 1.5])

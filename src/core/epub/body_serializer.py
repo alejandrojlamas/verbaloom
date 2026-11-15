@@ -73,6 +73,23 @@ def _join_decorative_initials(body: etree._Element) -> None:
             continue
 
         first = children[0]
+        initial = prefix.strip()
+        if (
+            tag == "p" and len(initial) == 1 and initial.isalpha() and initial.isupper()
+            and isinstance(first.tag, str) and etree.QName(first).localname == "span"
+            and not len(first) and set(first.attrib) == {"class"}
+            and first.get("class").strip()
+            and all(_SMALL_CAPS_CLASS.fullmatch(name) for name in first.get("class").split())
+            and (first.text or "").lstrip()[:1].isalpha()
+        ):
+            # An opening initial can precede its small-caps span instead of
+            # occupying a drop-cap span. Keep the complete opening in one
+            # editable text node, including a real space after a pronoun or
+            # article. Otherwise the isolated initial can become protected
+            # markup and remain in the source language after translation.
+            first.text = prefix + first.text
+            setattr(preceding, attribute, None)
+            continue
         if (
             prefix.strip(" \t\r\n\u00a0\"'\u00ab\u2018\u201c") or not isinstance(first.tag, str)
             or etree.QName(first).localname != "span" or len(first)
