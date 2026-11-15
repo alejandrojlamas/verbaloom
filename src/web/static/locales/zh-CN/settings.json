@@ -128,7 +128,7 @@
   "profile_strength_label": "档案监督",
   "profile_strength_light": "轻量 - 仅提示词和术语表",
   "profile_strength_balanced": "平衡 - 本地检查和定向修复",
-  "profile_strength_strict": "严格 - DeepSeek Pro 审核和修复",
+  "profile_strength_strict": "严格 - 全面审核与修复",
   "profile_strength_light_short": "轻量",
   "profile_strength_balanced_short": "平衡",
   "profile_strength_strict_short": "严格",

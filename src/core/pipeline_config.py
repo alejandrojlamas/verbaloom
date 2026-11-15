@@ -24,6 +24,12 @@ MODELS = {
 PRESETS = (
     "compatible", "openai_equivalent", "deepseek_source_audited", "openai_source_audited",
 )
+# Legacy reviewer names retain their model tier on the official OpenAI route.
+DEEPSEEK_TIER_EQUIVALENTS = {
+    "deepseek-flash": "gpt-6-luna",
+    "deepseek-v4-flash": "gpt-6-luna",
+    "deepseek-v4-pro": "gpt-6.1-terra",
+}
 
 
 def validate_pipeline(value):
@@ -154,7 +160,13 @@ def pipeline_preset(name, config):
         raise ValueError("The DeepSeek strategy preset requires a DeepSeek baseline")
     baseline = deepcopy(config)
     baseline.pop("pipeline", None)
-    baseline.update(llm_provider=provider, model=model)
+    # Explicit pipeline roles use their verified official endpoint; a stale
+    # legacy endpoint must not determine this pipeline's reviewer defaults.
+    baseline.update(
+        llm_provider=provider,
+        model=model,
+        llm_api_endpoint=ENDPOINTS.get(provider, baseline.get("llm_api_endpoint", "")),
+    )
     options = configure_editorial_guard_options(baseline)
     audit = (
         options.get("fidelity_supervisor_model")
@@ -182,11 +194,7 @@ def pipeline_preset(name, config):
         target = provider
         if name in {"openai_equivalent", "openai_source_audited"}:
             target = "openai"
-            selected = {
-                "deepseek-flash": "gpt-6-luna",
-                "deepseek-v4-flash": "gpt-6-luna",
-                "deepseek-v4-pro": "gpt-6.1-terra",
-            }.get(selected, selected)
+            selected = DEEPSEEK_TIER_EQUIVALENTS.get(selected, selected)
         roles[role] = {
             "provider": target,
             "model": selected,

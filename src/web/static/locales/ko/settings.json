@@ -128,7 +128,7 @@
   "profile_strength_label": "프로필 감독",
   "profile_strength_light": "가벼움 - 프롬프트와 용어집만",
   "profile_strength_balanced": "균형 - 로컬 검사와 대상 수정",
-  "profile_strength_strict": "엄격 - DeepSeek Pro 감사와 수정",
+  "profile_strength_strict": "엄격 - 전체 감사 및 수정",
   "profile_strength_light_short": "가벼움",
   "profile_strength_balanced_short": "균형",
   "profile_strength_strict_short": "엄격",

@@ -36,6 +36,47 @@ def usage_process_type(config: Dict[str, Any]) -> str:
     return 'translation'
 
 
+def _review_policy_models(config: Dict[str, Any], reference: Dict[str, Any]):
+    """Return ``(strong_reviewer, primary_is_light, primary_model)`` or ``None``.
+
+    The cost-aware review policy (one strict final audit instead of three
+    remote judgements per unit, bounded rewrites on the cheaper model) needs a
+    strong reviewer model. It is defined for the two provider families whose
+    models and prices are verified: DeepSeek (Pro reviews, Flash is light) and
+    the official OpenAI editorial models (Terra reviews, Luna is light). Any
+    other provider, including OpenAI-compatible local servers, keeps its
+    previous behavior.
+    """
+    provider = str(reference.get('provider', config.get('llm_provider')) or '').strip().lower()
+    primary = str(reference.get('model', config.get('model')) or '').strip()
+    if provider == 'deepseek':
+        return 'deepseek-v4-pro', 'flash' in primary.lower(), primary
+    if provider == 'openai':
+        from src.core.llm.providers.openai_contract import (
+            EDITORIAL_MODELS,
+            editorial_equivalent,
+        )
+        from src.utils.provider_security import endpoint_origin
+
+        official = (
+            endpoint_origin(str(config.get('llm_api_endpoint') or ''))
+            == 'https://api.openai.com'
+        )
+        if reference:
+            # A review reference names the original policy, not an arbitrary
+            # local endpoint. Only a complete validated pipeline can establish
+            # that official-provider reference independently of the endpoint.
+            from src.core.pipeline_config import validate_pipeline
+
+            validated = validate_pipeline(config.get('pipeline'))
+            official = validated['review_reference']['provider'] == 'openai'
+        if official:
+            primary = editorial_equivalent(primary)
+        if official and primary in EDITORIAL_MODELS:
+            return 'gpt-6.1-terra', primary == 'gpt-6-luna', primary
+    return None
+
+
 def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
     """Set guard defaults without requiring extra UI controls."""
     prompt_options = config.setdefault('prompt_options', {})
@@ -79,8 +120,9 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
     # Model substitution must not silently change the baseline review policy.
     # This reference is persisted independently from the actual request roles.
     reference = (config.get('pipeline') or {}).get('review_reference') or {}
-    policy_provider = reference.get('provider', config.get('llm_provider')) or ''
-    if policy_provider.lower() == 'deepseek':
+    policy_models = _review_policy_models(config, reference)
+    if policy_models is not None:
+        strong_model, primary_is_light, primary_model = policy_models
         uses_profile = (
             (prompt_options.get('editorial_mode') or '').lower() == 'book_profile'
             and bool(str(prompt_options.get('profile_id') or '').strip())
@@ -97,7 +139,6 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
                 and strength != 'strict'
             ):
                 prompt_options['profile_audit_enabled'] = False
-        primary_model = str(reference.get('model', config.get('model')) or '').strip()
         if has_strict_final_audit:
             # Strict EPUB jobs already run a source-aware Pro audit over every
             # final candidate. Keep deterministic checks at every earlier
@@ -116,33 +157,34 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
                 )
 
             # Locale and residue repairs are accepted only after deterministic
-            # validation and the final Pro audit. Running them on the selected
-            # Flash model avoids using Pro for simple bounded rewrites.
-            if primary_model and 'flash' in primary_model.lower():
+            # validation and the final strong-model audit. Running them on the
+            # selected light model (Flash, Luna) avoids using the strong model
+            # for simple bounded rewrites.
+            if primary_model and primary_is_light:
                 prompt_options['quality_alert_model'] = primary_model
                 prompt_options['_quality_alert_model_policy'] = (
                     'primary_then_strict_final_audit'
                 )
             else:
-                prompt_options.setdefault('quality_alert_model', 'deepseek-v4-pro')
+                prompt_options.setdefault('quality_alert_model', strong_model)
         else:
-            prompt_options.setdefault('quality_alert_model', 'deepseek-v4-pro')
-        prompt_options.setdefault('source_aware_editorial_guard_model', 'deepseek-v4-pro')
+            prompt_options.setdefault('quality_alert_model', strong_model)
+        prompt_options.setdefault('source_aware_editorial_guard_model', strong_model)
         if uses_transform_profile:
-            prompt_options['transform_auditor_model'] = 'deepseek-v4-pro'
+            prompt_options['transform_auditor_model'] = strong_model
             prompt_options['source_aware_editorial_guard'] = False
             prompt_options['source_aware_editorial_guard_mode'] = 'off'
             prompt_options['fidelity_supervisor_mode'] = 'always'
-            prompt_options['fidelity_supervisor_model'] = 'deepseek-v4-pro'
-            prompt_options['profile_audit_model'] = 'deepseek-v4-pro'
-            prompt_options['profile_repair_model'] = 'deepseek-v4-pro'
+            prompt_options['fidelity_supervisor_model'] = strong_model
+            prompt_options['profile_audit_model'] = strong_model
+            prompt_options['profile_repair_model'] = strong_model
         else:
             prompt_options.setdefault('source_aware_editorial_guard_mode', 'alerted')
             prompt_options.setdefault('fidelity_supervisor_mode', 'alerted')
-            prompt_options.setdefault('fidelity_supervisor_model', 'deepseek-v4-pro')
+            prompt_options.setdefault('fidelity_supervisor_model', strong_model)
             if uses_profile:
                 prompt_options.setdefault('profile_audit_enabled', False)
-                prompt_options.setdefault('profile_repair_model', 'deepseek-v4-pro')
+                prompt_options.setdefault('profile_repair_model', strong_model)
         prompt_options.setdefault('fidelity_supervisor_retry', True)
     from src.core.review_strategy import apply_review_strategy
 

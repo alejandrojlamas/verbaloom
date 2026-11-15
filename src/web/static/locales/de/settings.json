@@ -128,7 +128,7 @@
   "profile_strength_label": "Profilüberwachung",
   "profile_strength_light": "Leicht - nur Prompt und Glossar",
   "profile_strength_balanced": "Ausgewogen - lokale Prüfungen und gezielte Reparatur",
-  "profile_strength_strict": "Strikt - Audit und Reparatur mit DeepSeek Pro",
+  "profile_strength_strict": "Streng - vollständige Prüfung und Korrektur",
   "profile_strength_light_short": "Leicht",
   "profile_strength_balanced_short": "Ausgewogen",
   "profile_strength_strict_short": "Strikt",

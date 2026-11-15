@@ -128,7 +128,7 @@
   "profile_strength_label": "Supervisión del perfil",
   "profile_strength_light": "Ligera - solo prompt y glosario",
   "profile_strength_balanced": "Balanceada - chequeos locales y reparación dirigida",
-  "profile_strength_strict": "Estricta - auditoría y reparación con DeepSeek Pro",
+  "profile_strength_strict": "Estricta - auditoría y reparación completas",
   "profile_strength_light_short": "Ligera",
   "profile_strength_balanced_short": "Balanceada",
   "profile_strength_strict_short": "Estricta",

@@ -1,4 +1,6 @@
 {
+  "job_card_download_draft": "下载草稿",
+  "job_card_validating_saved": "正在使用已保存的文本验证文件…",
   "job_card_finalization_pending": "等待发布",
   "job_card_retry_finalization": "验证并发布",
   "job_card_text_progress": "已保存文本：{{completed}} / {{total}} 段",

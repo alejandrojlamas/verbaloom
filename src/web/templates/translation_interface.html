@@ -698,11 +698,11 @@
                         <div class="profile-prep-card-header">
                             <div class="profile-prep-title">
                                 <span class="material-symbols-outlined">auto_awesome</span>
-                                <span data-i18n="transform:profile_prep_button">Analyze with DeepSeek Flash</span>
+                                <span data-i18n="transform:profile_prep_button" data-i18n-params='{"model":"GPT-6 Luna"}'>Analyze with GPT-6 Luna</span>
                             </div>
                         </div>
-                        <p class="profile-prep-body" data-i18n="transform:profile_prep_help">
-                            DeepSeek Flash reads the entire book in chunks, extracts names, concepts, forms of address, and useful editorial questions, creates a book-specific profile, and makes it available in the selector.
+                        <p class="profile-prep-body" data-i18n="transform:profile_prep_help" data-i18n-params='{"model":"GPT-6 Luna"}'>
+                            GPT-6 Luna reads the entire book in chunks, extracts names, concepts, forms of address, and useful editorial questions, creates a book-specific profile, and makes it available in the selector.
                         </p>
                     </div>
 
@@ -735,7 +735,7 @@
                                 <span class="material-symbols-outlined">monitoring</span>
                                 <span data-i18n="transform:profile_prep_live_title">Live process</span>
                             </div>
-                            <small id="profilePrepModelLabel" style="color: var(--text-muted-light);" data-i18n="transform:profile_prep_model_default">DeepSeek Flash</small>
+                            <small id="profilePrepModelLabel" style="color: var(--text-muted-light);" data-i18n="transform:profile_prep_model_default" data-i18n-params='{"model":"GPT-6 Luna"}'>GPT-6 Luna</small>
                         </div>
                         <div id="profilePrepProgress" class="profile-prep-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                             <div id="profilePrepBar" class="profile-prep-progress-bar"></div>
@@ -1304,7 +1304,7 @@
                             <select id="profileStrengthSelect" class="form-control" style="margin-bottom: 0;">
                                 <option value="light" data-i18n="settings:profile_strength_light">Light - prompt and glossary only</option>
                                 <option value="balanced" selected data-i18n="settings:profile_strength_balanced">Balanced - local checks and targeted repair</option>
-                                <option value="strict" data-i18n="settings:profile_strength_strict">Strict - DeepSeek Pro audit and repair</option>
+                                <option value="strict" data-i18n="settings:profile_strength_strict">Strict - full audit and repair</option>
                             </select>
                         </div>
                         <p data-i18n="settings:profile_strength_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">

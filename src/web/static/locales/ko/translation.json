@@ -1,4 +1,6 @@
 {
+  "job_card_download_draft": "초안 다운로드",
+  "job_card_validating_saved": "저장된 텍스트로 파일을 검증하는 중…",
   "job_card_finalization_pending": "게시 대기",
   "job_card_retry_finalization": "검증 및 게시",
   "job_card_text_progress": "저장된 텍스트: {{completed}} / {{total}} 청크",

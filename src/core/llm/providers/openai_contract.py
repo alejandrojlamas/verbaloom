@@ -5,11 +5,21 @@ guides/latest-model. Compatible/local servers do not inherit these parameters.
 """
 
 from src.core.llm.base import LLMResponse
+from src.core.pipeline_config import DEEPSEEK_TIER_EQUIVALENTS
 
 EDITORIAL_MODELS = {"gpt-6-luna": "GPT-6 Luna", "gpt-6.1-terra": "GPT-6.1 Terra"}
 REASONING_EFFORTS = {"none", "low", "medium", "high", "xhigh", "max"}
 MAX_OUTPUT_TOKENS = 128_000
 MAX_CONTEXT_TOKENS = 1_050_000
+
+
+def editorial_equivalent(model):
+    """Map legacy reviewer names to the same tier on official OpenAI only.
+
+    Callers must verify the official endpoint before using this mapping.
+    Compatible servers may legitimately serve the original model names.
+    """
+    return DEEPSEEK_TIER_EQUIVALENTS.get(str(model or "").strip().lower(), model)
 
 
 def text_parameters(model, *, effort, max_output_tokens, temperature=None):

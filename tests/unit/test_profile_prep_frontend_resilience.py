@@ -45,7 +45,7 @@ def test_profile_prep_tracking_survives_page_reload():
 def test_profile_prep_import_cache_busted():
     js = INDEX_JS.read_text()
 
-    assert "profile-prep-manager.js?v=20260710-profile-recovery" in js
+    assert "profile-prep-manager.js?v=20261114-openai-primary" in js
 
 
 def test_profile_prep_explains_term_batches_vs_book_chunks():
@@ -58,3 +58,47 @@ def test_profile_prep_explains_term_batches_vs_book_chunks():
     assert "profile_prep_stat_term_batches" in js
     assert "profile_prep_stat_book_chunks" in js
     assert "stageLabel(stage)" in js
+
+
+def test_profile_prep_follows_the_primary_provider_instead_of_fixed_deepseek():
+    js = PROFILE_PREP_JS.read_text()
+
+    # No request is built with a fixed DeepSeek provider or key any more.
+    assert "formData.append('provider', 'deepseek')" not in js
+    assert "ApiKeyUtils.getValue('deepseekApiKey')" not in js
+    assert "formData.append('provider', models.provider)" in js
+    assert "formData.append('review_model', models.reviewModel)" in js
+    assert "ApiKeyUtils.getValue(models.keyField)" in js
+    # Official OpenAI only: a compatible local server keeps the previous models.
+    assert "isOfficialOpenAIEndpoint(endpoint)" in js
+    assert "url.hostname === 'api.openai.com'" in js
+    assert "model: 'gpt-6-luna'" in js
+    assert "reviewModel: 'gpt-6.1-terra'" in js
+    assert "keyField: 'openaiApiKey'" in js
+    assert "keyField: 'deepseekApiKey'" in js
+
+
+def test_profile_prep_labels_name_the_model_that_is_used():
+    js = PROFILE_PREP_JS.read_text()
+    template = TEMPLATE.read_text()
+    locales = ROOT / "src/web/static/locales"
+
+    assert "refreshModelLabels()" in js
+    for event in ("defaultConfigLoaded", "providerSettingsChanged", "pipelineChanged"):
+        assert event in js
+    for key in (
+        "transform:profile_prep_button",
+        "transform:profile_prep_help",
+        "transform:profile_prep_model_default",
+    ):
+        marker = f'data-i18n="{key}" data-i18n-params='
+        assert marker in template, key
+    for locale in ("de", "en", "es", "fr", "ja", "ko", "zh-CN"):
+        transform = (locales / locale / "transform.json").read_text(encoding="utf-8")
+        settings = (locales / locale / "settings.json").read_text(encoding="utf-8")
+        assert "DeepSeek Flash" not in transform, locale
+        assert transform.count("{{model}}") == 4, locale
+        strict = next(
+            line for line in settings.splitlines() if '"profile_strength_strict"' in line
+        )
+        assert "{{model}}" not in strict and "DeepSeek" not in strict, locale

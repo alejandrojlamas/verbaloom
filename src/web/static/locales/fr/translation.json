@@ -1,4 +1,6 @@
 {
+  "job_card_download_draft": "Télécharger le brouillon",
+  "job_card_validating_saved": "Validation du fichier à partir du texte enregistré…",
   "job_card_finalization_pending": "Publication en attente",
   "job_card_retry_finalization": "Valider et publier",
   "job_card_text_progress": "Texte enregistré : {{completed}} / {{total}} segments",

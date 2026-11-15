@@ -149,9 +149,13 @@ NIM_BASE_MODELS = {
     "mistralai/mixtral-8x22b-v0.1",
 }
 
+# Preselected on the official OpenAI host when the configured DEFAULT_MODEL is
+# not offered there (for example a leftover model name from another provider).
+OPENAI_RECOMMENDED_MODEL = "gpt-6.1-terra"
+
 OPENAI_STATIC_MODELS = [
-    {"id": "gpt-6-luna", "name": "GPT-6 Luna"},
     {"id": "gpt-6.1-terra", "name": "GPT-6.1 Terra"},
+    {"id": "gpt-6-luna", "name": "GPT-6 Luna"},
     {"id": "gpt-4o", "name": "GPT-4o (Latest)"},
     {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
     {"id": "gpt-4-turbo", "name": "GPT-4 Turbo"},
@@ -444,10 +448,8 @@ class ProviderModelCatalog:
                 models.sort(key=lambda model: model["name"].lower())
                 if models:
                     model_ids = [model["id"] for model in models]
-                    default_model = (
-                        self._config.DEFAULT_MODEL
-                        if self._config.DEFAULT_MODEL in model_ids
-                        else model_ids[0]
+                    default_model = self._openai_default_model(
+                        model_ids, is_official_openai
                     )
                     return {
                         "models": models,
@@ -498,11 +500,7 @@ class ProviderModelCatalog:
             }
 
         model_ids = [model["id"] for model in OPENAI_STATIC_MODELS]
-        fallback_default = (
-            self._config.DEFAULT_MODEL
-            if self._config.DEFAULT_MODEL in model_ids
-            else "gpt-4o"
-        )
+        fallback_default = self._openai_default_model(model_ids, True)
         return {
             "models": OPENAI_STATIC_MODELS,
             "model_names": model_ids,
@@ -511,6 +509,20 @@ class ProviderModelCatalog:
             "count": len(OPENAI_STATIC_MODELS),
             "error": fetch_error,
         }
+
+    def _openai_default_model(self, model_ids: list[str], official: bool) -> str:
+        """Pick the preselected model for an OpenAI-compatible model list.
+
+        The configured DEFAULT_MODEL wins whenever the server offers it. Only the
+        official host falls back to the recommended editorial model; a custom
+        server keeps its first listed model.
+        """
+        configured = self._config.DEFAULT_MODEL
+        if configured in model_ids:
+            return configured
+        if official and OPENAI_RECOMMENDED_MODEL in model_ids:
+            return OPENAI_RECOMMENDED_MODEL
+        return model_ids[0]
 
     def _get_ollama_models(self, api_endpoint: str | None) -> dict:
         ollama_base_from_ui = api_endpoint or self._config.API_ENDPOINT

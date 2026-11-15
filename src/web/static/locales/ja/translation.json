@@ -1,4 +1,6 @@
 {
+  "job_card_download_draft": "下書きをダウンロード",
+  "job_card_validating_saved": "保存済みのテキストを使ってファイルを検証しています…",
   "job_card_finalization_pending": "公開待ち",
   "job_card_retry_finalization": "検証して公開",
   "job_card_text_progress": "保存済み: {{completed}} / {{total}} チャンク",

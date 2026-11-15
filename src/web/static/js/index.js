@@ -48,7 +48,7 @@ import { ProgressManager } from './translation/progress-manager.js?v=20260929-et
 import { ResumeManager } from './translation/resume-manager.js?v=20261114-publication';
 import { QuickTestManager } from './translation/quick-test.js?v=20260628-transform-glossary';
 import { TextTransformManager } from './translation/text-transform-manager.js?v=20260705-transform-flow';
-import { ProfilePrepManager } from './translation/profile-prep-manager.js?v=20260710-profile-recovery';
+import { ProfilePrepManager } from './translation/profile-prep-manager.js?v=20261114-openai-primary';
 
 // ========================================
 // Utilities

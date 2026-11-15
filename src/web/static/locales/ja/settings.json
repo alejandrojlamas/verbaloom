@@ -128,7 +128,7 @@
   "profile_strength_label": "プロファイル監督",
   "profile_strength_light": "軽量 - プロンプトと用語集のみ",
   "profile_strength_balanced": "バランス - ローカル検査と対象修復",
-  "profile_strength_strict": "厳格 - DeepSeek Pro による監査と修復",
+  "profile_strength_strict": "厳格 - 完全な監査と修復",
   "profile_strength_light_short": "軽量",
   "profile_strength_balanced_short": "バランス",
   "profile_strength_strict_short": "厳格",

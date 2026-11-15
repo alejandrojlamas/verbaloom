@@ -148,6 +148,65 @@ def test_openai_compatible_listing_filters_non_chat_models_and_sorts(monkeypatch
     assert payload["default"] == "alpha-chat"
 
 
+def _official_openai_listing(monkeypatch, model_ids, default_model):
+    def fake_get(url, *, headers, timeout):
+        return FakeResponse(
+            200, {"data": [{"id": model_id} for model_id in model_ids]}
+        )
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(config_routes._config, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(config_routes._config, "DEFAULT_MODEL", default_model)
+    with _client() as client:
+        return client.post(
+            "/api/models",
+            json={
+                "provider": "openai",
+                "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            },
+        ).get_json()
+
+
+def test_official_openai_ignores_a_leftover_default_from_another_provider(monkeypatch):
+    payload = _official_openai_listing(
+        monkeypatch,
+        ["babbage-002", "gpt-6-luna", "gpt-6.1-terra"],
+        "deepseek-v4-pro",
+    )
+
+    assert payload["status"] == "openai_connected"
+    assert payload["default"] == "gpt-6.1-terra"
+
+
+def test_official_openai_keeps_a_configured_model_that_exists(monkeypatch):
+    payload = _official_openai_listing(
+        monkeypatch, ["gpt-6-luna", "gpt-6.1-terra"], "gpt-6-luna"
+    )
+
+    assert payload["default"] == "gpt-6-luna"
+
+
+def test_official_openai_static_fallback_recommends_the_editorial_model(monkeypatch):
+    def fake_get(url, *, headers, timeout):
+        return FakeResponse(401, {}, text="unauthorized")
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(config_routes._config, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(config_routes._config, "DEFAULT_MODEL", "deepseek-v4-pro")
+    with _client() as client:
+        payload = client.post(
+            "/api/models",
+            json={
+                "provider": "openai",
+                "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            },
+        ).get_json()
+
+    assert payload["status"] == "openai_static"
+    assert payload["default"] == "gpt-6.1-terra"
+    assert payload["model_names"][:2] == ["gpt-6.1-terra", "gpt-6-luna"]
+
+
 def test_openai_custom_endpoint_failure_never_returns_cloud_fallback(monkeypatch):
     monkeypatch.setattr(
         requests,

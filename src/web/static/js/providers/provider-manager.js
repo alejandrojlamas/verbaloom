@@ -28,6 +28,8 @@ import {
  * Common OpenAI models list
  */
 const OPENAI_MODELS = [
+    { value: 'gpt-6.1-terra', label: 'GPT-6.1 Terra' },
+    { value: 'gpt-6-luna', label: 'GPT-6 Luna' },
     { value: 'gpt-4o', label: 'GPT-4o (Latest)' },
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
     { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },

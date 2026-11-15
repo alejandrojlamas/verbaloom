@@ -1,4 +1,6 @@
 {
+  "job_card_download_draft": "Entwurf herunterladen",
+  "job_card_validating_saved": "Datei wird anhand des gespeicherten Textes geprüft…",
   "job_card_finalization_pending": "Veröffentlichung ausstehend",
   "job_card_retry_finalization": "Prüfen und veröffentlichen",
   "job_card_text_progress": "Text gespeichert: {{completed}} / {{total}} Segmente",

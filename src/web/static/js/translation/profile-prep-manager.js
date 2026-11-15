@@ -6,6 +6,24 @@ import { t } from '../i18n/i18n.js';
 import { TextTransformManager } from './text-transform-manager.js?v=20260705-transform-flow';
 import { PipelineSettings } from '../ui/pipeline-settings.js';
 
+const OPENAI_OFFICIAL_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+
+// Display names of the models the analysis can run on; other ids are shown as is.
+function isOfficialOpenAIEndpoint(endpoint) {
+    try {
+        const url = new URL(endpoint);
+        return url.protocol === 'https:' && url.hostname === 'api.openai.com'
+            && !url.port && !url.username && !url.password;
+    } catch { return false; }
+}
+
+const MODEL_NAMES = {
+    'gpt-6-luna': 'GPT-6 Luna',
+    'gpt-6.1-terra': 'GPT-6.1 Terra',
+    'deepseek-flash': 'DeepSeek Flash',
+    'deepseek-v4-pro': 'DeepSeek Pro',
+};
+
 export const ProfilePrepManager = {
     pendingFiles: [],
     active: false,
@@ -23,7 +41,69 @@ export const ProfilePrepManager = {
         this.bindEvents();
         this.renderPendingFiles();
         this.resetLiveView();
+        this.refreshModelLabels();
         void this.restoreTrackedJob();
+    },
+
+    /**
+     * Models the analysis uses. A pipeline preset decides through its
+     * profile roles. Without one, the analysis follows the primary provider
+     * when it is the official OpenAI API (Luna discovers, Terra reviews
+     * terms); any other provider keeps DeepSeek as before.
+     */
+    analysisModels(pipeline) {
+        const roles = pipeline?.roles;
+        if (roles?.profile_prepare && roles?.profile_review) {
+            return {
+                provider: roles.profile_prepare.provider,
+                reviewProvider: roles.profile_review.provider,
+                model: roles.profile_prepare.model,
+                reviewModel: roles.profile_review.model,
+                keyField: '',
+                endpoint: '',
+            };
+        }
+        const endpoint = DomHelpers.getValue('openaiEndpoint') || OPENAI_OFFICIAL_ENDPOINT;
+        if (DomHelpers.getValue('llmProvider') === 'openai'
+                && isOfficialOpenAIEndpoint(endpoint)) {
+            return {
+                provider: 'openai',
+                reviewProvider: 'openai',
+                model: 'gpt-6-luna',
+                reviewModel: 'gpt-6.1-terra',
+                keyField: 'openaiApiKey',
+                endpoint,
+            };
+        }
+        return {
+            provider: 'deepseek',
+            reviewProvider: 'deepseek',
+            model: 'deepseek-flash',
+            reviewModel: 'deepseek-v4-pro',
+            keyField: 'deepseekApiKey',
+            endpoint: '',
+        };
+    },
+
+    currentAnalysisModels() {
+        let pipeline = null;
+        try { pipeline = PipelineSettings.snapshot({ reportValidity: false }); } catch { pipeline = null; }
+        return this.analysisModels(pipeline);
+    },
+
+    /** Name the models the static labels talk about. */
+    refreshModelLabels() {
+        const models = this.currentAnalysisModels();
+        const render = (key, model) => {
+            document.querySelectorAll(`[data-i18n="${key}"]`).forEach((node) => {
+                const params = { model: MODEL_NAMES[model] || model };
+                node.dataset.i18nParams = JSON.stringify(params);
+                node.textContent = t(key, params);
+            });
+        };
+        render('transform:profile_prep_button', models.model);
+        render('transform:profile_prep_help', models.model);
+        render('transform:profile_prep_model_default', models.model);
     },
 
     bindEvents() {
@@ -64,6 +144,21 @@ export const ProfilePrepManager = {
                 this.resetLiveView();
             });
         }
+
+        const refresh = () => this.refreshModelLabels();
+        DomHelpers.getElement('llmProvider')?.addEventListener('change', refresh);
+        DomHelpers.getElement('openaiEndpoint')?.addEventListener('input', refresh);
+        for (const name of ['defaultConfigLoaded', 'providerSettingsChanged', 'pipelineChanged', 'localeChanged']) {
+            window.addEventListener(name, refresh);
+        }
+        window.addEventListener('localeChanged', () => {
+            // Only re-render the current message. A connection warning or an
+            // error must not be replaced by an older running-job snapshot.
+            const status = DomHelpers.getElement('profilePrepStatus');
+            if (status && this.progressMessageRenderer) {
+                status.textContent = this.progressMessageRenderer();
+            }
+        });
     },
 
     setPendingFiles(files) {
@@ -122,6 +217,7 @@ export const ProfilePrepManager = {
         formData.append('target_locale', /^spanish$/i.test(language) ? 'es-MX' : '');
         formData.append('transform_mode', purpose);
         formData.append('profile_goal', purpose);
+        const models = this.analysisModels(pipeline);
         formData.append('llm_full_coverage', 'true');
 
         if (pipeline) {
@@ -130,11 +226,12 @@ export const ProfilePrepManager = {
                 if (value) formData.append(field, value);
             }
         } else {
-            formData.append('provider', 'deepseek');
-            formData.append('model', 'deepseek-flash');
-            formData.append('review_model', 'deepseek-v4-pro');
-            const deepseekKey = ApiKeyUtils.getValue('deepseekApiKey');
-            if (deepseekKey) formData.append('api_key', deepseekKey);
+            formData.append('provider', models.provider);
+            formData.append('model', models.model);
+            formData.append('review_model', models.reviewModel);
+            const apiKey = ApiKeyUtils.getValue(models.keyField);
+            if (apiKey) formData.append('api_key', apiKey);
+            if (models.endpoint) formData.append('api_endpoint', models.endpoint);
         }
 
         this.active = true;
@@ -143,9 +240,15 @@ export const ProfilePrepManager = {
         this.pollFailureCount = 0;
         this.pollFailureStartedAt = 0;
         this.showLiveView();
-        this.renderModelLabel({ pipeline });
+        this.renderModelLabel({
+            pipeline,
+            provider: models.provider,
+            model: models.model,
+            review_provider: models.reviewProvider,
+            review_model: models.reviewModel,
+        });
         this.renderPendingFiles();
-        this.setProgress(0, t('transform:profile_prep_running'));
+        this.setProgress(0, this.runningMessage(models.model), '', () => this.runningMessage(models.model));
         MessageLogger.showMessage(t('transform:profile_prep_started'), 'info');
 
         try {
@@ -295,15 +398,15 @@ export const ProfilePrepManager = {
         this.lastJobSnapshot = job;
         this.showLiveView();
         const percent = Number.isFinite(Number(job.progress)) ? Number(job.progress) : 0;
-        const message = this.formatProgressMessage(job) || job.message || t('transform:profile_prep_running');
+        const renderMessage = () => t('transform:profile_prep_progress', {
+            percent,
+            message: this.formatProgressMessage(job) || job.message
+                || this.runningMessage(job.pipeline?.roles?.profile_prepare?.model || job.model),
+        });
         const className = job.status === 'failed'
             ? 'error'
             : (job.status === 'completed' ? 'success' : '');
-        this.setProgress(percent, t('transform:profile_prep_progress', {
-            percent,
-            message,
-            defaultValue: `${percent}% · ${message}`,
-        }), className);
+        this.setProgress(percent, renderMessage(), className, renderMessage);
         this.renderJobStats(job);
         this.renderLogs(job.logs || []);
     },
@@ -453,6 +556,11 @@ export const ProfilePrepManager = {
         this.renderModelLabel(job);
     },
 
+    runningMessage(model) {
+        const id = model || this.currentAnalysisModels().model;
+        return t('transform:profile_prep_running', { model: MODEL_NAMES[id] || id });
+    },
+
     renderModelLabel(job) {
         const prepare = job.pipeline?.roles?.profile_prepare;
         const review = job.pipeline?.roles?.profile_review;
@@ -592,7 +700,8 @@ export const ProfilePrepManager = {
         }).join('');
     },
 
-    setProgress(percent, message, className = '') {
+    setProgress(percent, message, className = '', messageRenderer = null) {
+        this.progressMessageRenderer = messageRenderer;
         const status = DomHelpers.getElement('profilePrepStatus');
         const progress = DomHelpers.getElement('profilePrepProgress');
         const bar = DomHelpers.getElement('profilePrepBar');

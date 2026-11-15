@@ -20,6 +20,7 @@ from src.config import (
 from .base import LLMProvider, normalize_api_keys
 from .providers.ollama import OllamaProvider
 from .providers.openai import OpenAICompatibleProvider
+from .providers.openai_contract import editorial_equivalent
 from .providers.gemini import GeminiProvider
 from .providers.openrouter import OpenRouterProvider
 from .providers.mistral import MistralProvider
@@ -100,9 +101,14 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
         api_endpoint = kwargs.get("api_endpoint") or kwargs.get("endpoint") or ""
         # Distinguish official OpenAI from local llama.cpp/vLLM/LM Studio for log clarity
         pname = "openai" if endpoint_origin(api_endpoint) == "https://api.openai.com" else "openai-compatible"
+        model = kwargs.get("model", DEFAULT_MODEL)
+        if pname == "openai":
+            # A DeepSeek id (a leftover default or a reviewer named for that
+            # family) cannot be served here: use the model of the same tier.
+            model = editorial_equivalent(model)
         return _with_usage_tracking(OpenAICompatibleProvider(
             api_endpoint=api_endpoint,
-            model=kwargs.get("model", DEFAULT_MODEL),
+            model=model,
             api_key=kwargs.get("api_key") or kwargs.get("openai_api_key"),
             context_window=kwargs.get("context_window") or OLLAMA_NUM_CTX,
             log_callback=kwargs.get("log_callback"),

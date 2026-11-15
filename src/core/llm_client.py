@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 
 from src.config import API_ENDPOINT, DEFAULT_MODEL
 from src.core.llm import create_llm_provider, LLMProvider, ContextOverflowError, RepetitionLoopError, LLMResponse
+from src.core.llm.providers.openai_contract import editorial_equivalent
 from src.core.llm.request_deadline import await_llm_call
 
 # Re-export for convenience
@@ -93,6 +94,10 @@ class LLMClient:
 
         # Update model if specified
         if model:
+            if getattr(provider, "provider_name", "") == "openai":
+                # Official OpenAI API: a reviewer named for the DeepSeek
+                # family runs on the model of the same tier.
+                model = editorial_equivalent(model)
             provider.model = model
 
         kwargs = {"system_prompt": system_prompt}
