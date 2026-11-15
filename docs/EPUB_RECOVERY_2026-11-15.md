@@ -62,3 +62,26 @@ initial round-trips. Network-disabled replay of the real spelling-example
 checkpoint approved both units with unchanged text, zero model requests, and
 unchanged audit/repair counters. Synthetic tests contain no book excerpts or
 credentials.
+
+The real recovery subsequently exposed the same lexical-example false
+positive in the independently configured publication gate. All 1,785 source
+units were present, but one mixed-language flag on the nine-block editorial
+note excluded that whole group from audited coverage. This was not evidence
+of nine missing passages. Publication must classify only the exact proven
+literal spans and continue checking every surrounding passage; a whole-file
+exemption or a fabricated successful semantic review would be incorrect.
+
+The subsequent whole-book entity check identified a separate finalization
+defect: sentence-spacing cleanup inserted a space inside a mixed-case visible
+URL after `www.`. The source and saved translated XHTML both contained the
+correct URL; the link destination was unchanged. Final inline hygiene now
+protects exact URL, email, DOI and explicit path spans during spacing repair,
+while processing surrounding prose and removing source artifacts as before.
+Tests reproduce corruption of each literal type, mixed-case EPUB anchor labels,
+and ordinary sentence repairs. Reassembly from intact translated checkpoints
+can therefore correct the final artifact without retranslating those chapters.
+The publication and universal typography validators use the same exact-span
+proof from `technical_identifiers.py`; intact URL punctuation is not a spacing
+error, while joined prose immediately before or after it remains a failure.
+Entity comparison still rejects a modified URL. No paragraph or quality gate
+is exempted, and literal spans are recalculated after every formatter pass.

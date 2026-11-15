@@ -2,6 +2,7 @@ from pathlib import Path
 import zipfile
 
 import yaml
+import pytest
 from lxml import etree
 
 from src.core.book_profiles import create_profile
@@ -624,3 +625,50 @@ def test_inline_cleanup_repairs_dates_roman_numerals_and_inline_punctuation_tail
     assert _clean_inline_text("siglos XVIII y XIX.siglo") == "siglos XVIII y XIX. siglo"
     assert _clean_inline_text(" .Pero siguió") == ". Pero siguió"
     assert _clean_inline_text(" ?y respondió") == "? y respondió"
+
+
+@pytest.mark.parametrize("literal", [
+    "www.Example.com/Authors/First-Last",
+    "http://Example.com/author.Name?First=One.Next",
+    "https://example.com/chapter.One?Name=First.Last",
+    "editor.Name@example.COM",
+    "doi:10.12345/abc.Def",
+    "10.12345/abc.Def",
+    "/Library/Project.One/ReadMe",
+    "../Project.One/ReadMe",
+])
+def test_inline_spacing_preserves_literal_bytes_and_repairs_neighboring_prose(literal):
+    assert _clean_inline_text(literal) == literal
+    assert _clean_inline_text(f"Antes.Después: {literal} Fin.Otra frase.") == (
+        f"Antes. Después: {literal} Fin. Otra frase."
+    )
+    assert _clean_inline_text(f"({literal})") == f"({literal})"
+
+
+def test_epub_cleanup_preserves_mixed_case_url_label_and_href(tmp_path):
+    epub = tmp_path / "mixed-case-url.epub"
+    literal = "www.Example.com/Authors/First-Last"
+    href = "https://www.example.com/authors/first-last"
+    _write_epub(epub, [(
+        "chap-001.xhtml", "Author",
+        f'<p>Antes.Después <a href="{href}">{literal}</a> Fin.Otra frase.</p>',
+    )], ["Author"])
+    report = audit_and_clean_final_artifact(epub, output_format="epub")
+    root = etree.fromstring(_epub_text(epub, "OEBPS/chap-001.xhtml").encode())
+    anchor, = root.xpath('//*[local-name()="a"]')
+    assert anchor.text == literal and anchor.get("href") == href
+    assert "Antes. Después" in "".join(root.itertext())
+    assert "Fin. Otra frase." in "".join(root.itertext())
+    assert report.source_artifacts_removed == 0
+
+
+def test_literal_protection_keeps_sentence_boundary_before_uppercase_uri_editable():
+    assert _clean_inline_text("Consulta.HTTPS://Example.com/Case?Name=One.Next Fin.Otra.") == (
+        "Consulta. HTTPS://Example.com/Case?Name=One.Next Fin. Otra."
+    )
+
+
+def test_literal_offsets_are_recomputed_after_each_spacing_pass():
+    assert _clean_inline_text("Antes .Después https://Example.com/XIX.siglo Fin.Otra") == (
+        "Antes. Después https://Example.com/XIX.siglo Fin. Otra"
+    )

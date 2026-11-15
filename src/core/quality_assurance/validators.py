@@ -19,6 +19,7 @@ from src.core.fidelity_supervisor import target_language_gate_issues
 from src.core.llm_output_guard import guard_llm_output
 from src.core.language_evidence import looks_like_structured_language_metadata
 from src.core.output_formats import extract_readable_text
+from src.core.technical_identifiers import matches_outside_technical_literals
 from src.utils.language_detector import LANGUAGE_CODE_MAP, LanguageDetector
 from src.utils.text_encoding import mojibake_score
 
@@ -750,7 +751,7 @@ def validate_unit_typography(
     target = unit.best_text
     if unit.translatable and target:
         for code, pattern in _SPACING_PATTERNS:
-            matches = [match.group(0) for match in pattern.finditer(target)]
+            matches = [match.group(0) for match in matches_outside_technical_literals(pattern, target)]
             if matches:
                 # CamelCase names and coined compounds are indistinguishable
                 # from a missing space without lexical context. Punctuation

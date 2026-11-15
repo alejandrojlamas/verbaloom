@@ -23,13 +23,18 @@ import zipfile
 from lxml import etree
 
 from src.core.document_structure import DocumentBlockClassifier
-from src.core.fidelity_supervisor import assess_fidelity, target_language_gate_issues
+from src.core.fidelity_supervisor import (
+    _translated_word_form_enumeration_spans,
+    assess_fidelity,
+    target_language_gate_issues,
+)
 from src.core.language_evidence import (
     has_target_language_contextual_evidence,
     looks_like_preserved_title_or_citation_sequence,
     looks_like_structured_language_metadata,
     looks_like_translated_reference_context,
 )
+from src.core.technical_identifiers import matches_outside_technical_literals
 from src.utils.language_detector import LanguageDetector
 
 from .lang_support import get_language_code
@@ -822,7 +827,8 @@ def audit_epub_publication(
             report.placeholder_findings += file_placeholder_findings
             issues.append("unresolved_placeholder")
         file_spacing_findings = sum(
-            1 for unit in output_file_units if _BAD_SPACING_RE.search(unit.text)
+            1 for unit in output_file_units
+            if next(matches_outside_technical_literals(_BAD_SPACING_RE, unit.text), None) is not None
         )
         if file_spacing_findings:
             report.spacing_findings += file_spacing_findings
@@ -944,6 +950,21 @@ def audit_epub_publication(
                 audit_output_text = _normalize_ocr_spaced_words_for_language_audit(
                     output_unit.text
                 )
+                normalized_ocr_output = audit_output_text != output_unit.text
+                audit_source_text, audit_output_text, has_word_form_literals = (
+                    _mask_source_proven_word_forms(
+                        audit_source_text, audit_output_text, target_language=target_language,
+                    )
+                )
+                if has_word_form_literals:
+                    # A literal list's colon and commas can resemble a citation.
+                    # Classify the remaining prose, not the removed list.
+                    translated_reference_context = looks_like_translated_reference_context(
+                        audit_output_text, target_language=target_language,
+                    ) or looks_like_structured_language_metadata(
+                        audit_output_text, document_hint=output_unit.file_href,
+                        target_language=target_language,
+                    ) or file_document_context == "glossary"
                 block_gate_issues = [] if intentional_block_quote else target_language_gate_issues(
                     audit_source_text,
                     audit_output_text,
@@ -961,15 +982,15 @@ def audit_epub_publication(
                         )
                         or _source_residual_is_actionable(
                             issue.detail,
-                            source_text=source_unit.text,
+                            source_text=audit_source_text,
                             source_language=source_language,
                             target_language=target_language,
                         )
                     )
                     and not _publication_gate_issue_is_exempt(
                         issue.code,
-                        source_text=source_unit.text,
-                        output_text=output_unit.text,
+                        source_text=audit_source_text,
+                        output_text=audit_output_text,
                         element=output_unit.element,
                         target_language=target_language,
                         file_href=output_unit.file_href,
@@ -984,16 +1005,16 @@ def audit_epub_publication(
                 ) if not (
                     translated_reference_context
                     or _looks_like_reference_metadata(
-                        output_unit.text,
+                        audit_output_text,
                         output_unit.element,
                     )
                 ) else False
                 if (
                     not has_exact_source_phrase_leak
-                    and audit_output_text != output_unit.text
+                    and normalized_ocr_output
                     and not translated_reference_context
                     and not _looks_like_reference_metadata(
-                        output_unit.text,
+                        audit_output_text,
                         output_unit.element,
                     )
                 ):
@@ -1464,6 +1485,42 @@ def _normalize_ocr_spaced_words_for_language_audit(text: str) -> str:
         collapse,
         text or "",
     )
+
+
+def _mask_source_proven_word_forms(source_text, output_text, *, target_language):
+    """Remove only proven literal spans from audit copies, never from the EPUB.
+
+    Classify before the residual detector summarizes its findings. Filtering
+    its first three display examples could hide a fourth, genuine prose leak.
+    """
+    token = r"[^\W\d_]+(?:['’\-][^\W\d_]+)*"
+    comma_list = re.compile(rf"(?<!\w){token}(?:\s*,\s*{token}){{2,}}", re.UNICODE)
+    token_re = re.compile(token, re.UNICODE)
+    source_spans, output_spans = set(), set()
+    for match in comma_list.finditer(source_text):
+        tokens = list(token_re.finditer(match.group()))
+        # An Oxford comma can include the conjunction in the longest match.
+        # Try its shorter literal prefix without treating that word as data.
+        for last in reversed(tokens[2:]):
+            phrase = match.group()[:last.end()]
+            pairs = _translated_word_form_enumeration_spans(
+                phrase, source=source_text, candidate=output_text,
+                target_language=target_language,
+            )
+            proven_source = {pair[0] for pair in pairs}
+            proven_output = {pair[1] for pair in pairs}
+            if pairs and len(proven_source) == len(proven_output):
+                source_spans.update(proven_source)
+                output_spans.update(proven_output)
+                break
+
+    def masked(text, spans):
+        characters = list(text)
+        for start, end in spans:
+            characters[start:end] = " " * (end - start)
+        return "".join(characters)
+
+    return masked(source_text, source_spans), masked(output_text, output_spans), bool(source_spans)
 
 
 def _source_residual_is_actionable(

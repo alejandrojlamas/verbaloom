@@ -1931,6 +1931,14 @@ _METALANGUAGE_CUE_RE = re.compile(
 def _is_translated_word_form_enumeration(
     phrase: str, *, source: str, candidate: str, target_language: str,
 ) -> bool:
+    return bool(_translated_word_form_enumeration_spans(
+        phrase, source=source, candidate=candidate, target_language=target_language,
+    ))
+
+
+def _translated_word_form_enumeration_spans(
+    phrase: str, *, source: str, candidate: str, target_language: str,
+) -> list[tuple[tuple[int, int], tuple[int, int]]]:
     """Identify cited word forms, never exempt a sentence or a whole section.
 
     Require the same individually comma-separated tokens in both documents,
@@ -1940,10 +1948,10 @@ def _is_translated_word_form_enumeration(
     """
     words = _ordered_surface_tokens(phrase)
     if len(words) < 3:
-        return False
+        return []
     marker = _target_language_marker_pattern(target_language)
     if marker is None:
-        return False
+        return []
     enumeration = re.compile(
         r"(?<!\w)" + r"\s*,\s*".join(re.escape(word) for word in words) + r"(?!\w)",
         re.IGNORECASE,
@@ -1973,6 +1981,7 @@ def _is_translated_word_form_enumeration(
         end = min((position for position in ends if position >= 0), default=len(text))
         return text[start:end], text[start:match.start()]
 
+    spans = []
     for original in enumeration.finditer(source):
         source_sentence, leader = sentence(source, original)
         if not (
@@ -1985,8 +1994,8 @@ def _is_translated_word_form_enumeration(
             if _count_markers(marker, target_sentence) >= max(
                 3, _count_markers(marker, source_sentence) + 2,
             ):
-                return True
-    return False
+                spans.append((original.span(), translated.span()))
+    return spans
 
 
 def _is_intentional_source_language_literal(source_segment: str, phrase: str) -> bool:

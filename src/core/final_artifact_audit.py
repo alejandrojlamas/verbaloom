@@ -23,6 +23,7 @@ from src.core.book_profiles.rendering import (
     profile_exact_translation_pairs,
 )
 from src.core.llm_output_guard import guard_llm_output
+from src.core.technical_identifiers import matches_outside_technical_literals
 from src.utils.text_encoding import UTF8_BOM, clean_text_artifacts, encode_utf8_text_download
 from src.utils.text_encoding import mojibake_score
 from src.utils.proper_names import extract_symbol_bearing_names, restore_symbol_bearing_names
@@ -796,10 +797,21 @@ def _clean_inline_text(value: str) -> str:
     # mechanical boundaries; do not alter words or punctuation marks.
     if core[:1] in ".,!?;:":
         leading = ""
-    repaired_core = re.sub(r"\s+([.,!?;:])", r"\1", core)
-    repaired_core = _LEADING_PUNCTUATION_SPACE_RE.sub(r"\1 ", repaired_core)
-    repaired_core = _MISSING_SENTENCE_SPACE_RE.sub(r"\1 ", repaired_core)
-    repaired_core = _ROMAN_SENTENCE_SPACE_RE.sub(r"\1. ", repaired_core)
+    # A period in a URL/email/path is data, not a sentence boundary. Protect
+    # those exact spans while still repairing neighboring prose. Artifact
+    # removal below remains active, including for unwanted source-domain URLs.
+    repaired_core = core
+    for pattern, replacement in (
+        (re.compile(r"\s+(?!\.\.?/)([.,!?;:])"), r"\1"),
+        (_LEADING_PUNCTUATION_SPACE_RE, r"\1 "),
+        (_MISSING_SENTENCE_SPACE_RE, r"\1 "),
+        (_ROMAN_SENTENCE_SPACE_RE, r"\1. "),
+    ):
+        editable = {match.span() for match in matches_outside_technical_literals(pattern, repaired_core)}
+        repaired_core = pattern.sub(
+            lambda match: match.expand(replacement) if match.span() in editable else match.group(),
+            repaired_core,
+        )
     if repaired_core == core and not (_has_source_artifacts(core) or _has_protocol_artifacts(core)):
         return value
     core = repaired_core
