@@ -8,11 +8,11 @@ enough for the LLM to preserve?"
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import math
 import re
+from dataclasses import asdict, dataclass, field
+from itertools import pairwise
 from typing import Iterable, Literal
-
 
 DOCUMENT_STRUCTURE_VERSION = "document-structure-v1"
 
@@ -144,7 +144,7 @@ _BIBLIOGRAPHIC_TERMINAL_YEAR_RE = re.compile(
 )
 _BIBLIOGRAPHIC_MERGED_RECORD_RE = re.compile(
     r",\s*(?:1[5-9]\d{2}|20\d{2})\s+"
-    r"[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ’'\-]{1,60}\s*,"
+    r"(?P<author>[A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ’'\-]{1,60})\s*,"
 )
 _BIBLIOGRAPHIC_DANGLING_PUBLISHER_RE = re.compile(
     r"\b(?:books?|co|inc|ltd|press|publish(?:er|ers|ing))\.?\s*,\s*$",
@@ -175,6 +175,11 @@ _BIBLIOGRAPHIC_LEAD_CONNECTORS = {
     "van",
     "von",
     "y",
+}
+_BIBLIOGRAPHIC_FIELD_CONNECTORS = _BIBLIOGRAPHIC_LEAD_CONNECTORS | {
+    "a", "an", "as", "at", "by", "for", "from", "in", "into", "on",
+    "or", "our", "to", "with", "without", "en",
+    "ed", "eds", "sel", "trad", "trans",
 }
 _INDEX_IDENTITY_QUALIFIERS = {
     "abbot", "admiral", "archbishop", "archduke", "baron", "baroness",
@@ -251,7 +256,63 @@ def is_comma_delimited_bibliographic_record(value: str) -> bool:
         return False
 
     metadata_words = _TITLE_WORD_RE.findall(" ".join(fields[:-1]))
-    return len(metadata_words) >= 3
+    if len(metadata_words) < 3:
+        return False
+
+    # An internal year/name pair or a trailing publisher token is weaker than
+    # a terminal year. Validate every field on these relaxed paths: a valid
+    # lead (or even a complete first citation) cannot exempt a narrative tail.
+    merged_boundaries = [
+        match.start("author")
+        for match in _BIBLIOGRAPHIC_MERGED_RECORD_RE.finditer(line)
+    ]
+    if merged_boundaries or _BIBLIOGRAPHIC_DANGLING_PUBLISHER_RE.search(line):
+        boundaries = [0, *merged_boundaries, len(line)]
+        return all(
+            _has_bibliographic_fragment_fields(line[start:end])
+            for start, end in pairwise(boundaries)
+        )
+    return True
+
+
+def _has_bibliographic_fragment_fields(fragment: str) -> bool:
+    """Require identity/title fields before accepting an incomplete record.
+
+    The relaxed boundary paths have no complete publication terminator, so
+    accept conservative name/title casing, ranks and editorial abbreviations.
+    Quoted titles may use sentence case, including an OCR-truncated last title.
+    """
+    fields = [field.strip() for field in fragment.strip().rstrip(",").split(",")]
+    if len(fields) < 3 or any(not field for field in fields):
+        return False
+    for value in fields:
+        if _BIBLIOGRAPHIC_TERMINAL_YEAR_RE.fullmatch(value):
+            continue
+        if re.fullmatch(r'[\[(]?\s*[«“"][^»”"]+[»”"]?[)\].]*', value):
+            continue
+        if _BIBLIOGRAPHIC_QUOTED_TITLE_LEAD_RE.match(value):
+            value = re.sub(r'[«“"][^»”"]+[»”"]', "Title", value)
+        value = re.sub(r"[’']s\b", "", value, flags=re.IGNORECASE)
+        # Keep the same hyphenated title/name spelling accepted in the lead.
+        value = re.sub(
+            r"([A-ZÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)-[a-záéíóúüñ]+",
+            r"\1",
+            value,
+        )
+        words = _TITLE_WORD_RE.findall(value)
+        if not words or not any(
+            word[:1].isupper() or word.casefold() in _INDEX_IDENTITY_QUALIFIERS
+            for word in words
+        ):
+            return False
+        if any(
+            word[:1].islower()
+            and word.casefold() not in _BIBLIOGRAPHIC_FIELD_CONNECTORS
+            and word.casefold() not in _INDEX_IDENTITY_QUALIFIERS
+            for word in words
+        ):
+            return False
+    return True
 
 
 def is_locator_index_entry(value: str) -> bool:
