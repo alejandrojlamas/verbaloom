@@ -843,6 +843,72 @@ async def test_explicit_audit_allowance_increase_preserves_counters(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_explicit_repair_allowance_recovers_discarded_candidates_without_reset(
+    monkeypatch,
+):
+    chunks, candidates = fixture(2)
+    calls = []
+    repair_requests = 0
+
+    async def audit(source, candidate, **kwargs):
+        calls.append(("audit", kwargs["chunk_index"], candidate))
+        approved = kwargs["chunk_index"] == 1 or candidate == REPAIRED
+        return verdict(
+            source, candidate, approved, [] if approved else ["Wrong tense"],
+        )
+
+    async def repair(**kwargs):
+        nonlocal repair_requests
+        repair_requests += 1
+        calls.append(("repair", repair_requests, kwargs["candidate_text"]))
+        # Compatible repair mode historically discarded invalid candidates.
+        # None is not saved text and must never be relabeled as an approval.
+        return None if repair_requests <= 2 else REPAIRED
+
+    monkeypatch.setattr(subject, "supervise_fidelity", audit)
+    monkeypatch.setattr(subject, "_repair_audited_candidate", repair)
+    with pytest.raises(ChunkTranslationFailedError, match="repair_attempts_exhausted"):
+        await run(chunks, candidates)
+    saved = json.loads(json.dumps(chunks))
+    approved_journal = json.loads(json.dumps(saved[0]["unit"]["audit_repair"]))
+    pending = saved[1]["unit"]
+    negative_audit = json.loads(json.dumps(
+        pending["audit_repair"]["candidates"][0]["assessments"]
+    ))
+    assert pending["audit_attempts"] == 1
+    assert pending["audit_repair_attempts"] == 2
+    assert pending["audit_repair"]["stop_reason"] == "repair_attempts_exhausted"
+    assert len(pending["audit_repair"]["candidates"]) == 1
+    assert len(pending["audit_repair"]["repair_failures"]) == 2
+    assert candidates == [ORIGINAL, ORIGINAL]
+
+    before = list(calls)
+    with pytest.raises(ChunkTranslationFailedError, match="repair_attempts_exhausted"):
+        await run(saved, candidates)
+    assert calls == before
+
+    # Explicitly increasing this job's allowance does not reset its counters,
+    # rejudge valid work, or convert an old failure into a candidate.
+    options = {**OPTIONS, "epub_audit_repair_rounds": 4}
+    assert await run(saved, candidates, options=options) == [ORIGINAL, REPAIRED]
+    assert calls[len(before):] == [
+        ("repair", 3, ORIGINAL), ("audit", 2, REPAIRED),
+    ]
+    assert saved[0]["unit"]["audit_repair"] == approved_journal
+    assert pending["audit_repair"]["candidates"][0]["assessments"] == negative_audit
+    assert pending["audit_repair_attempts"] == 3
+    assert pending["audit_attempts"] == 2
+    assert len(pending["audit_repair"]["repair_failures"]) == 2
+    assert len(pending["audit_repair"]["candidates"]) == 2
+    assert validate_publishable_units(saved)[0]
+    finished = list(calls)
+    assert await run(json.loads(json.dumps(saved)), list(candidates), options=options) == [
+        ORIGINAL, REPAIRED,
+    ]
+    assert calls == finished
+
+
+@pytest.mark.asyncio
 async def test_repair_does_not_add_another_adjudication_layer(monkeypatch):
     chunks, candidates = fixture()
     phases = []

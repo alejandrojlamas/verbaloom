@@ -2,9 +2,11 @@ import pytest
 from types import SimpleNamespace
 
 from src.core.fidelity_supervisor import (
+    FidelityIssue,
     FidelityReport,
     _is_bibliographic_registry_overlap,
     _looks_like_preservable_name_index_echo,
+    _looks_like_localized_index_qualifiers,
     _normalize_structured_index_audit_policy,
     _profile_fidelity_audit_context,
     apply_fidelity_audit_assessment,
@@ -14,6 +16,7 @@ from src.core.fidelity_supervisor import (
     fidelity_supervisor_enabled,
     fidelity_report_path,
     parse_fidelity_audit_response,
+    recheck_saved_language_rejection,
     _should_run_llm_audit,
     supervise_fidelity,
 )
@@ -3924,6 +3927,111 @@ def test_target_language_gate_accepts_translated_qualifier_in_name_index():
         "untranslated_source",
         "target_language_missing",
     } & {item.code for item in decision.rejections}
+
+
+def _localized_index_pair():
+    source = (
+        "Brown, Lieutenant George, 262\n"
+        "Buckingham, Duchess of France, 172\n"
+        "Carey, Mrs, 230\n"
+        "Fletcher, Dr, Dean of Peterborough, 138\n"
+        "Jahangir, the Great Mogul, 168,171\n"
+        "Mary, Queen of Scots, 136\n"
+        "John of Salisbury, 33\n"
+        "Molière, Jean, 337"
+    )
+    candidate = (
+        "Brown, teniente George, 262\n"
+        "Buckingham, duquesa de Francia, 172\n"
+        "Carey, señora, 230\n"
+        "Fletcher, doctor, decano de Peterborough, 138\n"
+        "Jahangir, el Gran Mogol, 168,171\n"
+        "Mary, reina de Escocia, 136\n"
+        "John de Salisbury, 33\n"
+        "Molière, Jean, 337"
+    )
+    return source, candidate
+
+
+@pytest.mark.parametrize("with_placeholders", [False, True])
+def test_index_language_gate_accepts_localized_qualifiers_and_place_descriptions(with_placeholders):
+    source, candidate = _localized_index_pair()
+    if with_placeholders:
+        source = source.replace("\n", "[id0]")
+        candidate = candidate.replace("\n", "[id0]")
+    assert _looks_like_localized_index_qualifiers(source, candidate) is True
+    decision = assess_fidelity(
+        source, candidate, chunk_index=1, phase="final_epub_unit_repair",
+        source_language="English", target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+    assert decision.accepted is True, decision.rejections
+
+
+@pytest.mark.parametrize("old,new", [
+    ("Brown", "Browne"),
+    ("George", "Geoffrey"),
+    ("Jean", "John"),
+    ("262", "263"),
+    ("168,171", "171,168"),
+    ("teniente ", ""),
+    ("Carey, señora, 230\n", ""),
+])
+def test_localized_index_evidence_keeps_names_locators_and_qualifiers(old, new):
+    source, candidate = _localized_index_pair()
+    assert _looks_like_localized_index_qualifiers(source, candidate.replace(old, new)) is False
+
+
+def test_localized_index_evidence_does_not_waive_source_prose_or_titles():
+    source, candidate = _localized_index_pair()
+    for prose in (
+        "History, The New age, 83",
+        "Brown, his life and military work, 83",
+        "The History of War, 83",
+    ):
+        # Unchanged substantive prose must still be audited as language, even
+        # when neighboring person entries have correctly localized ranks.
+        mixed_source = source + "\n" + prose
+        mixed_candidate = candidate + "\n" + prose
+        if prose != "The History of War, 83":
+            assert _looks_like_localized_index_qualifiers(mixed_source, mixed_candidate) is False
+        else:
+            assert _looks_like_localized_index_qualifiers(prose, prose.replace("of", "de")) is False
+
+
+def test_saved_index_language_rejection_reuses_hash_bound_semantic_pass():
+    from dataclasses import replace
+
+    source, candidate = _localized_index_pair()
+    options = {"_document_block_context": "index"}
+    current = assess_fidelity(
+        source, candidate, chunk_index=1, phase="final_epub_unit_audit",
+        source_language="English", target_language="Spanish", prompt_options=options,
+    )
+    saved = replace(
+        current, accepted=False, local_accepted=False,
+        issues=[FidelityIssue("target_language_missing", "reject", "Old false language alarm")],
+        judge_decision="pass", judge_confidence=0.99,
+    )
+    recovered = recheck_saved_language_rejection(
+        saved, source, candidate, source_language="English", target_language="Spanish",
+        prompt_options=options,
+    )
+    assert recovered is not None and recovered.accepted is True
+    assert recovered.judge_decision == "pass"
+    assert recovered.source_hash == saved.source_hash
+    assert recovered.candidate_hash == saved.candidate_hash
+
+    for rejected in (
+        replace(saved, judge_decision="repair_needed"),
+        replace(saved, judge_changed_facts=["The person's identity changed"]),
+        replace(saved, candidate_hash="stale"),
+        replace(saved, issues=[FidelityIssue("fidelity_judge_reject", "reject", "Wrong qualifier")]),
+    ):
+        assert recheck_saved_language_rejection(
+            rejected, source, candidate, source_language="English", target_language="Spanish",
+            prompt_options=options,
+        ) is None
 
 
 def test_target_language_gate_does_not_hide_changed_name_in_index():

@@ -851,10 +851,21 @@ def recheck_saved_language_rejection(
     prompt_options: Optional[Mapping[str, Any]],
 ) -> Optional[FidelityDecision]:
     """Reuse a favorable semantic judgment when its sole local blocker changed."""
+    corrected_index_language = bool(
+        (prompt_options or {}).get("_document_block_context") == "index"
+        and decision.judge_decision == "pass"
+        and decision.judge_confidence >= 0.88
+        and _looks_like_localized_index_qualifiers(source_text, candidate_text)
+        and all(issue.code in {
+            "untranslated_source", "target_language_missing", "source_language_residual",
+        } for issue in decision.rejections)
+    )
     if (
         decision.accepted
         or not decision.rejections
-        or any(issue.code != "source_language_residual" for issue in decision.rejections)
+        or (not corrected_index_language and any(
+            issue.code != "source_language_residual" for issue in decision.rejections
+        ))
         or not (
             (decision.judge_decision == "pass" and decision.judge_confidence >= 0.88)
             or (decision.judge_decision == "warn" and decision.judge_confidence >= 0.72)
@@ -881,7 +892,9 @@ def recheck_saved_language_rejection(
     contextual_details = {
         issue.detail for issue in current.warnings if issue.code == "source_language_residual"
     }
-    if not all(issue.detail in contextual_details for issue in decision.rejections):
+    if not corrected_index_language and not all(
+        issue.detail in contextual_details for issue in decision.rejections
+    ):
         return None
     return replace(
         decision,
@@ -2076,6 +2089,8 @@ _INDEX_TRANSLATABLE_QUALIFIERS = {
     "king", "lady", "lieutenant", "lord", "major", "marshal", "midshipman",
     "mother", "prince", "princess", "professor", "queen", "reverend",
     "saint", "sergeant", "sir", "venture", "vice",
+    "dauphin", "dean", "dr", "field", "mr", "mrs", "ms", "president",
+    "staff", "surgeon", "tsar",
 }
 _COMMON_NOUN_DETERMINERS = {
     "a", "an", "das", "dem", "den", "der", "des", "die", "ein",
@@ -2713,6 +2728,85 @@ def _clean_structural_language_text(
     return value.strip()
 
 
+def _looks_like_localized_index_qualifiers(source: str, candidate: str) -> bool:
+    """Keep name-heavy indexes out of whole-prose language detection.
+
+    Only honorifics and explicitly introduced descriptions may change. The
+    comma-leading identity, other name tokens, entry order and locators remain
+    exact. This is language evidence, not semantic approval: the existing
+    auditor still verifies the translated qualifiers against their source.
+    """
+    def entries(value):
+        value = unicodedata.normalize("NFC", value or "")
+        value = _PLACEHOLDER_PATTERNS[0].sub("\n", value)
+        return [line.strip() for line in value.splitlines() if line.strip()]
+
+    source_entries = entries(source)
+    candidate_entries = entries(candidate)
+    if (
+        len(source_entries) != len(candidate_entries)
+        or not is_locator_index_identity_block(source_entries)
+    ):
+        return False
+
+    ranks = "|".join(sorted(map(re.escape, _INDEX_TRANSLATABLE_QUALIFIERS)))
+    descriptive_tail = re.compile(
+        rf"(?:^|,)\s*(?:(?:{ranks})(?:\s+(?:{ranks}))*\s+of\s+|the\s+)"
+        r"[^,\d]+",
+        re.IGNORECASE,
+    )
+    changed_qualifier = False
+    for source_entry, candidate_entry in zip(source_entries, candidate_entries):
+        if re.findall(r"\d+", source_entry) != re.findall(r"\d+", candidate_entry):
+            return False
+        source_tokens = _surface_tokens_with_spans(source_entry)
+        source_words = [word.casefold() for word, _start, _end in source_tokens]
+        candidate_words = [word.casefold() for word in _ordered_surface_tokens(candidate_entry)]
+        if source_words == candidate_words:
+            continue
+        comma = source_entry.find(",")
+        candidate_comma = candidate_entry.find(",")
+        if comma < 0 or candidate_comma < 0:
+            return False
+        if (
+            [word.casefold() for word in _ordered_surface_tokens(source_entry[:comma])
+             if word.casefold() not in _WORK_TITLE_CONNECTORS]
+            != [word.casefold() for word in _ordered_surface_tokens(candidate_entry[:candidate_comma])
+                if word.casefold() not in _WORK_TITLE_CONNECTORS]
+        ):
+            return False
+
+        descriptor_spans = [match.span() for match in descriptive_tail.finditer(source_entry)]
+        qualifier_positions = {
+            index for index, (word, start, end) in enumerate(source_tokens)
+            if start > comma and (
+                word.casefold() in _INDEX_TRANSLATABLE_QUALIFIERS
+                or any(left <= start and end <= right for left, right in descriptor_spans)
+            )
+        }
+        mutable = qualifier_positions | {
+            index for index, word in enumerate(source_words) if word in _WORK_TITLE_CONNECTORS
+        }
+        edits = difflib.SequenceMatcher(None, source_words, candidate_words, autojunk=False)
+        for operation, first, last, _new_first, _new_last in edits.get_opcodes():
+            if operation == "equal":
+                continue
+            if operation == "delete" and any(
+                index in qualifier_positions and source_words[index] not in _WORK_TITLE_CONNECTORS
+                for index in range(first, last)
+            ):
+                return False
+            if first == last:
+                if first not in mutable and first - 1 not in mutable:
+                    return False
+            elif any(index not in mutable for index in range(first, last)):
+                return False
+            changed_qualifier = changed_qualifier or any(
+                index in qualifier_positions for index in range(first, last)
+            )
+    return changed_qualifier
+
+
 def _looks_like_preservable_name_index_echo(
     source: str,
     candidate: str,
@@ -2743,6 +2837,10 @@ def _looks_like_preservable_name_index_echo(
     structured_context = str(
         (prompt_options or {}).get("_document_block_context") or ""
     ).strip().casefold()
+    if structured_context == "index" and _looks_like_localized_index_qualifiers(
+        source, candidate,
+    ):
+        return True
     if (
         source_norm == candidate_norm
         and structured_context in {"table", "catalog", "index"}

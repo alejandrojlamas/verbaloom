@@ -23,6 +23,35 @@ their existing tokenization; broadening those policies is outside this fix.
 
 Tests cover composed and decomposed names, exact output preservation, recovery
 of a previously failed unit without a provider call, and rejection of ordinary
-descriptive prose. No model, dependency, processing stage, retry allowance, or
-publication threshold is added. Recovery resumes the original checkpoint and
-still runs the normal final publication and quality checks.
+descriptive prose. No model, dependency, processing stage, or publication
+threshold is added. Recovery resumes the original checkpoint and still runs the
+normal final publication and quality checks.
+
+## Mixed-language qualifier validation
+
+The first live recovery completed the remaining translation chunks and exposed
+a second, independent conflict in the final audit. The auditor correctly asked
+for translated honorifics and descriptive qualifiers, but the local language
+gate could reject their translations because most words in an index are names.
+Several generic honorifics were absent from the gate's existing qualifier set.
+Country descriptions introduced by ranks and determiner-led epithets also
+needed structural treatment rather than an unbounded dictionary of exonyms.
+
+The language check now recognizes these bounded qualifier edits in index
+entries while retaining the leading identity, other name tokens, entry order,
+and numeric locators. The existing semantic auditor remains responsible for
+meaning and completeness. Actual source prose, altered identity anchors,
+changed numbers, and omitted entries do not receive this language exemption.
+
+A saved favorable semantic assessment can be rechecked against the corrected
+local rule only for the same source and candidate hashes, with no factual or
+structural objections. A negative semantic assessment cannot become an
+approval through this path.
+
+The legacy compatible repair path did not retain rejected repair responses.
+Those responses cannot be replayed or reconstructed. For the affected job only,
+the existing `epub_audit_repair_rounds` resume option can be raised from two to
+four, retaining lifetime attempt counts, cached decisions, completed work, and
+the monetary budget. This is an explicit bounded recovery operation, not a new
+global retry policy. Regression coverage verifies that previously approved
+units stay cached and every newly generated repair still requires audit.
