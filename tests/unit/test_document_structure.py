@@ -1,3 +1,7 @@
+import unicodedata
+
+import pytest
+
 from src.core.document_structure import (
     DocumentBlockClassifier,
     DocumentIR,
@@ -321,6 +325,58 @@ def test_locator_index_identity_block_rejects_translatable_subject_entry():
         "History, The New age, 83"
     ) is False
     assert is_locator_index_identity_block(entries) is False
+
+
+@pytest.mark.parametrize("normalization", ["NFC", "NFD"])
+def test_locator_index_identity_words_preserve_unicode_names(normalization):
+    entries = [
+        "Canrobert, General François, 335",
+        "Dvořák, Antonín, 336",
+        "Molière, Jean, 337",
+        "Łukasiewicz, Jan, 338",
+        "Żółkiewski, Stanisław, 339",
+    ]
+    entries = [unicodedata.normalize(normalization, item) for item in entries]
+
+    for entry in entries:
+        assert is_locator_index_entry(entry) is True
+        assert is_locator_index_identity_fragment(entry) is True
+    assert is_locator_index_identity_block(entries) is True
+
+
+@pytest.mark.parametrize("normalization", ["NFC", "NFD"])
+def test_unicode_identity_words_do_not_preserve_descriptive_prose(normalization):
+    entries = [
+        "Canrobert, François, his life and work, 335",
+        "Dvořák, Antonín, the early years, 336",
+        "Molière, Jean, histoire de la scène, 337",
+        "Łukasiewicz, Jan, logical contributions, 338",
+    ]
+    entries = [unicodedata.normalize(normalization, item) for item in entries]
+
+    for entry in entries:
+        assert is_locator_index_identity_fragment(entry) is False
+    assert is_locator_index_identity_block(entries) is False
+
+
+def test_unicode_words_do_not_infer_names_from_uncased_scripts():
+    # This tokenizer repair does not introduce a name policy for scripts
+    # where capitalization cannot distinguish identity data from prose.
+    entries = ["山田, 太郎, 335", "أحمد, علي, 336", "გიორგი, 337"]
+
+    for entry in entries:
+        assert is_locator_index_entry(entry) is False
+        assert is_locator_index_identity_fragment(entry) is False
+    assert is_locator_index_identity_block(entries) is False
+
+
+@pytest.mark.parametrize("record", [
+    "Dvořák, Antonín, Prague: Music Press, 1900",
+    "هذا نص عادي, وليس اسم مؤلف, ويصف أحداثا وقعت, 1900",
+    "これは普通の文章です, 著者名ではありません, 出来事について述べます, 1900",
+])
+def test_index_tokenizer_does_not_change_bibliography_policy(record):
+    assert is_comma_delimited_bibliographic_record(record) is False
 
 
 def test_locator_index_block_rejects_numeric_narrative_lines():

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import math
 import re
+import unicodedata
 from typing import Iterable, Literal
 
 
@@ -199,6 +200,14 @@ _FORMULA_ONLY_RE = re.compile(
     r"^\s*(?:[$]{1,2})?[\w\s{}()[\].,+\-*/^_=<>≤≥∑∫√πα-ωΑ-Ω·×%]+(?:[$]{1,2})?\s*$"
 )
 _TITLE_WORD_RE = re.compile(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+")
+_INDEX_WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+
+def _index_words(value: str) -> list[str]:
+    # Classify complete Unicode words: splitting François into Fran / ois
+    # turns an identity into apparent untranslated prose. Normalization is
+    # local to classification; callers retain the original document bytes.
+    return _INDEX_WORD_RE.findall(unicodedata.normalize("NFC", value))
 
 
 def is_comma_delimited_bibliographic_record(value: str) -> bool:
@@ -262,7 +271,7 @@ def is_locator_index_entry(value: str) -> bool:
         return False
     raw_prefix = line[:locator_match.start()].rstrip()
     prefix = raw_prefix.rstrip(" ,")
-    words = _TITLE_WORD_RE.findall(prefix)
+    words = _index_words(prefix)
     if not words:
         return False
     if "," not in prefix and len(words) < 2:
@@ -294,7 +303,7 @@ def is_locator_index_identity_fragment(value: str) -> bool:
     if "," not in line or re.search(r"[!?;:]", line):
         return False
 
-    words = _TITLE_WORD_RE.findall(line)
+    words = _index_words(line)
     if not words:
         return False
     apostrophe_name_suffixes = {
