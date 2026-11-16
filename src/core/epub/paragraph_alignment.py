@@ -13,6 +13,7 @@ from pathlib import Path
 from lxml import etree
 
 from src.core.llm.request_deadline import await_llm_call
+from src.core.technical_identifiers import SPACING_LITERAL_PATTERN
 from src.utils.json_extraction import strip_markdown_json_fence
 
 from .dom_boundaries import (
@@ -149,15 +150,30 @@ def _flatten(blocks):
     return _normalize(" ".join("".join(block.itertext()) for block in blocks))
 
 
-def _find_cuts(text, response, expected):
+def _paragraph_punctuation_boundary(text, start, anchor):
+    punctuation = ".!?…:;。！？：；"
+    if not start or text[start - 1] not in punctuation or anchor[0] in punctuation:
+        return False
+    if any(match.start() < start < match.end() for match in SPACING_LITERAL_PATTERN.finditer(text)):
+        return False
+    # A decimal component is not a paragraph, even when it is a unique anchor.
+    return not (text[start - 1] == "." and text[start:start + 1].isdigit()
+                and text[start - 2:start - 1].isdigit())
+
+
+def _find_cuts(text, response, expected, *, paragraph_starts=()):
     anchors = json.loads(strip_markdown_json_fence(response))
     if not isinstance(anchors, list) or len(anchors) != expected:
         raise ValueError("Wrong number of paragraph or emphasis boundaries")
     cuts = [0]
-    for anchor in anchors:
+    for index, anchor in enumerate(anchors):
         if not isinstance(anchor, str) or not _normalize(anchor) or len(anchor) > 180:
             raise ValueError("Invalid boundary anchor")
-        matches = list(re.finditer(r"(?<!\S)" + re.escape(_normalize(anchor)) + r"(?!\w)", text))
+        anchor = _normalize(anchor)
+        matches = [match for match in re.finditer(re.escape(anchor) + r"(?!\w)", text)
+                   if not match.start() or text[match.start() - 1].isspace()
+                   or (index in paragraph_starts
+                       and _paragraph_punctuation_boundary(text, match.start(), anchor))]
         if len(matches) != 1 or matches[0].start() <= cuts[-1]:
             raise ValueError("Boundary anchors must be unique and ordered")
         cuts.append(matches[0].start())
@@ -176,7 +192,11 @@ async def _realign(source, target, llm, timeout, correction="", *, cached_respon
     text = _flatten(target)
     if not 100 <= source_size <= 7500 or not 0.65 <= len(text) / source_size <= 1.65:
         return False
-    slot_count = sum(bool(value) for block in original for value in block)
+    paragraph_starts, slot_count = set(), 0
+    for block, values in zip(source, original):
+        if slot_count and etree.QName(block).localname == "p":
+            paragraph_starts.add(slot_count - 1)
+        slot_count += sum(bool(value) for value in values)
     if slot_count < 2:
         return False
 
@@ -195,7 +215,8 @@ async def _realign(source, target, llm, timeout, correction="", *, cached_respon
                 "slots. For each nonempty source slot after the very first, return the exact "
                 "opening words of the corresponding passage in the continuous translation. "
                 "Use enough words to uniquely identify each start in the entire translation, "
-                "with exact case and punctuation; each must start at a word boundary. If an "
+                "with exact case and punctuation, including opening dialogue punctuation; "
+                "each must start at a word boundary. If an "
                 "emphasized slot is short, include words after it to identify its start. Never "
                 "rewrite, add, remove, or reorder words. If unable to align, return []. "
                 f"Return ONLY a JSON array of {slot_count - 1} strings."
@@ -204,15 +225,17 @@ async def _realign(source, target, llm, timeout, correction="", *, cached_respon
         if response is None or getattr(response, "was_truncated", False):
             return False
         response_text = response.content
-    cuts = _find_cuts(text, response_text, slot_count - 1)
+    cuts = _find_cuts(text, response_text, slot_count - 1, paragraph_starts=paragraph_starts)
     segments = iter(text[left:right] for left, right in zip(cuts, cuts[1:]))
     before = [(slot, _slot_value(slot)) for group in slots for slot in group]
     for values, group in zip(original, slots):
         for value, slot in zip(values, group):
             _set_slot_value(slot, next(segments) if value else "")
 
-    # Recheck the exact same text and the original structural contract.
-    if (_flatten(target) == text
+    # Paragraph extraction inserts separators between blocks. Compare the raw
+    # assigned slices instead, so a newly recovered paragraph boundary cannot
+    # look like a text rewrite. No characters or whitespace may be discarded.
+    if ("".join(_slot_value(slot) for group in slots for slot in group) == text
             and all(not _block_content_mismatch(a, b) for a, b in zip(source, target))
             and (expected_result is None or _region_fingerprint(target) == expected_result)):
         if accepted_response is not None:
