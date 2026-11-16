@@ -12,7 +12,7 @@ from .unit_contract import OPERATIONAL_PROMPT_OPTIONS, prompt_versions, text_sha
 
 # Increment only when deterministic repair validation changes. This is not an
 # audit-contract version: previously approved text and paid counters stay valid.
-COMPATIBLE_REPAIR_VALIDATION_VERSION = "compatible-repair-validation-v1"
+COMPATIBLE_REPAIR_VALIDATION_VERSION = "compatible-repair-validation-v2"
 
 
 def compatible_response_contract(

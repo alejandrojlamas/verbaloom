@@ -2787,7 +2787,7 @@ def _looks_like_localized_index_qualifiers(source: str, candidate: str) -> bool:
 
     ranks = "|".join(sorted(map(re.escape, _INDEX_TRANSLATABLE_QUALIFIERS)))
     descriptive_tail = re.compile(
-        rf"(?:^|,)\s*(?:(?:{ranks})(?:\s+(?:{ranks}))*\s+of\s+|the\s+)"
+        rf"(?:^|,)\s*(?:(?:{ranks})(?:[-\s]+(?:{ranks}))*\s+of\s+|the\s+)"
         r"[^,\d]+",
         re.IGNORECASE,
     )
@@ -2804,20 +2804,37 @@ def _looks_like_localized_index_qualifiers(source: str, candidate: str) -> bool:
         candidate_comma = candidate_entry.find(",")
         if comma < 0 or candidate_comma < 0:
             return False
+        # "Name of Place" explicitly separates the personal anchor from a
+        # geographic qualifier. Localizing that place is not evidence that
+        # the name-heavy entry remains English; the auditor verifies meaning.
+        geographic_tail = re.search(r"\bof\s+[^,\d]+$", source_entry[:comma], re.IGNORECASE)
+        source_head = source_entry[:geographic_tail.start() if geographic_tail else comma]
+        source_anchor = [
+            word.casefold() for word in _ordered_surface_tokens(source_head)
+            if word.casefold() not in _WORK_TITLE_CONNECTORS
+        ]
+        candidate_anchor = [
+            word.casefold() for word in _ordered_surface_tokens(candidate_entry[:candidate_comma])
+            if word.casefold() not in _WORK_TITLE_CONNECTORS
+        ]
         if (
-            [word.casefold() for word in _ordered_surface_tokens(source_entry[:comma])
-             if word.casefold() not in _WORK_TITLE_CONNECTORS]
-            != [word.casefold() for word in _ordered_surface_tokens(candidate_entry[:candidate_comma])
-                if word.casefold() not in _WORK_TITLE_CONNECTORS]
+            not source_anchor
+            or source_anchor != (
+                candidate_anchor[:len(source_anchor)] if geographic_tail else candidate_anchor
+            )
         ):
             return False
 
         descriptor_spans = [match.span() for match in descriptive_tail.finditer(source_entry)]
+        if geographic_tail:
+            descriptor_spans.append(geographic_tail.span())
         qualifier_positions = {
             index for index, (word, start, end) in enumerate(source_tokens)
-            if start > comma and (
-                word.casefold() in _INDEX_TRANSLATABLE_QUALIFIERS
-                or any(left <= start and end <= right for left, right in descriptor_spans)
+            if (
+                start > comma
+                and all(part in _INDEX_TRANSLATABLE_QUALIFIERS for part in word.casefold().split("-"))
+            ) or (
+                any(left <= start and end <= right for left, right in descriptor_spans)
             )
         }
         mutable = qualifier_positions | {

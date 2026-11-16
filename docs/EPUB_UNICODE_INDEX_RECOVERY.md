@@ -39,8 +39,10 @@ needed structural treatment rather than an unbounded dictionary of exonyms.
 
 The language check now recognizes these bounded qualifier edits in index
 entries while retaining the leading identity, other name tokens, entry order,
-and numeric locators. Compound ranks are validated as whole editable spans
-between protected names, rather than as independent token deletions. The
+and numeric locators. Compound ranks, including hyphenated forms whose parts
+are recognized ranks, are validated as whole editable spans between protected
+names rather than as independent token deletions. Source-explicit geographic
+qualifiers can localize while the personal name anchor remains fixed. The
 existing semantic auditor remains responsible for
 meaning and completeness. Actual source prose, altered identity anchors,
 changed numbers, and omitted entries do not receive this language exemption.

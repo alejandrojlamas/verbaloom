@@ -4063,6 +4063,67 @@ def test_compound_index_rank_translation_is_one_span_not_token_deletion():
     assert decision.accepted is True, decision.rejections
 
 
+def _geographic_and_hyphenated_index_pair():
+    source = (
+        "Charles of Luxembourg, King of Bohemia, 44\n"
+        "Wavell, Field-Marshal Archibald, 541\n"
+        "Caroline, Princess, 219\n"
+        "Collingwood, (Vice) Admiral, 261,265\n"
+        "Clive of India, 225"
+    )
+    candidate = (
+        "Charles de Luxemburgo, rey de Bohemia, 44\n"
+        "Wavell, mariscal de campo Archibald, 541\n"
+        "Caroline, princesa, 219\n"
+        "Collingwood, (vice)almirante, 261,265\n"
+        "Clive de la India, 225"
+    )
+    return source, candidate
+
+
+def test_index_language_evidence_handles_explicit_geography_and_hyphenated_ranks():
+    source, candidate = _geographic_and_hyphenated_index_pair()
+    assert _looks_like_localized_index_qualifiers(source, candidate) is True
+    decision = assess_fidelity(
+        source, candidate, chunk_index=1, phase="final_epub_unit_repair",
+        source_language="English", target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+    assert decision.accepted is True, decision.rejections
+
+
+@pytest.mark.parametrize("old,new", [
+    ("Charles", "Richard"),
+    ("Wavell", "Smith"),
+    ("Archibald", "Robert"),
+    ("541", "542"),
+    ("261,265", "265,261"),
+])
+def test_geographic_index_qualifiers_keep_core_names_and_ordered_locators(old, new):
+    source, candidate = _geographic_and_hyphenated_index_pair()
+    assert _looks_like_localized_index_qualifiers(source, candidate.replace(old, new)) is False
+
+
+def test_hyphenated_index_rank_requires_every_component_to_be_a_rank():
+    source, candidate = _geographic_and_hyphenated_index_pair()
+    assert _looks_like_localized_index_qualifiers(
+        source.replace("Field-Marshal", "Field-Engineer"), candidate,
+    ) is False
+
+
+def test_geographic_index_evidence_does_not_cover_retained_prose():
+    source, candidate = _geographic_and_hyphenated_index_pair()
+    prose = "\nNotes, the army returned home after the defeat, 82"
+    assert _looks_like_localized_index_qualifiers(source + prose, candidate + prose) is False
+    decision = assess_fidelity(
+        source + prose, candidate + prose, chunk_index=1, phase="final_epub_unit_repair",
+        source_language="English", target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+    assert decision.accepted is False
+    assert "source_language_residual" in {issue.code for issue in decision.rejections}
+
+
 def _boundary_index_pair():
     source = (
         "Moore, Sir John, 269\n"
