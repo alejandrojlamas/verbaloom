@@ -10,6 +10,7 @@ from src.core.fidelity_supervisor import (
     _source_language_residual_issue,
     _normalize_structured_index_audit_policy,
     _profile_fidelity_audit_context,
+    _probable_english_ocr_i_spans,
     apply_fidelity_audit_assessment,
     assess_fidelity,
     build_fidelity_audit_prompt,
@@ -336,6 +337,127 @@ def test_real_single_quantity_remains_protected_from_ocr_filter():
     )
 
     assert "numbers_lost" in {issue.code for issue in decision.rejections}
+
+
+@pytest.mark.parametrize(
+    "source,candidate",
+    [
+        (
+            "Here 1 passed by the Piazza Judea, where their district begins.",
+            "Aquí pasé junto a la Piazza Judea, donde comienza su barrio.",
+        ),
+        (
+            "They were gathered together, to whom 1 cried with a loud voice.",
+            "Estaban reunidos y les grité con voz fuerte.",
+        ),
+        (
+            "The household was asleep. 1 knocked louder at the door.",
+            "Todos en la casa dormían. Llamé con más fuerza a la puerta.",
+        ),
+        (
+            "Say what one may about vermin, and 1 disliked it too.",
+            "Dígase lo que se quiera de las alimañas, a mí también me disgustaban.",
+        ),
+    ],
+)
+def test_english_ocr_one_preserves_past_tense_narration(source, candidate):
+    start = source.index("1")
+    assert _probable_english_ocr_i_spans(source, language="English") == {
+        (start, start + 1)
+    }
+    assert _probable_english_ocr_i_spans(source, language="French") == set()
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=8,
+        phase="final_epub_unit_audit",
+        source_language="English",
+        target_language="Spanish",
+    )
+    assert "numbers_lost" not in {
+        issue.code for issue in [*decision.rejections, *decision.warnings]
+    }
+
+
+@pytest.mark.parametrize(
+    "source,candidate",
+    [
+        ("Exactly 1 passed the examination.", "Aprobaron el examen."),
+        ("Participant 1 passed the examination.", "El participante aprobó el examen."),
+        ("Patient 1 died during the trial.", "El paciente murió durante el ensayo."),
+        ("Only 1 cried during the test.", "Lloraron durante la prueba."),
+        ("Participant 1 knocked at the door.", "El participante llamó a la puerta."),
+        ("Patient 1 disliked the treatment.", "Al paciente le desagradó el tratamiento."),
+    ],
+)
+def test_english_ocr_past_verbs_keep_explicit_quantities_and_subject_labels(source, candidate):
+    assert _probable_english_ocr_i_spans(source, language="English") == set()
+    decision = assess_fidelity(
+        source,
+        candidate,
+        chunk_index=8,
+        phase="final_epub_unit_audit",
+        source_language="English",
+        target_language="Spanish",
+    )
+    assert "numbers_lost" in {issue.code for issue in decision.rejections}
+
+
+@pytest.mark.parametrize("source", [
+    "Rapidly 1 overtake her, travelling at a height of 250 feet.",
+    "From the corner of my eye 1 could see a figure beside the barn.",
+    "On the way 1 had been searching for suitable words.",
+    "During my walk 1 could hear the birds.",
+    "Behind the hedge 1 had been watching the road.",
+    "Quietly 1 read the letter beside the window.",
+])
+def test_english_ocr_one_handles_bounded_introductory_grammar(source):
+    start = source.index("1")
+    assert _probable_english_ocr_i_spans(source, language="English") == {(start, start + 1)}
+    assert _probable_english_ocr_i_spans(source, language="French") == set()
+
+
+@pytest.mark.parametrize("source", [
+    "Exactly 1 could see the figure.",
+    "At least 1 could see the figure.",
+    "Participant 1 could see the figure.",
+    "Patient: 1 could see the figure.",
+    "In experiment 1 could see means visual recognition.",
+    "During the trial participant 1 had been searching the room.",
+    "In the morning exactly 1 had been searching the room.",
+    "In the group of participants 1 could see the figure.",
+    "On page 1 had been printed the instructions.",
+    "Only 1 overtakes the leader.",
+    "From the storage area 1 can of food remained.",
+    "On the way 1 had a suitcase.",
+    "In the room 1 had been a doctor.",
+    "From the house 1 could happiness be obtained.",
+])
+def test_english_ocr_introductory_grammar_keeps_quantities_labels_and_nominals(source):
+    assert _probable_english_ocr_i_spans(source, language="English") == set()
+
+
+def test_english_ocr_introductory_grammar_preserves_other_numeric_evidence():
+    source = (
+        "Rapidly 1 overtake her at 250 feet. From the corner of my eye 1 could see "
+        "a figure. On the way 1 had been searching for words. Participant 1 waited."
+    )
+    candidate = (
+        "La alcanzo rápidamente a 250 pies. Por el rabillo del ojo pude ver una "
+        "figura. Por el camino había buscado palabras. El participante 1 esperaba."
+    )
+    decision = assess_fidelity(
+        source, candidate, chunk_index=8, phase="final_epub_unit_audit",
+        source_language="English", target_language="Spanish",
+    )
+    assert "numbers_lost" not in {
+        issue.code for issue in [*decision.rejections, *decision.warnings]
+    }
+    changed = assess_fidelity(
+        source, candidate.replace("250", "200"), chunk_index=8, phase="final_epub_unit_audit",
+        source_language="English", target_language="Spanish",
+    )
+    assert "numbers_lost" in {issue.code for issue in changed.rejections}
 
 
 @pytest.mark.parametrize(

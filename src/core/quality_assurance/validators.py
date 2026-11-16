@@ -32,11 +32,70 @@ from .models import (
     ValidationResult,
 )
 
-VALIDATOR_VERSION = "universal-deterministic-validators-v1"
+VALIDATOR_VERSION = "universal-deterministic-validators-v2"
 
 _DIGIT_GROUP_RE = re.compile(
     r"(?<!\w)(?:\d{1,3}(?:[ \u00a0\u202f]\d{3})+|\d+)(?!\w)"
 )
+_DIGIT_ORDINAL_RE = re.compile(r"(?<!\w)(\d+)(?:st|nd|rd|th)(?!\w)", re.IGNORECASE)
+_OCR_CALENDAR_DAY_RE = re.compile(
+    r"(?<!\w)([0-9ilIozZO]{1,2})(?=\s+(?:January|February|March|April|May|June|July|"
+    r"August|September|October|November|December)\s+[12]\d{3}(?!\d))"
+)
+_COMPACT_YEAR_RANGE_RE = re.compile(r"(?<![\w-])([12]\d{3})[-–—](\d{1,4})(?![\w-])")
+_STERLING_SHILLINGS_RE = re.compile(
+    r"£\s*(\d+)\.\s*([0-9Oo](?:[ \u00a0]*[0-9Oo])?)s\b"
+)
+_WRITTEN_ORDINALS = {
+    "english": (
+        "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth",
+        "ninth", "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth", "fifteenth",
+        "sixteenth", "seventeenth", "eighteenth", "nineteenth", "twentieth",
+    ),
+    "spanish": (
+        "primer|primero|primera", "segundo|segunda", "tercer|tercero|tercera", "cuarto|cuarta",
+        "quinto|quinta", "sexto|sexta", "séptimo|séptima", "octavo|octava", "noveno|novena",
+        "décimo|décima", "undécimo|undécima", "duodécimo|duodécima", "decimotercero|decimotercera",
+        "decimocuarto|decimocuarta", "decimoquinto|decimoquinta", "decimosexto|decimosexta",
+        "decimoséptimo|decimoséptima", "decimoctavo|decimoctava", "decimonoveno|decimonovena",
+        "vigésimo|vigésima",
+    ),
+}
+_WRITTEN_CARDINALS = {
+    "english": (
+        "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+        "seventeen", "eighteen", "nineteen", "twenty",
+    ),
+    "spanish": (
+        "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
+        "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete",
+        "dieciocho", "diecinueve", "veinte",
+    ),
+}
+_NUMERIC_WORD_NEIGHBORS = {
+    word for mapping in (_WRITTEN_CARDINALS, _WRITTEN_ORDINALS)
+    for expressions in mapping.values() for expression in expressions
+    for word in expression.split("|")
+} | {
+    "one", "zero", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+    "hundred", "hundreds", "hundredth", "thousand", "thousands", "thousandth",
+    "million", "millions", "millionth", "billion", "billions", "dozen", "dozens", "score",
+    "cero", "uno", "un", "una", "treinta", "cuarenta", "cincuenta", "sesenta",
+    "setenta", "ochenta", "noventa", "cien", "ciento", "doscientos", "trescientos",
+    "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos",
+    "mil", "miles", "millón", "millones", "billón", "billones", "docena", "docenas",
+    "trigésimo", "trigésima", "cuadragésimo", "cuadragésima", "quincuagésimo", "quincuagésima",
+    "sexagésimo", "sexagésima", "septuagésimo", "septuagésima", "octogésimo", "octogésima",
+    "nonagésimo", "nonagésima", "centésimo", "centésima", "milésimo", "milésima",
+    "half", "halves", "quarter", "quarters", "thirds", "fourths", "fifths", "sixths",
+    "sevenths", "eighths", "ninths", "tenths", "hundredths", "thousandths",
+    "medio", "media", "medios", "medias", "mitad", "mitades", "tercio", "tercios",
+    "cuartos", "cuartas", "terceros", "terceras", "quintos", "quintas",
+    "sextos", "sextas", "séptimos", "séptimas", "octavos", "octavas",
+    "novenos", "novenas", "décimos", "décimas", "centésimos", "centésimas",
+    "point", "punto", "coma",
+}
 _OCR_GROUPED_INTEGER_RE = re.compile(
     r"(?<![\w/.,-])[1-9][0-9Oo]{0,2}(?:[, \u00a0\u202f][0-9Oo]{3})+"
     r"(?!\w|[.,][0-9Oo])"
@@ -119,8 +178,14 @@ _BCP47_RE = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$")
 _NEGATION_MARKERS = {
     "no", "not", "never", "nicht", "kein", "keine", "jamais", "ne", "pas",
     "non", "nunca", "sin", "sans", "senza", "nao", "nao", "нет", "не",
+    "jamás", "nadie", "nada", "tampoco", "ningún", "ninguna", "ninguno", "ningunas", "ningunos",
     "μη", "δεν", "无", "不", "未", "ない", "ません",
 }
+_CONCESSIVE_NEVER_SO_RE = re.compile(
+    r"\b(?:though|although)\b[^.!?;:«»“”\"‘’\n]*"
+    r"\b(?P<degree>never)\s+so\s+much\b(?!\s+as\b)",
+    re.IGNORECASE,
+)
 _QUOTE_RE = re.compile(r"(?:[\"'“”‘’«»][^\"'“”‘’«»]{8,}[\"'“”‘’«»])")
 _DENSE_SCRIPT_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
@@ -567,8 +632,23 @@ def validate_unit_entities(
             continue
         source_value, target_value, excluded_values = source, target, excluded
         if label == "number":
+            source_value = _normalize_numeric_surface(source, unit.source_language, target)
+            target_value = _normalize_numeric_surface(target, unit.target_language, source)
+            excluded_values = tuple(
+                _normalize_numeric_surface(text, unit.source_language, target) for text in excluded
+            )
             source_value, target_value, excluded_values = _normalize_ocr_integer_evidence(
-                source, target, excluded
+                source_value, target_value, excluded_values
+            )
+            source_value, target_value = _normalize_paired_written_ordinals(
+                source_value, target_value, unit.source_language, unit.target_language,
+                source_surface=source, target_surface=target,
+            )
+            source_value, target_value = _normalize_paired_written_cardinals(
+                source_value, target_value, unit.source_language, unit.target_language,
+            )
+            source_value = _normalize_ocr_pronoun_evidence(
+                source_value, target_value, unit.source_language,
             )
         source_values = Counter(extractor(source_value))
         intentionally_excluded = Counter()
@@ -1188,6 +1268,137 @@ def _section_key(structural_path: str) -> str:
     return "/" + "/".join(parts[:2]) if parts else "/"
 
 
+def _normalize_numeric_surface(text: str, language: str, opposite: str = "") -> str:
+    """Canonicalize evidenced notation for comparison, never the exported text."""
+    value = text or ""
+    if _language_code(language) == "en":
+        opposite_numbers = set(_extract_digit_groups(opposite))
+
+        def calendar_day(match):
+            digits = match.group(1).translate(str.maketrans("ilIozZO", "1110220"))
+            if digits.isdigit() and 1 <= int(digits) <= 31 and str(int(digits)) in opposite_numbers:
+                return str(int(digits))
+            return match.group()
+
+        value = _OCR_CALENDAR_DAY_RE.sub(calendar_day, value)
+    value = _DIGIT_ORDINAL_RE.sub(r"\1", value)
+
+    def year_range(match):
+        # A temporal preposition alone also occurs in arithmetic instructions.
+        # Require an explicit year label rather than guessing a four-digit range.
+        prefix = value[max(0, match.start() - 18):match.start()]
+        if not re.search(r"\b(?:years?|años?)\s+$", prefix, re.IGNORECASE):
+            return match.group()
+        first, last = match.groups()
+        end = int(last)
+        if len(last) < 4:
+            modulus = 10 ** len(last)
+            end += (int(first) // modulus) * modulus
+            if end < int(first):
+                end += modulus
+        return f"{first}-{end}"
+
+    value = _COMPACT_YEAR_RANGE_RE.sub(year_range, value)
+
+    def sterling_numbers(match):
+        shillings = int(re.sub(r"\s", "", match.group(2)).translate(str.maketrans("Oo", "00")))
+        if shillings >= 20:
+            return match.group()
+        return f"£{int(match.group(1))} {shillings} shillings"
+
+    return _STERLING_SHILLINGS_RE.sub(sterling_numbers, value)
+
+
+def _normalize_ocr_pronoun_evidence(source, target, language):
+    # Reuse the production auditor's conservative English OCR-I contract, but
+    # do not manufacture an added number when the output retains the same glyph.
+    from src.core.fidelity_supervisor import _probable_english_ocr_i_spans
+
+    surplus = max(0, _extract_digit_groups(source).count("1") - _extract_digit_groups(target).count("1"))
+    spans = sorted(_probable_english_ocr_i_spans(source, language=language))[:surplus]
+    for start, end in reversed(spans):
+        source = source[:start] + " " * (end - start) + source[end:]
+    return source
+
+
+def _written_number_spans(value, expressions, *, first):
+    """Never consume a component of a compound number as a standalone value."""
+    for number, expression in enumerate(expressions, first):
+        for match in re.finditer(rf"(?<!\w)(?:{expression})(?!\w)", value, re.IGNORECASE):
+            prefix, suffix = value[:match.start()], value[match.end():]
+            if prefix.rstrip().endswith(("-", "–", "—")) or suffix.lstrip().startswith(("-", "–", "—")):
+                continue
+            left = re.search(r"([^\W_]+)(?:\s+(?:and|y))?\s+$", prefix, re.IGNORECASE)
+            right = re.match(r"\s+(?:(?:and|y)\s+(?:a\s+)?)?([^\W_]+)", suffix, re.IGNORECASE)
+            if any(
+                neighbor and (
+                    neighbor.group(1).isdigit()
+                    or neighbor.group(1).casefold() in _NUMERIC_WORD_NEIGHBORS
+                    or re.fullmatch(r"\w*(?:illions?|ill[oó]n(?:es)?)", neighbor.group(1), re.IGNORECASE)
+                )
+                for neighbor in (left, right)
+            ):
+                continue
+            yield str(number), match.span()
+
+
+def _replace_written_numbers(value, language, needed, mapping, *, first):
+    name = {"en": "english", "es": "spanish"}.get(_language_code(language), "")
+    replacements = []
+    remaining = Counter(needed)
+    for number, (start, end) in _written_number_spans(value, mapping.get(name, ()), first=first):
+        if remaining[number] > 0:
+            replacements.append((start, end, number))
+            remaining[number] -= 1
+    for start, end, number in sorted(replacements, reverse=True):
+        value = value[:start] + number + value[end:]
+    return value
+
+
+def _normalize_paired_written_cardinals(source, target, source_language, target_language):
+    def words(value, language):
+        name = {"en": "english", "es": "spanish"}.get(_language_code(language), "")
+        return Counter(number for number, _span in _written_number_spans(
+            value, _WRITTEN_CARDINALS.get(name, ()), first=2,
+        ))
+
+    source_words, target_words = words(source, source_language), words(target, target_language)
+    source_digits, target_digits = Counter(_extract_digit_groups(source)), Counter(_extract_digit_groups(target))
+    # Words already present on both sides cannot also explain an extra digit.
+    return (
+        _replace_written_numbers(source, source_language, (target_digits - source_digits) & (source_words - target_words), _WRITTEN_CARDINALS, first=2),
+        _replace_written_numbers(target, target_language, (source_digits - target_digits) & (target_words - source_words), _WRITTEN_CARDINALS, first=2),
+    )
+
+
+def _normalize_paired_written_ordinals(
+    source, target, source_language, target_language, *, source_surface, target_surface,
+):
+    """Match written ordinals only against an explicit opposite-side ordinal.
+
+    A bare quantity 1 is not evidence that an unrelated 'first' means the same
+    thing. Require notation such as 1st/1.º before matching a written form.
+    """
+    def explicit_ordinals(value):
+        values = Counter(match.group(1) for match in _DIGIT_ORDINAL_RE.finditer(value))
+        values.update(re.findall(r"(?<!\w)(\d+)\.(?:[ºª]|er\b)", value))
+        return values
+
+    source_values = Counter(_extract_digit_groups(source))
+    target_values = Counter(_extract_digit_groups(target))
+    def words(value, language):
+        name = {"en": "english", "es": "spanish"}.get(_language_code(language), "")
+        return Counter(number for number, _span in _written_number_spans(
+            value, _WRITTEN_ORDINALS.get(name, ()), first=1,
+        ))
+
+    source_words, target_words = words(source, source_language), words(target, target_language)
+    return (
+        _replace_written_numbers(source, source_language, (target_values - source_values) & explicit_ordinals(target_surface) & (source_words - target_words), _WRITTEN_ORDINALS, first=1),
+        _replace_written_numbers(target, target_language, (source_values - target_values) & explicit_ordinals(source_surface) & (target_words - source_words), _WRITTEN_ORDINALS, first=1),
+    )
+
+
 def _normalize_ocr_integer_evidence(
     source: str, target: str, excluded: tuple[str, ...]
 ) -> tuple[str, str, tuple[str, ...]]:
@@ -1206,6 +1417,15 @@ def _normalize_ocr_integer_evidence(
 
     source = _OCR_GROUPED_INTEGER_RE.sub(repair_source, source)
     excluded = tuple(_OCR_GROUPED_INTEGER_RE.sub(repair_source, text) for text in excluded)
+    # A literal integer on the opposite side also proves the grouping meaning
+    # of a comma (5000 / 5,000); arbitrary decimal separators are not erased.
+    source_literals = set(_extract_digit_groups(source))
+    target_literals = set(_extract_digit_groups(target))
+    for text, opposite in ((source, target_literals), (target, source_literals)):
+        for match in _OCR_GROUPED_INTEGER_RE.finditer(text):
+            digits = match.group().translate(ungroup)
+            if digits.isdigit() and digits in opposite:
+                verified.add(digits)
     if not verified:
         return source, target, excluded
 
@@ -1243,7 +1463,18 @@ def _extract_percentages(text: str) -> list[str]:
 
 
 def _extract_currencies(text: str) -> list[str]:
-    return [_normalized_entity(value) for value in _CURRENCY_RE.findall(text or "")]
+    value = text or ""
+    historical = []
+    covered = []
+    for match in _STERLING_SHILLINGS_RE.finditer(value):
+        shillings = int(re.sub(r"\s", "", match.group(2)).translate(str.maketrans("Oo", "00")))
+        if shillings < 20:
+            historical.append(f"GBP:{int(match.group(1))}L:{shillings}S")
+            covered.append(match.span())
+    return historical + [
+        _normalized_entity(match.group()) for match in _CURRENCY_RE.finditer(value)
+        if not any(start <= match.start() < end for start, end in covered)
+    ]
 
 
 def _extract_measurements(text: str) -> list[str]:
@@ -1412,8 +1643,16 @@ def _entity_mismatch_severity(
 
 
 def _negation_count(text: str) -> int:
-    tokens = re.findall(r"[\w\u0370-\u03ff\u0400-\u052f\u3040-\u30ff\u3400-\u9fff]+", (text or "").casefold())
-    return sum(1 for token in tokens if token in _NEGATION_MARKERS)
+    value = (text or "").casefold()
+    # Archaic concessive "though ... never so much" means "however much",
+    # not "not ever". Keep ordinary never, including "never so much as", as
+    # polarity evidence; only this syntactically bounded occurrence is exempt.
+    concessive_spans = {match.span("degree") for match in _CONCESSIVE_NEVER_SO_RE.finditer(value)}
+    tokens = re.finditer(r"[\w\u0370-\u03ff\u0400-\u052f\u3040-\u30ff\u3400-\u9fff]+", value)
+    return sum(
+        1 for token in tokens
+        if token.group() in _NEGATION_MARKERS and token.span() not in concessive_spans
+    )
 
 
 def _enough_language_evidence(text: str, configured_minimum: int) -> bool:

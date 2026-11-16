@@ -90,11 +90,11 @@ _ENGLISH_OCR_I_ADVERBS = frozenset({
 _ENGLISH_OCR_I_VERBS = frozenset({
     "accept", "accepted", "admire", "admired", "agree", "agreed", "am",
     "ask", "asked", "believe", "believed", "can", "choose", "chose",
-    "could", "did", "do", "expect", "expected", "fear", "feared", "feel",
+    "could", "cried", "did", "disliked", "do", "expect", "expected", "fear", "feared", "feel",
     "felt", "find", "found", "gave", "go", "got", "had", "have", "hear",
-    "heard", "hope", "hoped", "know", "knew", "learn", "learned", "left",
+    "heard", "hope", "hoped", "know", "knew", "knocked", "learn", "learned", "left",
     "look", "looked", "made", "may", "mean", "meant", "might", "must",
-    "need", "needed", "notice", "noticed", "prefer", "preferred", "promise",
+    "need", "needed", "notice", "noticed", "overtake", "passed", "prefer", "preferred", "promise",
     "promised", "read", "refuse", "refused", "remember", "remembered", "say",
     "said", "saw", "see", "seek", "shall", "shook", "should", "suppose",
     "supposed", "take", "tell", "think", "thought", "told", "understand",
@@ -102,9 +102,9 @@ _ENGLISH_OCR_I_VERBS = frozenset({
     "will", "wish", "wished", "would", "write", "wrote",
 })
 _ENGLISH_OCR_I_STRONG_VERBS = frozenset({
-    "accepted", "admired", "agreed", "asked", "believed", "chose", "expected",
+    "accepted", "admired", "agreed", "asked", "believed", "chose", "cried", "disliked", "expected",
     "feared", "felt", "found", "gave", "got", "heard", "hoped", "knew",
-    "learned", "left", "looked", "made", "meant", "needed", "noticed",
+    "knocked", "learned", "left", "looked", "made", "meant", "needed", "noticed", "passed",
     "preferred", "promised", "refused", "remembered", "said", "saw", "shook",
     "supposed", "told", "understood", "wanted", "watched", "went", "wished",
     "wrote",
@@ -115,9 +115,20 @@ _ENGLISH_OCR_I_CLAUSE_CUES = frozenset({
     "when", "whenever", "where", "whereas", "while", "yet",
 })
 _ENGLISH_OCR_I_QUANTITY_CUES = frozenset({
-    "act", "approximately", "book", "chapter", "exactly", "figure", "had",
+    "act", "another", "approximately", "book", "chapter", "each", "every", "exactly",
+    "experiment", "figure", "had",
     "has", "have", "item", "line", "no", "number", "only", "page", "part",
-    "route", "scene", "section", "table", "total", "volume", "with",
+    "participant", "participants", "patient", "patients", "person", "people",
+    "least", "most", "room", "route", "scene", "seat", "section", "subject", "subjects",
+    "survivor", "survivors", "table", "test", "total", "trial", "volume", "with",
+})
+_ENGLISH_OCR_I_INTRO_PREPOSITIONS = frozenset({
+    "along", "at", "behind", "beside", "by", "during", "from", "in", "on",
+    "over", "through", "under", "without",
+})
+_ENGLISH_OCR_I_BASE_VERBS = frozenset({
+    "feel", "find", "go", "hear", "look", "notice", "overtake", "read", "remember",
+    "see", "take", "tell", "think", "understand", "watch", "write",
 })
 _ENGLISH_OCR_I_NOMINAL_VERBS = frozenset({
     "can", "hope", "need", "promise", "thought", "watch", "will", "wish",
@@ -4421,6 +4432,40 @@ def _probable_english_ocr_i_spans(text: str, *, language: str = "") -> set[tuple
         )
         preceding_words = _ordered_surface_tokens(prefix_without_placeholders)
         previous_word = preceding_words[-1].casefold() if preceding_words else ""
+        # Labels and explicit quantities remain numbers even before a modal or
+        # after a colon. A previous complete sentence does not label this token.
+        if (
+            previous_word in _ENGLISH_OCR_I_QUANTITY_CUES
+            and not re.search(r"[.!?;]\s*$", prefix_without_placeholders)
+        ):
+            continue
+        introduction = re.split(r"[.!?;\n]", prefix_without_placeholders)[-1].strip()
+        intro_words = _ordered_surface_tokens(introduction)
+        intro_is_words = bool(introduction) and all(
+            char.isalpha() or char.isspace() or char in "'’" for char in introduction
+        )
+        prepositional_intro = bool(
+            intro_is_words
+            and 2 <= len(intro_words) <= 12
+            and intro_words[0].casefold() in _ENGLISH_OCR_I_INTRO_PREPOSITIONS
+            and not any(
+                word.casefold() in _ENGLISH_OCR_I_QUANTITY_CUES for word in intro_words
+            )
+        )
+        auxiliary_context = prepositional_intro and (
+            (verb == "could" and next_word in _ENGLISH_OCR_I_BASE_VERBS)
+            or (
+                verb == "had" and next_word == "been"
+                and word_index + 2 < len(following_words)
+                and len(following_words[word_index + 2]) > 4
+                and following_words[word_index + 2].casefold().endswith("ing")
+            )
+        )
+        initial_adverb_context = bool(
+            intro_is_words and len(intro_words) == 1
+            and len(intro_words[0]) > 4 and intro_words[0].casefold().endswith("ly")
+            and verb in _ENGLISH_OCR_I_BASE_VERBS
+        )
         punctuation_boundary = bool(
             not prefix
             or unicodedata.category(prefix[-1]).startswith("P")
@@ -4430,7 +4475,10 @@ def _probable_english_ocr_i_spans(text: str, *, language: str = "") -> set[tuple
             verb in _ENGLISH_OCR_I_STRONG_VERBS
             and previous_word not in _ENGLISH_OCR_I_QUANTITY_CUES
         )
-        if punctuation_boundary or clause_cue or strong_verb_context:
+        if (
+            punctuation_boundary or clause_cue or strong_verb_context
+            or auxiliary_context or initial_adverb_context
+        ):
             spans.add(token_span)
     return spans
 

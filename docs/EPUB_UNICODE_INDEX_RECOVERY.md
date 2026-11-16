@@ -83,3 +83,32 @@ revision of a previously invalid, hash-bound response, without replenishing
 paid request counters or invalidating successful audits. Newly valid candidates
 still require the normal semantic audit and its existing budget. Stale or
 tampered responses and incomplete/refused generations remain blocked.
+
+## Whole-book entity and polarity checks
+
+Completing the index exposed independent whole-book QA disagreements. The
+publication audit and EPUBCheck passed, but a second deterministic gate compared
+numeric spellings as literal strings: English digit ordinals, written ordinals,
+source OCR calendar days, grouped integers and historical sterling notation could
+be rejected despite preserving the value. English OCR `1` used as the pronoun
+`I` also needs the existing bounded grammatical evidence contract rather than
+being counted indiscriminately as a quantity.
+
+Comparison-only normalization now recognizes evidenced notation without
+rewriting exported text. Written number components inside compound quantities
+must not match a smaller number; real changes and omissions remain blocking.
+Ambiguous expressions are not automatically exempted. Source-backed data repairs
+for a particular book are kept outside application code and independently
+validated against the pristine source, exact text slots and artifact hashes.
+
+The polarity check now recognizes Spanish negative forms such as `jamás` and
+`nadie`. It distinguishes the bounded archaic concessive construction
+`though ... never so much` from ordinary temporal negation, while retaining the
+negative interpretation of `never so much as`. This is a deterministic language
+check, not a replacement for the semantic audit. Positive paraphrases are not
+automatically declared equivalent to source negation.
+
+The live recovery preserves the original source and completed work. Localized
+source-reviewed edits use the existing atomic EPUB text-unit repair utility;
+they do not bypass publication or whole-book QA. Resume must rebuild the normal
+artifact and pass all gates before the recoverable job becomes completed.
