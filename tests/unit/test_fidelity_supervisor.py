@@ -7,6 +7,7 @@ from src.core.fidelity_supervisor import (
     _is_bibliographic_registry_overlap,
     _looks_like_preservable_name_index_echo,
     _looks_like_localized_index_qualifiers,
+    _source_language_residual_issue,
     _normalize_structured_index_audit_policy,
     _profile_fidelity_audit_context,
     apply_fidelity_audit_assessment,
@@ -4031,6 +4032,101 @@ def test_saved_index_language_rejection_reuses_hash_bound_semantic_pass():
         assert recheck_saved_language_rejection(
             rejected, source, candidate, source_language="English", target_language="Spanish",
             prompt_options=options,
+        ) is None
+
+
+def test_compound_index_rank_translation_is_one_span_not_token_deletion():
+    source = (
+        "Smith, Major General Robert, 12\n"
+        "Jones, Colonel General Alice, 24\n"
+        "Brown, Field Marshal George, 36\n"
+        "Khan, the Great Mogul, 48"
+    )
+    candidate = (
+        "Smith, general de división Robert, 12\n"
+        "Jones, general de ejército Alice, 24\n"
+        "Brown, mariscal de campo George, 36\n"
+        "Khan, el Gran Mogol, 48"
+    )
+    assert _looks_like_localized_index_qualifiers(source, candidate) is True
+    assert _looks_like_localized_index_qualifiers(
+        source, candidate.replace("general de división ", ""),
+    ) is False
+    assert _looks_like_localized_index_qualifiers(
+        source, candidate.replace("Robert", "Richard"),
+    ) is False
+    decision = assess_fidelity(
+        source, candidate, chunk_index=1, phase="final_epub_unit_repair",
+        source_language="English", target_language="Spanish",
+        prompt_options={"_document_block_context": "index"},
+    )
+    assert decision.accepted is True, decision.rejections
+
+
+def _boundary_index_pair():
+    source = (
+        "Moore, Sir John, 269\n"
+        "Morton, Sir Thomas, 173\n"
+        "Moyne, Lord, 41\n"
+        "Munro, Ross, 566\n"
+        "Napoleon, Bonaparte, 254\n"
+        "White, Duchess of Northshire, 126\n"
+        "Green, Major General William, 128"
+    )
+    candidate = source.replace("Sir", "sir").replace("Lord", "lord").replace("Napoleon", "Napoleón")
+    candidate = candidate.replace("Duchess of", "duquesa de").replace("Major General", "general de división")
+    return source, candidate
+
+
+def test_index_residual_scan_preserves_entry_boundaries(monkeypatch):
+    monkeypatch.setattr("src.core.fidelity_supervisor._detect_token_language", lambda _text: ("en", 1.0))
+    source, candidate = _boundary_index_pair()
+    arguments = dict(source_language="English", target_language="Spanish")
+    flattened = _source_language_residual_issue(source, candidate, prompt_options={}, **arguments)
+    assert flattened is not None and flattened.severity == "reject"
+    assert "John Morton" in flattened.detail
+    bounded = _source_language_residual_issue(
+        source, candidate, prompt_options={"_document_block_context": "index"}, **arguments,
+    )
+    assert bounded is None
+    for source_prose in (
+        "Brown, he returned home after the war, 51",
+        "Notes, the army was defeated by the enemy, 52",
+    ):
+        retained = _source_language_residual_issue(
+            source + "\n" + source_prose, candidate + "\n" + source_prose,
+            prompt_options={"_document_block_context": "index"}, **arguments,
+        )
+        assert retained is not None and retained.severity == "reject"
+
+
+def test_saved_index_boundary_rejection_requires_exact_old_evidence(monkeypatch):
+    from dataclasses import replace
+
+    monkeypatch.setattr("src.core.fidelity_supervisor._detect_token_language", lambda _text: ("en", 1.0))
+    source, candidate = _boundary_index_pair()
+    options = {"_document_block_context": "index"}
+    languages = dict(source_language="English", target_language="Spanish")
+    old_issue = _source_language_residual_issue(source, candidate, prompt_options={}, **languages)
+    current = assess_fidelity(
+        source, candidate, chunk_index=1, phase="final_epub_unit_audit",
+        prompt_options=options, **languages,
+    )
+    assert current.accepted is True
+    saved = replace(
+        current, accepted=False, local_accepted=False, issues=[old_issue],
+        judge_decision="pass", judge_confidence=0.99,
+    )
+    recovered = recheck_saved_language_rejection(saved, source, candidate, prompt_options=options, **languages)
+    assert recovered is not None and recovered.accepted is True
+    for rejected in (
+        replace(saved, judge_decision="repair_needed"),
+        replace(saved, candidate_hash="stale"),
+        replace(saved, issues=[replace(old_issue, detail="unrelated copied phrase")]),
+        replace(saved, judge_structure_issues=["An entry was deleted"]),
+    ):
+        assert recheck_saved_language_rejection(
+            rejected, source, candidate, prompt_options=options, **languages,
         ) is None
 
 

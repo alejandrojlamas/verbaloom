@@ -10,6 +10,33 @@ from typing import Any
 from .unit_contract import OPERATIONAL_PROMPT_OPTIONS, prompt_versions, text_sha256
 
 
+# Increment only when deterministic repair validation changes. This is not an
+# audit-contract version: previously approved text and paid counters stay valid.
+COMPATIBLE_REPAIR_VALIDATION_VERSION = "compatible-repair-validation-v1"
+
+
+def compatible_response_contract(
+    *, unit_id, source, candidate, user_prompt, system_prompt, model, provider,
+    tags, indices, placeholder_format, repair_feedback,
+) -> dict:
+    """Bind a paid full-candidate response to the exact request it answered."""
+    return {
+        "schema": "epub-compatible-repair-v1",
+        "unit_id": unit_id,
+        "source_sha256": text_sha256(source),
+        "candidate_sha256": text_sha256(candidate),
+        "request_sha256": text_sha256(json.dumps(
+            [system_prompt, user_prompt], ensure_ascii=False,
+        )),
+        "model": model,
+        "provider": provider,
+        "tags": tags,
+        "indices": indices,
+        "placeholder_format": list(placeholder_format),
+        "context": {"previous_repair": repair_feedback},
+    }
+
+
 def bounded_count(value: Any) -> int:
     """Malformed saved counters exhaust their allowance, never replenish it."""
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:

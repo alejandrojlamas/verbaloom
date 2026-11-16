@@ -39,7 +39,9 @@ needed structural treatment rather than an unbounded dictionary of exonyms.
 
 The language check now recognizes these bounded qualifier edits in index
 entries while retaining the leading identity, other name tokens, entry order,
-and numeric locators. The existing semantic auditor remains responsible for
+and numeric locators. Compound ranks are validated as whole editable spans
+between protected names, rather than as independent token deletions. The
+existing semantic auditor remains responsible for
 meaning and completeness. Actual source prose, altered identity anchors,
 changed numbers, and omitted entries do not receive this language exemption.
 
@@ -49,9 +51,33 @@ structural objections. A negative semantic assessment cannot become an
 approval through this path.
 
 The legacy compatible repair path did not retain rejected repair responses.
-Those responses cannot be replayed or reconstructed. For the affected job only,
-the existing `epub_audit_repair_rounds` resume option can be raised from two to
-four, retaining lifetime attempt counts, cached decisions, completed work, and
-the monetary budget. This is an explicit bounded recovery operation, not a new
-global retry policy. Regression coverage verifies that previously approved
-units stay cached and every newly generated repair still requires audit.
+Those responses cannot be replayed or reconstructed. An explicit, bounded
+increase of the affected job's existing `epub_audit_repair_rounds` resume option
+retains lifetime attempt counts, cached decisions, completed work, and the
+monetary budget. It does not change the global retry policy. Regression coverage
+verifies that previously approved units stay cached and every newly generated
+repair still requires audit.
+
+## Entry boundaries and durable repair evidence
+
+The final index audit also exposed a separate language false positive: literal
+stripping collapsed independent entries before copied-phrase detection. The
+detector could then mistake a run of unrelated names for English prose. Index
+analysis now retains the original reading-entry boundaries. English prose
+within an entry still undergoes the same checks. Reuse of an earlier favorable
+semantic judgment requires reproducing its exact obsolete flattened warning,
+matching the source/candidate hashes, and passing the current local checks.
+
+Compatible full-candidate repair responses now use the existing response
+journal, with an explicit format marker. The saved response is bound to the
+unit, source, selected candidate, prompts, model, provider and placeholders.
+It is recorded before local validation, including refusal and truncation state;
+recording a response is never publication approval. Interrupted validation can
+resume without requesting the same repair again.
+
+When deterministic repair validation changes, increment
+`COMPATIBLE_REPAIR_VALIDATION_VERSION`. This permits one local recheck per
+revision of a previously invalid, hash-bound response, without replenishing
+paid request counters or invalidating successful audits. Newly valid candidates
+still require the normal semantic audit and its existing budget. Stale or
+tampered responses and incomplete/refused generations remain blocked.

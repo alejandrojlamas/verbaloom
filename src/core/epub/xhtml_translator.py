@@ -3280,7 +3280,19 @@ async def _repair_audited_candidate(
     rest of the EPUB assembly pipeline.
     """
     options = dict(prompt_options or {})
-    localized = options.get("fidelity_repair_policy") == "localized_v1" or saved_patch is not None
+    # Older saved envelopes always contain a localized patch. New compatible
+    # responses identify their format explicitly; replay must not reinterpret
+    # a complete candidate as a patch or send another request.
+    response_mode = (
+        saved_patch.get("mode", "localized_v1") if saved_patch is not None
+        else options.get("fidelity_repair_policy", "compatible")
+    )
+    if saved_patch is not None and response_mode not in {"compatible", "localized_v1"}:
+        raise ProviderActionRequiredError(
+            "Saved repair response has an unsupported format.",
+            reason="repair_checkpoint_invalid", provider=getattr(llm_client, "provider_type", ""),
+        )
+    localized = response_mode == "localized_v1"
     glossary_block = build_profile_glossary_block(
         source_text,
         options,
@@ -3332,7 +3344,7 @@ Return only the complete repaired candidate between {TRANSLATE_TAG_IN} and
             decision,
         )
     )
-    if restored_names or removed_prefixes:
+    if (restored_names or removed_prefixes) and saved_patch is None:
         gate_rejections = _target_language_gate_rejections(
             source_text,
             deterministic_repair,
@@ -3435,6 +3447,17 @@ candidate with every placeholder preserved."""
         system_prompt += repair_patch_instructions()
         user_prompt = "# REPAIR CONTRACT\n" + json.dumps(patch_contract, ensure_ascii=False)
 
+    from .audit_repair import compatible_response_contract
+
+    response_contract = patch_contract if localized else compatible_response_contract(
+        unit_id=str((chunk.get("unit") or {}).get("unit_id") or ""),
+        source=source_text, candidate=candidate_for_repair,
+        user_prompt=user_prompt, system_prompt=system_prompt,
+        model=repair_model, provider=getattr(llm_client, "provider_type", ""),
+        tags=dict(chunk.get("local_tag_map") or {}),
+        indices=list(chunk.get("global_indices") or []),
+        placeholder_format=placeholder_format, repair_feedback=repair_feedback,
+    )
     if log_callback:
         log_callback(
             "epub_audit_local_repair_start",
@@ -3443,7 +3466,7 @@ candidate with every placeholder preserved."""
     if saved_patch is not None:
         from src.core.llm.base import LLMResponse
 
-        if patch_contract is None or saved_patch.get("contract") != patch_contract:
+        if saved_patch.get("contract") != response_contract:
             raise ProviderActionRequiredError(
                 "Saved repair response does not match the current contract.",
                 reason="repair_checkpoint_invalid", provider=getattr(llm_client, "provider_type", ""),
@@ -3480,22 +3503,25 @@ candidate with every placeholder preserved."""
                 patch_error = str(exc)
         else:
             patch_error = "incomplete_or_refused_response"
-        if patch_callback and saved_patch is None:
-            patch_callback({
-                "contract": patch_contract,
-                "raw_response": response.content,
-                "response_state": {
-                    "status": getattr(response, "status", "completed"),
-                    "was_truncated": getattr(response, "was_truncated", False),
-                    "refusal": getattr(response, "refusal", None),
-                    "finish_reason": getattr(response, "finish_reason", ""),
-                    "request_id": getattr(response, "request_id", None),
-                },
-                "valid": patch_result is not None, "error": patch_error,
-                "edits": patch_result.edits if patch_result else [],
-                "candidate_sha256": patch_result.candidate_sha256 if patch_result else None,
-                "deterministic_base_sha256": text_sha256(candidate_for_repair),
-            })
+    if patch_callback and saved_patch is None:
+        patch_callback({
+            "mode": "localized_v1" if localized else "compatible",
+            "contract": response_contract,
+            "raw_response": response.content,
+            "response_state": {
+                "status": getattr(response, "status", "completed"),
+                "was_truncated": getattr(response, "was_truncated", False),
+                "refusal": getattr(response, "refusal", None),
+                "finish_reason": getattr(response, "finish_reason", ""),
+                "request_id": getattr(response, "request_id", None),
+            },
+            # Compatible candidates have not passed local validation yet.
+            "valid": patch_result is not None if localized else None,
+            "error": patch_error,
+            "edits": patch_result.edits if patch_result else [],
+            "candidate_sha256": patch_result.candidate_sha256 if patch_result else None,
+            "deterministic_base_sha256": text_sha256(candidate_for_repair),
+        })
 
     if (getattr(response, "refusal", "") or getattr(response, "status", "") == "refused"
             or getattr(response, "finish_reason", "") == "content_filter"):
@@ -3602,6 +3628,7 @@ async def _audit_epub_unit(
     """Resume the existing unit contract with a durable candidate/decision journal."""
     from copy import deepcopy
     from .audit_repair import (
+        COMPATIBLE_REPAIR_VALIDATION_VERSION,
         bounded_count, contract_hash, new_candidate, repair_conflict_context, repair_limit, strictly_better,
     )
     from src.core.fidelity_supervisor import FidelityDecision
@@ -3711,6 +3738,14 @@ async def _audit_epub_unit(
 
     def decision_hash(data):
         return text_sha256(json.dumps(data, sort_keys=True, ensure_ascii=False))
+
+    def verify_saved_response(envelope):
+        payload = {
+            k: v for k, v in envelope.items()
+            if k not in {"checksum", "processed"}
+        }
+        if envelope.get("checksum") != decision_hash(payload):
+            fail("repair_checkpoint_invalid", stop=True)
 
     def restore_decision(entry, phase):
         envelope = entry["assessments"].get(phase)
@@ -3873,6 +3908,48 @@ async def _audit_epub_unit(
     if best["hash"] != expected_hash:
         fail("audit_checkpoint_invalid", stop=True)
     stop_reason = journal.get("stop_reason")
+    if stop_reason in {"repair_attempts_exhausted", "repair_no_improvement"}:
+        # Local validation may change while the paid response remains valid
+        # evidence. Re-run only that validation, once per revision, without
+        # replenishing repair/audit allowances or replacing semantic judgments.
+        failed_attempts = {
+            item.get("attempt") for item in journal.get("repair_failures", [])
+            if item.get("reason") == "repair_invalid_candidate"
+            and item.get("base_hash") == best["hash"]
+        }
+        rechecks = journal.setdefault("response_rechecks", {})
+        for response in reversed(journal.get("localized_patches", [])):
+            if (response.get("mode") != "compatible"
+                    or response.get("attempt") not in failed_attempts
+                    or response.get("selected_base_hash") != best["hash"]
+                    or not response.get("processed")
+                    or rechecks.get(response.get("checksum")) == COMPATIBLE_REPAIR_VALIDATION_VERSION):
+                continue
+            verify_saved_response(response)
+            before = restore_decision(best, "adjudication") or restore_decision(best, "audit")
+            if before is None:
+                fail("repair_checkpoint_invalid", stop=True)
+            repair_options = build_fidelity_retry_prompt_options(audit_options, before)
+            repair_options["repair_until_pass"] = False
+            try:
+                repaired = await _repair_audited_candidate(
+                    source_text=source_text, candidate_text=local_text(best), decision=before,
+                    chunk=chunk, source_language=source_language, target_language=target_language,
+                    model_name=model_name, llm_client=llm_client, prompt_options=repair_options,
+                    placeholder_format=placeholder_format, log_callback=log_callback,
+                    saved_patch=response,
+                )
+            except Exception as exc:
+                request_failed(exc)
+            check_version()
+            rechecks[response["checksum"]] = COMPATIBLE_REPAIR_VALIDATION_VERSION
+            if repaired and not any(entry["hash"] == text_sha256(repaired) for entry in entries):
+                entries.append(new_candidate(repaired, origin="fidelity_repair", base_hash=best["hash"]))
+                journal["pending"] = len(entries) - 1
+                journal["stop_reason"] = ""
+                save("candidate_saved", candidate_hash=entries[-1]["hash"], reused_response=True)
+                break
+            save("repair_response_rechecked", valid=bool(repaired))
     if stop_reason in {"repair_attempts_exhausted", "repair_no_improvement", "repair_repeated_candidate"}:
         # Recheck only a previously judged, unchanged candidate. Keep the paid
         # judgment and repair counters; no extra requests or retries are granted.
@@ -3945,9 +4022,7 @@ async def _audit_epub_unit(
             and entry.get("selected_base_hash") == best["hash"]
         ), None)
         if saved_patch is not None:
-            payload = {k: v for k, v in saved_patch.items() if k not in {"checksum", "processed"}}
-            if saved_patch.get("checksum") != decision_hash(payload):
-                fail("repair_checkpoint_invalid", stop=True)
+            verify_saved_response(saved_patch)
         current_attempt = attempts if saved_patch is not None else attempts + 1
         if saved_patch is None and attempts >= repair_rounds:
             return await finish_repair("repair_attempts_exhausted")
@@ -4011,6 +4086,10 @@ async def _audit_epub_unit(
             latest_patch = journal["localized_patches"][-1]
             if latest_patch.get("selected_base_hash") == best["hash"]:
                 latest_patch["processed"] = True
+                if latest_patch.get("mode") == "compatible":
+                    journal.setdefault("response_rechecks", {})[
+                        latest_patch["checksum"]
+                    ] = COMPATIBLE_REPAIR_VALIDATION_VERSION
         if not repaired:
             journal.setdefault("repair_failures", []).append({
                 "attempt": current_attempt, "base_hash": best["hash"],

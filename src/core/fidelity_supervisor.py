@@ -851,11 +851,39 @@ def recheck_saved_language_rejection(
     prompt_options: Optional[Mapping[str, Any]],
 ) -> Optional[FidelityDecision]:
     """Reuse a favorable semantic judgment when its sole local blocker changed."""
+    corrected_index_boundaries = False
+    if (
+        (prompt_options or {}).get("_document_block_context") == "index"
+        and decision.judge_decision == "pass"
+        and decision.judge_confidence >= 0.88
+        and decision.rejections
+        and all(issue.code == "source_language_residual" for issue in decision.rejections)
+    ):
+        source_lines = [line for part in _placeholder_bounded_segments(source_text) for line in part.splitlines()]
+        candidate_lines = [line for part in _placeholder_bounded_segments(candidate_text) for line in part.splitlines()]
+        if len(source_lines) >= 3 and len(source_lines) == len(candidate_lines):
+            # Prove that the old flattened scan reproduces the saved blocker.
+            # A different warning, stale text or a semantic rejection cannot
+            # be promoted by this compatibility path.
+            flattened_options = dict(prompt_options or {})
+            flattened_options.pop("_document_block_context", None)
+            flattened_issue = _source_language_residual_issue(
+                source_text, candidate_text, source_language=source_language,
+                target_language=target_language, prompt_options=flattened_options,
+            )
+            corrected_index_boundaries = bool(
+                flattened_issue is not None
+                and flattened_issue.severity == "reject"
+                and all(issue.detail == flattened_issue.detail for issue in decision.rejections)
+            )
     corrected_index_language = bool(
         (prompt_options or {}).get("_document_block_context") == "index"
         and decision.judge_decision == "pass"
         and decision.judge_confidence >= 0.88
-        and _looks_like_localized_index_qualifiers(source_text, candidate_text)
+        and (
+            corrected_index_boundaries
+            or _looks_like_localized_index_qualifiers(source_text, candidate_text)
+        )
         and all(issue.code in {
             "untranslated_source", "target_language_missing", "source_language_residual",
         } for issue in decision.rejections)
@@ -945,8 +973,11 @@ def _source_language_residual_issue(
         if _contains_profile_term(source, phrase)
         and _contains_profile_term(candidate, phrase)
     ]
-    analysis_source = _strip_language_neutral_literals(source)
-    analysis_candidate = _strip_language_neutral_literals(candidate)
+    index_boundaries = str(
+        (prompt_options or {}).get("_document_block_context") or ""
+    ).strip().casefold() == "index"
+    analysis_source = _strip_language_neutral_literals(source, preserve_line_boundaries=index_boundaries)
+    analysis_candidate = _strip_language_neutral_literals(candidate, preserve_line_boundaries=index_boundaries)
     copied_phrases, contextual_dialogue = _copied_source_language_phrases(
         analysis_source,
         analysis_candidate,
@@ -955,6 +986,7 @@ def _source_language_residual_issue(
         preserved=preserved,
         required_translation=required_translation,
         contextual_review=_has_contextual_language_review(prompt_options),
+        preserve_line_boundaries=index_boundaries,
     )
     stylized_sound_effects: list[tuple[str, float]] = []
     ambiguous_short_phrases: list[tuple[str, float]] = []
@@ -1549,6 +1581,7 @@ def _copied_source_language_phrases(
     preserved: set[str],
     required_translation: set[str],
     contextual_review: bool,
+    preserve_line_boundaries: bool = False,
 ) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
     """Find contiguous source prose copied into a same-script translation.
 
@@ -1563,6 +1596,9 @@ def _copied_source_language_phrases(
     contextual_dialogue: dict[str, tuple[str, float]] = {}
     source_segments = _placeholder_bounded_segments(source)
     candidate_segments = _placeholder_bounded_segments(candidate)
+    if preserve_line_boundaries:
+        source_segments = [line for segment in source_segments for line in segment.splitlines()]
+        candidate_segments = [line for segment in candidate_segments for line in segment.splitlines()]
     # Placeholder integrity has its own hard gate. Do not manufacture a
     # language-residue phrase by aligning text across missing HTML boundaries.
     if len(source_segments) != len(candidate_segments):
@@ -2697,11 +2733,11 @@ def _looks_like_preservable_bibliographic_echo(
     )
 
 
-def _strip_language_neutral_literals(text: str) -> str:
+def _strip_language_neutral_literals(text: str, *, preserve_line_boundaries: bool = False) -> str:
     """Remove URLs and email addresses from statistical language evidence."""
     decoded = html.unescape(text or "")
     return re.sub(
-        r"\s+",
+        r"[^\S\r\n]+" if preserve_line_boundaries else r"\s+",
         " ",
         _LANGUAGE_NEUTRAL_LITERAL_RE.sub(" ", decoded),
     ).strip()
@@ -2787,23 +2823,32 @@ def _looks_like_localized_index_qualifiers(source: str, candidate: str) -> bool:
         mutable = qualifier_positions | {
             index for index, word in enumerate(source_words) if word in _WORK_TITLE_CONNECTORS
         }
-        edits = difflib.SequenceMatcher(None, source_words, candidate_words, autojunk=False)
-        for operation, first, last, _new_first, _new_last in edits.get_opcodes():
-            if operation == "equal":
-                continue
-            if operation == "delete" and any(
-                index in qualifier_positions and source_words[index] not in _WORK_TITLE_CONNECTORS
-                for index in range(first, last)
-            ):
-                return False
-            if first == last:
-                if first not in mutable and first - 1 not in mutable:
+        # A compound rank is one editable span. A token diff can align the
+        # shared "general" in "Major General" / "general de división" and
+        # incorrectly report the first word as a deletion rather than a
+        # translation. Anchor each span to the surrounding exact name tokens.
+        source_start = candidate_start = 0
+        protected = [index for index in range(len(source_words)) if index not in mutable]
+        for source_end in protected + [len(source_words)]:
+            if source_end == len(source_words):
+                candidate_end = len(candidate_words)
+            else:
+                try:
+                    candidate_end = candidate_words.index(source_words[source_end], candidate_start)
+                except ValueError:
                     return False
-            elif any(index not in mutable for index in range(first, last)):
-                return False
-            changed_qualifier = changed_qualifier or any(
-                index in qualifier_positions for index in range(first, last)
+            before = source_words[source_start:source_end]
+            after = candidate_words[candidate_start:candidate_end]
+            contains_qualifier = any(
+                index in qualifier_positions and source_words[index] not in _WORK_TITLE_CONNECTORS
+                for index in range(source_start, source_end)
             )
+            if (not before and after) or (contains_qualifier and not after):
+                return False
+            if contains_qualifier and before != after:
+                changed_qualifier = True
+            source_start = source_end + 1
+            candidate_start = candidate_end + 1
     return changed_qualifier
 
 
