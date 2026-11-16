@@ -271,6 +271,45 @@ async def test_resume_keeps_original_chunk_denominator(monkeypatch, tmp_path, pe
 
 
 @pytest.mark.asyncio
+async def test_fully_restored_epub_emits_native_plan_without_retranslating(monkeypatch, tmp_path):
+    async def unexpected_translation(*_args, **_kwargs):
+        raise AssertionError("fully restored files must not make translation requests")
+
+    class ResumeCheckpoint:
+        def get_job(self, _translation_id):
+            return {"progress": {
+                "total_chunks": 510,
+                "completed_chunks": 510,
+                "epub_accumulated_stats": {
+                    "processed_chunks": 481, "failed_chunks": 1, "retry_attempts": 7,
+                },
+            }}
+
+    monkeypatch.setattr(
+        "src.core.epub.translator._translate_single_xhtml_file", unexpected_translation,
+    )
+    content_files = ["body.xhtml", "index.xhtml"]
+    restored = {
+        str(tmp_path / href): etree.fromstring(b"<html><body><p>Texto</p></body></html>")
+        for href in content_files
+    }
+    emitted = []
+    result = await _process_all_content_files(
+        content_files=content_files, opf_dir=str(tmp_path), temp_dir=str(tmp_path),
+        source_language="English", target_language="Spanish", model_name="test-model",
+        llm_client=object(), max_tokens_per_chunk=100, max_attempts=1,
+        context_manager=None, translation_id="restored-book", resume_from_index=2,
+        checkpoint_manager=ResumeCheckpoint(), stats_callback=emitted.append,
+        restored_docs=restored, restore_attempted=True, precount_result=(510, [481, 29]),
+    )
+    assert result["total_chunks"] == result["completed_chunks"] == 510
+    assert result["unresolved_files"] == []
+    assert emitted[0]["epub_planned_chunks"] == 510
+    assert emitted[0]["processed_chunks"] == 481  # Historical work is not invented.
+    assert result["translation_stats"].retry_attempts == 7
+
+
+@pytest.mark.asyncio
 async def test_partial_xhtml_resume_does_not_double_count_its_prefix(monkeypatch, tmp_path):
     async def unexpected_precount(*_args, **_kwargs):
         raise AssertionError("resume must use the supplied pristine chunk plan")

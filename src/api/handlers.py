@@ -1209,10 +1209,14 @@ def _canonicalize_published_epub_stats(
     if not publication_report or not bool(getattr(publication_report, 'publishable', False)):
         return result
     accumulated = dict(result.get('epub_accumulated_stats') or {})
-    processed = max(
-        int(accumulated.get('processed_chunks') or 0),
-        int(result.get('processed_chunks') or 0),
-    )
+    processed = int(result.get('epub_planned_chunks') or 0)
+    if processed <= 0:
+        # Compatibility for checkpoints created before native plan provenance
+        # was emitted. Generic total_chunks can belong to another audit stage.
+        processed = max(
+            int(accumulated.get('processed_chunks') or 0),
+            int(result.get('processed_chunks') or 0),
+        )
     if processed <= 0:
         return result
     result.update({
@@ -1229,6 +1233,21 @@ def _canonicalize_published_epub_stats(
         'quality_degraded': False,
     })
     return result
+
+
+def _completed_job_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
+    """Close live activity only after the final artifact has been published."""
+    return {
+        **dict(stats or {}),
+        'live_status': 'Translation completed; final file is ready.',
+        'live_status_kind': 'completed',
+        'live_activity_event': 'summary_completed',
+        'stage_progress': None,
+        'eta_seconds': 0.0,
+        'eta_lower_seconds': 0.0,
+        'eta_upper_seconds': 0.0,
+        'eta_status': 'completed',
+    }
 
 
 def _create_audiobook_companion_outputs(
@@ -2117,7 +2136,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     def _finalize_stats_callback(new_stats_dict):
         # Finalization pushes (e.g. final elapsed_time) must not re-assert a
         # phase; the stored stats already carry the terminal phase/percent.
-        _emit_progress(new_stats_dict, {})
+        _store_and_emit_stats(new_stats_dict)
 
     def _openrouter_cost_callback(cost_data):
         """Update OpenRouter cost in state. No emit: this callback runs on the
@@ -3640,6 +3659,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     _log_message_callback("published_checkpoint_warning",
                         "El archivo está guardado; su registro de recuperación sigue pendiente.")
                 state_manager.set_translation_field(translation_id, 'status', 'completed')
+                state_manager.update_stats(
+                    translation_id,
+                    _completed_job_stats(
+                        state_manager.get_translation_field(translation_id, 'stats') or {}
+                    ),
+                )
                 _log_message_callback(
                     "summary_completed",
                     f"✅ {'Transformation' if is_transform_job else 'Translation'} completed in {elapsed_time:.2f}s{stats_summary}",

@@ -992,6 +992,9 @@ def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None):
     return {
         'total_chunks': total_chunks,
         'completed_chunks': completed_chunks,
+        # Keep the native logical plan separate from cumulative attempt
+        # metrics, which can predate a file restored from its saved audit.
+        'epub_planned_chunks': total_chunks,
         'failed_chunks': acc.failed_chunks + fs.get('failed_chunks', 0),
         'token_alignment_used': acc.token_alignment_used + fs.get('token_alignment_used', 0),
         'fallback_used': acc.fallback_used + fs.get('fallback_used', 0),

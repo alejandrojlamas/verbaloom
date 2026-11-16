@@ -23,6 +23,35 @@ def test_os_pronoun_remains_detectable_at_dialogue_and_punctuation_boundaries(te
     assert collect_mexican_spanish_issue_examples(text)["os_pronoun"] == ["os"]
 
 
+@pytest.mark.parametrize("text", [
+    "Los reductos n.os 2, 3 y 4.", "Consulte los expedientes N. os 12 y 13.",
+    "La hostia de pan que el sacerdote levanta.",
+    "La campanilla se toca al elevar la hostia.",
+    "Distribuyó las hostias consagradas.",
+    "Los hombres de Mola llegaron.", "El general Mola habló.",
+    "Se trajo comida de Ostia y de las poblaciones vecinas.",
+    "Visitaron la ciudad de Ostia.",
+])
+def test_locale_homographs_require_explicit_nonregional_context(text):
+    assert not count_mexican_spanish_issues(text)
+    assert not collect_mexican_spanish_issue_examples(text)
+
+
+@pytest.mark.parametrize("text,code", [
+    ("¡Hostia!", "hostia_interjection"),
+    ("El sacerdote gritó: ¡Hostia!", "hostia_interjection"),
+    ("Eres la hostia.", "hostia_interjection"),
+    ("Hostia, qué sorpresa.", "hostia_interjection"),
+    ("Esto mola.", "mola"), ("Mola mucho.", "mola"),
+    ("Me Mola ese lugar.", "mola"),
+    ("Os digo la verdad.", "os_pronoun"),
+    ("En la nota n. os digo la verdad.", "os_pronoun"),
+])
+def test_regional_forms_remain_detected_despite_capitals_or_nearby_context(text, code):
+    assert count_mexican_spanish_issues(text)[code] == 1
+    assert code in collect_mexican_spanish_issue_examples(text)
+
+
 def test_detects_peninsular_forms_for_mexican_spanish_guard():
     text = "Chitón, vosotras no os habéis rendido; desde vuestros confines, precipitaos."
 

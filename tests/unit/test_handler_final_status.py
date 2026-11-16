@@ -13,6 +13,7 @@ from src.api.handlers import (
     _build_worker_exception_recovery_plan,
     _canonicalize_published_epub_stats,
     _claim_translation_worker,
+    _completed_job_stats,
     _failed_chunk_recovery_exhausted_stats,
     _final_source_sample_diagnostics,
     _finalization_recovery_exhausted_stats,
@@ -72,6 +73,41 @@ def test_publishable_epub_branch_does_not_use_an_uninitialized_stats_fallback():
     source = inspect.getsource(perform_actual_translation)
 
     assert "get_translation_field(translation_id, 'stats') or stats" not in source
+
+
+def test_published_epub_uses_restored_native_plan_instead_of_stale_attempt_totals():
+    stats = {
+        "epub_planned_chunks": 510,
+        "total_chunks": 510,
+        "completed_chunks": 510,
+        "processed_chunks": 481,
+        "epub_accumulated_stats": {"processed_chunks": 481, "retry_attempts": 7},
+        "total_tokens": 12345,
+        "openrouter_cost": 1.25,
+    }
+    result = _canonicalize_published_epub_stats(stats, _PublicationReport(True))
+    assert result["total_chunks"] == result["completed_chunks"] == 510
+    assert result["units_total"] == result["units_done"] == 510
+    assert result["epub_accumulated_stats"] == stats["epub_accumulated_stats"]
+    assert result["total_tokens"] == 12345
+    assert result["openrouter_cost"] == 1.25
+    assert _canonicalize_published_epub_stats(stats, _PublicationReport(False)) == stats
+
+
+def test_completed_job_closes_stale_live_activity_without_changing_work_metrics():
+    stats = {
+        "total_chunks": 510, "completed_chunks": 510,
+        "live_status": "Avance guardado; continuando", "live_status_kind": "active",
+        "stage_progress": {"stage": "audit"}, "eta_seconds": None,
+        "elapsed_time": 120.0, "openrouter_cost": 1.25,
+    }
+    result = _completed_job_stats(stats)
+    assert result["live_status_kind"] == "completed"
+    assert result["live_activity_event"] == "summary_completed"
+    assert result["stage_progress"] is None
+    assert result["eta_seconds"] == 0.0
+    for key in ("total_chunks", "completed_chunks", "elapsed_time", "openrouter_cost"):
+        assert result[key] == stats[key]
 
 
 def test_failed_publication_does_not_rewrite_epub_stats():

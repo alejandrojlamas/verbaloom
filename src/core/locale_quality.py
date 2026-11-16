@@ -305,6 +305,39 @@ def _mexican_issue_match_is_exempt(
     before = text[max(0, match.start() - 80):match.start()]
     after = text[match.end():match.end() + 80]
     value = match.group(0).casefold()
+    if code == "os_pronoun":
+        # The plural abbreviation n.os introduces numbers, not a pronoun.
+        return bool(
+            re.search(r"(?<!\w)n\.\s*$", before, re.IGNORECASE)
+            and re.match(r"\s+\d", after)
+        )
+    if code in {"mola", "hostia_interjection"} and match.group(0).istitle():
+        # A homograph is a proper name only with explicit nominal/geographic
+        # syntax. Capitalization by itself (including sentence starts) is not
+        # sufficient evidence and must not waive genuine regional language.
+        if re.search(
+            r"\b(?:general|coronel|capitán|almirante|señor|señora)\s+$|"
+            r"\b(?:hombres|tropas|soldados|seguidores|partidarios)\s+de\s+$|"
+            r"\b(?:ciudad|puerto|población|localidad|villa|isla)\s+de\s+$",
+            before, re.IGNORECASE,
+        ):
+            return True
+        if re.search(r"\bde\s+$", before, re.IGNORECASE) and re.match(
+            r"\s+y\s+de\s+las\s+(?:poblaciones|ciudades|localidades)\s+vecinas\b",
+            after, re.IGNORECASE,
+        ):
+            return True
+    if code == "hostia_interjection" and value in {"hostia", "hostias"}:
+        # Sacramental noun uses have immediate grammatical evidence. Merely
+        # mentioning a priest nearby does not excuse an interjection.
+        return bool(
+            re.match(r"\s+(?:de\s+pan\b|consagradas?\b|eucarísticas?\b)", after, re.IGNORECASE)
+            or re.search(
+                r"\b(?:elevar|eleva|elevó|elevaba|elevando|consagrar|consagra|consagró)"
+                r"\s+(?:la|las|una|unas)\s+$|\belevación\s+de\s+(?:la|las)\s+$",
+                before, re.IGNORECASE,
+            )
+        )
     if code == "hala_vale" and value == "vale":
         if re.search(r"\bmás(?:\s+(?:te|le|les|nos))?\s+$", before, re.IGNORECASE):
             return True

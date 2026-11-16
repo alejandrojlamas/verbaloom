@@ -112,3 +112,20 @@ The live recovery preserves the original source and completed work. Localized
 source-reviewed edits use the existing atomic EPUB text-unit repair utility;
 they do not bypass publication or whole-book QA. Resume must rebuild the normal
 artifact and pass all gates before the recoverable job becomes completed.
+
+## Completion metadata and independent file diagnostics
+
+A finalization-only resume can restore every XHTML file while historical
+`processed_chunks` still describes an older pass. The native EPUB producer now
+emits `epub_planned_chunks` explicitly, and successful publication uses that
+source-plan total instead of replacing it with stale attempt metrics. Timing
+updates do not synthesize new progress activity; published jobs receive a
+terminal activity state. Historical attempts, token accounting and costs remain
+unchanged.
+
+The independent file-quality endpoint also uses the regional-language detector.
+Its existing contextual exemptions now distinguish a numeric abbreviation,
+sacramental noun uses, and capitalized homographs with explicit nominal or
+geographic evidence. Capitalization or a nearby religious word alone is not an
+exemption. Genuine interjections and regional pronouns remain flagged; no list
+of names from the recovered book is embedded in the application.

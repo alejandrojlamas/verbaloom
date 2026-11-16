@@ -3,6 +3,26 @@ import zipfile
 from src.core.output_quality import analyze_output_file
 
 
+def test_output_diagnostic_preserves_nominal_and_religious_homographs(tmp_path):
+    output = tmp_path / "history.txt"
+    text = (
+        "Se trajo comida de Ostia y de las poblaciones vecinas. "
+        "Los hombres de Mola vigilaron los reductos n.os 2, 3 y 4. "
+        "La hostia de pan se muestra al elevar la hostia."
+    )
+    output.write_text(text, encoding="utf-8")
+    report = analyze_output_file(output)
+    assert report["status"] == "pass"
+    assert report["mexican_spanish"]["total"] == 0
+    assert output.read_text(encoding="utf-8") == text
+    output.write_text(text + " ¡Hostia! Esto mola, os digo.", encoding="utf-8")
+    report = analyze_output_file(output)
+    assert report["status"] == "fail"
+    assert report["mexican_spanish"]["counts"] == {
+        "hostia_interjection": 1, "mola": 1, "os_pronoun": 1,
+    }
+
+
 def test_output_diagnostic_preserves_stretched_word_without_flagging_a_pronoun(tmp_path):
     output = tmp_path / "dialogue.txt"
     text = "—¡Oh, Dio-os! —gritó, alargando la palabra."
