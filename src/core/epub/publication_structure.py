@@ -537,8 +537,10 @@ def _write_cover_page(
     language_code: str,
     epub3: bool,
 ) -> None:
+    from .resource_links import relative_resource_url
+
     cover_path = _resolved_path(opf_dir, unquote(urlsplit(cover_href).path))
-    relative_cover = Path(os.path.relpath(cover_path, path.parent)).as_posix()
+    relative_cover = relative_resource_url(cover_path, path)
     epub_namespace = f' xmlns:epub="{EPUB_NS}"' if epub3 else ""
     cover_semantics = ' epub:type="cover"' if epub3 else ""
     payload = f'''<?xml version="1.0" encoding="utf-8"?>
@@ -1187,7 +1189,7 @@ def finish_epub_publication(
     """Guarantee a cover, chapter semantics, and valid package navigation."""
     report = PublicationStructureReport()
     root = opf_tree.getroot()
-    opf_dir_path = Path(opf_dir)
+    opf_dir_path = Path(opf_dir).resolve()
     package_root_path = Path(package_root or opf_dir_path).resolve()
     language_code = get_language_code(target_language) or "en"
     title = _clean_text(title) or _metadata_value(root, "title") or "Libro traducido"

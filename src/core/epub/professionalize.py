@@ -15,6 +15,8 @@ from typing import Dict, Optional
 
 from lxml import etree
 
+from .resource_links import relative_resource_url
+
 
 OPF_NS = "http://www.idpf.org/2007/opf"
 XHTML_NS = "http://www.w3.org/1999/xhtml"
@@ -815,7 +817,7 @@ def _ensure_stylesheet(
         head = next(iter(root.xpath("//*[local-name()='head']")), None)
         if head is None:
             continue
-        css_href = Path(os.path.relpath(css_path, Path(doc_path).parent)).as_posix()
+        css_href = relative_resource_url(css_path, Path(doc_path))
         if head.xpath("./*[local-name()='link' and @href=$href]", href=css_href):
             continue
         link = etree.SubElement(head, _qname(XHTML_NS, "link"))

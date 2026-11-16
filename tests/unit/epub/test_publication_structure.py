@@ -8,6 +8,7 @@ import zipfile
 
 from lxml import etree
 from PIL import Image
+import pytest
 
 from src.core.epub.publication_structure import finish_epub_publication, normalize_package_ids
 
@@ -487,7 +488,14 @@ def test_finisher_preserves_recovered_existing_epub_type(tmp_path: Path):
     assert section.get("epub:type") == "titlepage"
 
 
-def test_native_epub_finisher_produces_epubcheck_valid_epub3(tmp_path: Path):
+@pytest.mark.parametrize("symlinked", [False, True])
+def test_native_epub_finisher_produces_epubcheck_valid_epub3(tmp_path: Path, symlinked):
+    if symlinked:
+        actual = tmp_path / "actual"
+        actual.mkdir()
+        alias = tmp_path / "alias"
+        alias.symlink_to(actual, target_is_directory=True)
+        tmp_path = alias
     epubcheck = shutil.which("epubcheck") or "/opt/homebrew/bin/epubcheck"
     if not Path(epubcheck).exists():
         return
