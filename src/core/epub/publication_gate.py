@@ -17,7 +17,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Iterable, Optional
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
+from .resource_links import resource_uri_path
 import zipfile
 
 from lxml import etree
@@ -278,14 +279,16 @@ def _read_toc_entries(
 def _resolve_toc_href(base_dir: str, href: str) -> str:
     parsed = urlsplit(href)
     path = posixpath.normpath(posixpath.join(base_dir, unquote(parsed.path))) if parsed.path else ""
-    return f"{path}#{unquote(parsed.fragment)}" if parsed.fragment else path
+    target = quote(path, safe="/")
+    return f"{target}#{quote(unquote(parsed.fragment), safe='')}" if parsed.fragment else target
 
 
 def _broken_toc_targets(snapshot: EpubSnapshot) -> list[str]:
     broken: list[str] = []
     names = set(snapshot.entry_names)
     for _label, target in snapshot.toc_entries:
-        path, _, fragment = target.partition("#")
+        path = resource_uri_path(target)
+        fragment = unquote(urlsplit(target).fragment)
         if not path or path not in names:
             broken.append(target)
         elif fragment and fragment not in snapshot.ids.get(path, set()):
@@ -385,7 +388,7 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
         manifest_nodes = package.xpath("//*[local-name()='manifest']/*[local-name()='item']")
         manifest = {item.get("id"): item.get("href") for item in manifest_nodes}
         manifest_resources = {
-            posixpath.normpath(posixpath.join(opf_dir, str(item.get("href") or ""))): {
+            posixpath.normpath(posixpath.join(opf_dir, resource_uri_path(str(item.get("href") or "")))): {
                 "id": str(item.get("id") or ""),
                 "media_type": str(item.get("media-type") or ""),
                 "properties": str(item.get("properties") or ""),
@@ -394,7 +397,7 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
             if item.get("href")
         }
         spine = [
-            posixpath.normpath(posixpath.join(opf_dir, manifest[item.get("idref")]))
+            posixpath.normpath(posixpath.join(opf_dir, resource_uri_path(manifest[item.get("idref")])))
             for item in package.xpath("//*[local-name()='spine']/*[local-name()='itemref']")
             if manifest.get(item.get("idref"))
         ]

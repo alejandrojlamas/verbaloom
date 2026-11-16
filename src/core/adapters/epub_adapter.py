@@ -21,6 +21,7 @@ from lxml import etree
 from .format_adapter import FormatAdapter
 from .translation_unit import TranslationUnit
 from src.config import NAMESPACES
+from src.core.epub.resource_links import resource_uri_path
 
 
 class EpubAdapter(FormatAdapter):
@@ -139,7 +140,7 @@ class EpubAdapter(FormatAdapter):
         units = []
 
         for file_idx, content_href in enumerate(self.content_files):
-            file_path = self.opf_dir / content_href
+            file_path = self.opf_dir / resource_uri_path(content_href)
 
             if not file_path.exists():
                 continue
@@ -192,7 +193,7 @@ class EpubAdapter(FormatAdapter):
         # Extract file index from unit_id
         file_idx = int(unit_id.split('_')[1])
         file_href = self.content_files[file_idx]
-        file_path = self.opf_dir / file_href
+        file_path = self.opf_dir / resource_uri_path(file_href)
 
         if not file_path.exists():
             return False

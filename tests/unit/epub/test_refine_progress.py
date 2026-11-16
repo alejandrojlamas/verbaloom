@@ -1,11 +1,12 @@
 import zipfile
+from urllib.parse import unquote
 
 import pytest
 
 from src.core.refine import epub_refiner
 
 
-def _write_test_epub(path):
+def _write_test_epub(path, encoded=False):
     container_xml = """<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
@@ -29,6 +30,8 @@ def _write_test_epub(path):
   </spine>
 </package>
 """
+    if encoded:
+        opf_xml = opf_xml.replace("chap1.xhtml", "Chapter%201.xhtml").replace("chap2.xhtml", "Chapter%202.xhtml")
     xhtml = """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head><title>Chapter</title></head>
@@ -39,19 +42,22 @@ def _write_test_epub(path):
         zf.writestr("mimetype", "application/epub+zip")
         zf.writestr("META-INF/container.xml", container_xml)
         zf.writestr("OEBPS/content.opf", opf_xml)
-        zf.writestr("OEBPS/chap1.xhtml", xhtml)
-        zf.writestr("OEBPS/chap2.xhtml", xhtml)
+        zf.writestr("OEBPS/Chapter 1.xhtml" if encoded else "OEBPS/chap1.xhtml", xhtml)
+        zf.writestr("OEBPS/Chapter 2.xhtml" if encoded else "OEBPS/chap2.xhtml", xhtml)
 
 
 @pytest.mark.asyncio
-async def test_epub_refine_reports_real_chunks_in_spine_order(tmp_path, monkeypatch):
+@pytest.mark.parametrize("encoded", [False, True])
+async def test_epub_refine_reports_real_chunks_in_spine_order(tmp_path, monkeypatch, encoded):
     input_epub = tmp_path / "input.epub"
     output_epub = tmp_path / "output.epub"
-    _write_test_epub(input_epub)
+    _write_test_epub(input_epub, encoded)
 
     seen_hrefs = []
     progress = []
-    chunks_by_href = {"chap2.xhtml": 2, "chap1.xhtml": 3}
+    hrefs = ["Chapter%202.xhtml", "Chapter%201.xhtml"] if encoded else ["chap2.xhtml", "chap1.xhtml"]
+    chunks_by_href = dict(zip(hrefs, [2, 3]))
+    chunks_by_path = {unquote(href): count for href, count in chunks_by_href.items()}
 
     monkeypatch.setattr(
         epub_refiner,
@@ -60,7 +66,7 @@ async def test_epub_refine_reports_real_chunks_in_spine_order(tmp_path, monkeypa
     )
 
     def fake_count(file_path, _max_tokens_per_chunk):
-        return chunks_by_href[file_path.rsplit("/", 1)[-1]]
+        return chunks_by_path[file_path.rsplit("/", 1)[-1]]
 
     monkeypatch.setattr(epub_refiner, "_count_refine_chunks_for_xhtml", fake_count)
 
@@ -87,7 +93,7 @@ async def test_epub_refine_reports_real_chunks_in_spine_order(tmp_path, monkeypa
 
     assert ok is True
     assert output_epub.exists()
-    assert seen_hrefs == ["chap2.xhtml", "chap1.xhtml"]
+    assert seen_hrefs == hrefs
     assert progress[0]["total_chunks"] == 5
     assert progress[-1]["total_chunks"] == 5
     assert progress[-1]["completed_chunks"] == 5

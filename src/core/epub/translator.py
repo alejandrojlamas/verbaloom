@@ -17,7 +17,7 @@ import tempfile
 import aiofiles
 from typing import Dict, Any, Optional, Callable, Tuple, List
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 from lxml import etree
 
 from src.config import (
@@ -31,6 +31,7 @@ from ..post_processor import clean_residual_tag_placeholders
 from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CONTEXT_STEP, MAX_CONTEXT_SIZE
 from .rtl_support import apply_rtl_to_epub_directory, is_rtl_language
 from .lang_support import apply_target_language_to_xhtml_directory
+from .resource_links import resource_uri_path
 from src.core.fidelity_supervisor import (
     ensure_fidelity_report,
     write_fidelity_report_from_options,
@@ -530,6 +531,17 @@ def _parse_epub_manifest(temp_dir: str, log_callback: Optional[Callable] = None)
     # Get content files from spine
     content_files = _get_content_files_from_spine(spine, manifest)
 
+    # Validate the entire reading order before any paid translation. A missing
+    # chapter is an input error, not an empty chapter or a provider failure.
+    package_root = Path(temp_dir).resolve()
+    for href in content_files:
+        parsed = urlsplit(href)
+        path = (Path(opf_dir) / resource_uri_path(href)).resolve()
+        if parsed.scheme or parsed.netloc or not path.is_relative_to(package_root):
+            raise ValueError(f"EPUB spine resource must stay inside the archive: {href}")
+        if not path.is_file():
+            raise FileNotFoundError(f"EPUB spine resource is missing: {href}")
+
     if log_callback:
         log_callback("epub_files_found", f"Found {len(content_files)} content files to translate.")
 
@@ -885,10 +897,9 @@ async def _precount_chunks(
         log_callback("epub_precount_start", f"📊 Analyzing {len(content_files)} files for progress tracking...")
 
     for content_href in content_files:
-        file_path = os.path.normpath(os.path.join(opf_dir, content_href))
+        file_path = os.path.normpath(os.path.join(opf_dir, resource_uri_path(content_href)))
         if not os.path.exists(file_path):
-            chunks_per_file.append(0)
-            continue
+            raise FileNotFoundError(f"EPUB spine resource is missing: {content_href}")
 
         try:
             # Parse file
@@ -924,8 +935,8 @@ async def _precount_chunks(
             chunks_per_file.append(chunk_count)
             total_chunks += chunk_count
 
-        except Exception:
-            chunks_per_file.append(0)
+        except Exception as exc:
+            raise ValueError(f"Cannot plan EPUB content: {content_href}: {exc}") from exc
 
     if log_callback:
         log_callback("epub_precount_complete",
@@ -1050,7 +1061,7 @@ async def _process_all_content_files(
     from .translation_metrics import TranslationMetrics
 
     def _content_path(index: int) -> str:
-        return os.path.normpath(os.path.join(opf_dir, content_files[index]))
+        return os.path.normpath(os.path.join(opf_dir, resource_uri_path(content_files[index])))
 
     # Files completed after a deferred failure sit beyond the contiguous
     # prefix. They are skipped only when their translated document was really
@@ -1081,9 +1092,8 @@ async def _process_all_content_files(
 
     # The progress denominator is the translation chunk count. In-translation
     # refinement (CLI --refine) is a per-file polish pass reported via logs; it
-    # no longer doubles the total. On resume, translated checkpoint files can
-    # tokenize differently from their source versions, so preserve the original
-    # denominator and completed baseline stored before the pause.
+    # no longer doubles the total. The pristine source plan is authoritative on
+    # resume too: an older checkpoint may have undercounted unread resources.
     effective_total_chunks = total_chunks
     resume_job = None
     if checkpoint_manager and translation_id and resuming:
@@ -1091,7 +1101,9 @@ async def _process_all_content_files(
             resume_job = checkpoint_manager.get_job(translation_id)
         except Exception:
             resume_job = None
-        if resume_job:
+        if resume_job and precount_result is None:
+            # Legacy direct callers can count already-restored target text.
+            # The normal resume flow supplies a pristine-source precount.
             persisted_progress = resume_job.get('progress') or {}
             persisted_total = int(persisted_progress.get('total_chunks') or 0)
             if persisted_total > 0:
@@ -1211,7 +1223,7 @@ async def _process_all_content_files(
             count for index, count in pending_file_progress.items() if index != file_idx
         )
 
-        file_path = os.path.normpath(os.path.join(opf_dir, content_href))
+        file_path = _content_path(file_idx)
         chunks_in_this_file = chunks_per_file[file_idx] if file_idx < len(chunks_per_file) else 0
 
         if log_callback:

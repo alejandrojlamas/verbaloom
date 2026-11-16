@@ -21,6 +21,28 @@ CONTAINER = b'''<?xml version="1.0"?>
 </container>'''
 
 
+def test_missing_title_uses_original_filename_without_overriding_real_metadata(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "output.epub"
+    _write_epub3(source)
+    assert infer_epub_title_page(source, fallback_title="Original filename")[0] == "Old Book"
+    with zipfile.ZipFile(source) as original, zipfile.ZipFile(output, "w") as candidate:
+        for info in original.infolist():
+            payload = original.read(info)
+            if info.filename.endswith(".opf"):
+                root = etree.fromstring(payload)
+                for title in root.xpath("//*[local-name()='metadata']/*[local-name()='title']"):
+                    title.getparent().remove(title)
+                payload = etree.tostring(root)
+            candidate.writestr(info, payload)
+    title, subtitle = infer_epub_title_page(output, fallback_title="Original filename")
+    assert (title, subtitle) == ("Original filename", "")
+    localize_epub_metadata(output, output, target_language="Spanish", title=title)
+    with zipfile.ZipFile(output) as candidate:
+        root = etree.fromstring(candidate.read("OEBPS/content.opf"))
+    assert root.xpath("//*[local-name()='metadata']/*[local-name()='title']/text()") == [title]
+
+
 def test_localization_preserves_translator_and_role_reference(tmp_path, monkeypatch):
     monkeypatch.setattr("src.core.epub.translator.ATTRIBUTION_ENABLED", True)
     source = tmp_path / "source.epub"

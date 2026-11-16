@@ -23,6 +23,7 @@ from src.core.epub.xhtml_translator import (
     _replace_body, _escape_stray_angle_brackets, _refine_epub_chunks,
 )
 from src.core.epub.container import TranslationContainer
+from src.core.epub.resource_links import resource_uri_path
 from src.core.context_optimizer import INITIAL_CONTEXT_SIZE
 from src.core.editorial_quality import EditorialQualityReport, editorial_report_path
 from src.core.fidelity_supervisor import ensure_fidelity_report, write_fidelity_report_from_options
@@ -286,7 +287,7 @@ async def refine_epub_file(
             total_files = len(content_files)
             chunks_per_file: List[int] = []
             for href in content_files:
-                file_path = os.path.join(opf_dir, href)
+                file_path = os.path.join(opf_dir, resource_uri_path(href))
                 chunks_per_file.append(
                     _count_refine_chunks_for_xhtml(file_path, max_tokens_per_chunk)
                     if os.path.exists(file_path)
@@ -375,7 +376,7 @@ async def refine_epub_file(
                     interrupted = True
                     break
 
-                file_path = os.path.join(opf_dir, href)
+                file_path = os.path.join(opf_dir, resource_uri_path(href))
                 file_chunk_count = chunks_per_file[idx] if idx < len(chunks_per_file) else 0
                 file_start_index = file_chunk_offset
                 file_end_index = file_start_index + file_chunk_count

@@ -110,7 +110,8 @@ def test_epub3_nav_aliases_coalesce_without_losing_children(tmp_path):
 
 @pytest.mark.parametrize(("base", "href", "expected"), [
     ("Text/nav.xhtml", "#section", "Text/nav.xhtml#section"),
-    ("Text/nav.xhtml", "../chapter%201.xhtml#part%202", "chapter 1.xhtml#part 2"),
+    ("Text/nav.xhtml", "../chapter%201.xhtml#part%202", "chapter%201.xhtml#part%202"),
+    ("Text/nav.xhtml", "../chapter%23one.xhtml#part%2520", "chapter%23one.xhtml#part%2520"),
     ("Text/nav.xhtml", "https://example.com", ""),
     ("Text/nav.xhtml", "//example.com/page", ""),
 ])

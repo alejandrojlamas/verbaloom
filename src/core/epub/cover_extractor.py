@@ -13,6 +13,7 @@ from PIL import Image
 import io
 
 from src.config import NAMESPACES
+from .resource_links import resource_uri_path
 
 
 class EPUBCoverExtractor:
@@ -149,7 +150,7 @@ class EPUBCoverExtractor:
                 return None
 
             # Construct full path
-            cover_path = str(Path(opf_dir) / href)
+            cover_path = str(Path(opf_dir) / resource_uri_path(href))
 
             # Normalize path separators for Windows
             cover_path = cover_path.replace('\\', '/')
@@ -211,7 +212,7 @@ class EPUBCoverExtractor:
                     continue
 
                 # Construct full path
-                image_path = str(Path(opf_dir) / href)
+                image_path = str(Path(opf_dir) / resource_uri_path(href))
 
                 # Normalize path separators
                 image_path = image_path.replace('\\', '/')

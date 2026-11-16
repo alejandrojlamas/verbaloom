@@ -2896,7 +2896,10 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 metadata_title = str(metadata_options.get('target_metadata_title') or '').strip()
                 metadata_subtitle = str(metadata_options.get('target_metadata_subtitle') or '').strip()
                 if not metadata_title:
-                    metadata_title, inferred_subtitle = infer_epub_title_page(output_filepath_on_server)
+                    metadata_title, inferred_subtitle = infer_epub_title_page(
+                        output_filepath_on_server,
+                        fallback_title=Path(str(config.get('original_filename') or '')).stem,
+                    )
                     metadata_subtitle = metadata_subtitle or inferred_subtitle
                 if metadata_title:
                     metadata_report = await engine.run_phase(

@@ -12,12 +12,13 @@ from pathlib import Path
 import posixpath
 import re
 from typing import Dict, Optional
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from lxml import etree
 from PIL import Image, ImageDraw, ImageFont
 
 from .lang_support import get_language_code
+from .resource_links import resource_uri_path
 
 
 OPF_NS = "http://www.idpf.org/2007/opf"
@@ -235,12 +236,12 @@ def _manifest_item_by_id(root: etree._Element, item_id: str) -> Optional[etree._
 
 
 def _manifest_item_by_href(root: etree._Element, href: str) -> Optional[etree._Element]:
-    normalized = posixpath.normpath(href)
+    normalized = posixpath.normpath(resource_uri_path(href))
     return next(
         (
             node
             for node in _manifest_items(root)
-            if posixpath.normpath(str(node.get("href") or "")) == normalized
+            if posixpath.normpath(resource_uri_path(str(node.get("href") or ""))) == normalized
         ),
         None,
     )
@@ -336,7 +337,7 @@ def _cover_page_href(root: etree._Element) -> str:
         or ""
     )
     if guide_href:
-        return unquote(urlsplit(guide_href).path) or guide_href
+        return urlsplit(guide_href).path or guide_href
     for item in _manifest_items(root):
         item_id = str(item.get("id") or "").casefold()
         href = str(item.get("href") or "")
@@ -677,11 +678,13 @@ def _resolve_navigation_target(document_href: str, href: str) -> str:
     parsed = urlsplit(href)
     if parsed.scheme or parsed.netloc or not href:
         return ""
-    if not parsed.path:
-        return f"{document_href}#{unquote(parsed.fragment)}" if parsed.fragment else ""
-    base_dir = posixpath.dirname(document_href) or "."
-    path = posixpath.normpath(posixpath.join(base_dir, unquote(parsed.path)))
-    return f"{path}#{unquote(parsed.fragment)}" if parsed.fragment else path
+    document_path = resource_uri_path(document_href)
+    if not parsed.path and not parsed.fragment:
+        return ""
+    base_dir = posixpath.dirname(document_path) or "."
+    path = posixpath.normpath(posixpath.join(base_dir, unquote(parsed.path))) if parsed.path else document_path
+    target = quote(path, safe="/")
+    return f"{target}#{quote(unquote(parsed.fragment), safe='')}" if parsed.fragment else target
 
 
 def _existing_navigation_entries(
@@ -851,13 +854,13 @@ def _navigation_entries(
     marked_headings = 0
     section_label = "Sección" if get_language_code(target_language) == "es" else "Section"
     for ordinal, href in enumerate(content_files, start=1):
-        normalized_href = posixpath.normpath(str(href or ""))
+        normalized_href = quote(posixpath.normpath(resource_uri_path(href)), safe="/")
         if not normalized_href:
             continue
-        root = docs.get(_path_identity(opf_dir / normalized_href))
+        root = docs.get(_path_identity(opf_dir / resource_uri_path(normalized_href)))
         if root is None:
             continue
-        if normalized_href == posixpath.normpath(cover_page_href):
+        if resource_uri_path(normalized_href) == posixpath.normpath(resource_uri_path(cover_page_href)):
             entries.extend(existing_entries.get(normalized_href, []))
             continue
         represented_ids: set[str] = set()
@@ -871,6 +874,7 @@ def _navigation_entries(
         body = next(iter(root.xpath("//*[local-name()='body']")), None)
         for existing in document_entries:
             _target_path, _separator, fragment = existing.target.partition("#")
+            fragment = unquote(fragment)
             target_node = targets_by_id.get(fragment) if fragment else body
             heading = _opening_heading(target_node, heading_set)
             label = existing.label
@@ -893,7 +897,7 @@ def _navigation_entries(
                 _mark_chapter_container(heading, epub3=epub3)
                 marked_headings += 1
                 if not fragment and len(document_entries) == 1:
-                    target = f"{normalized_href}#{heading_id}"
+                    target = f"{normalized_href}#{quote(heading_id, safe='')}"
             elif target_node is not None:
                 represented_ids.add(str(target_node.get("id") or fragment))
             # Never retarget an unresolved source anchor to the body: leave it
@@ -914,15 +918,15 @@ def _navigation_entries(
             entries.append(
                 _NavigationEntry(
                     label=_element_text(heading),
-                    target=f"{normalized_href}#{target_id}",
+                    target=f"{normalized_href}#{quote(target_id, safe='')}",
                 )
             )
 
     if not entries:
         for href in content_files:
-            normalized_href = posixpath.normpath(str(href or ""))
-            root = docs.get(_path_identity(opf_dir / normalized_href))
-            if root is None or normalized_href == posixpath.normpath(cover_page_href):
+            normalized_href = quote(posixpath.normpath(resource_uri_path(href)), safe="/")
+            root = docs.get(_path_identity(opf_dir / resource_uri_path(normalized_href)))
+            if root is None or resource_uri_path(normalized_href) == posixpath.normpath(resource_uri_path(cover_page_href)):
                 continue
             body = next(iter(root.xpath("//*[local-name()='body']")), None)
             if body is None:
@@ -932,17 +936,17 @@ def _navigation_entries(
             titles = root.xpath("//*[local-name()='head']/*[local-name()='title'][1]")
             label = _element_text(titles[0]) if titles else f"{section_label} 1"
             entries.append(
-                _NavigationEntry(label=label, target=f"{normalized_href}#{target_id}")
+                _NavigationEntry(label=label, target=f"{normalized_href}#{quote(target_id, safe='')}")
             )
             break
     return entries, marked_headings
 
 
 def _relative_target(document_href: str, target: str) -> str:
-    path, separator, fragment = target.partition("#")
-    base_dir = posixpath.dirname(document_href) or "."
-    relative = posixpath.relpath(path, base_dir)
-    return f"{relative}{separator}{fragment}" if separator else relative
+    parsed = urlsplit(target)
+    base_dir = posixpath.dirname(resource_uri_path(document_href)) or "."
+    relative = quote(posixpath.relpath(resource_uri_path(target), base_dir), safe="/")
+    return f"{relative}#{quote(unquote(parsed.fragment), safe='')}" if parsed.fragment else relative
 
 
 def _new_xhtml_document(language_code: str, title: str) -> etree._Element:

@@ -10,6 +10,7 @@ import stat
 import tempfile
 from typing import Mapping
 from urllib.parse import unquote, urlsplit
+from .resource_links import resource_uri_path
 import zipfile
 
 from lxml import etree
@@ -145,7 +146,9 @@ def _metadata_title_parts(package: etree._Element) -> tuple[str, str]:
     return main, subtitle
 
 
-def infer_epub_title_page(output_epub: str | Path) -> tuple[str, str]:
+def infer_epub_title_page(
+    output_epub: str | Path, *, fallback_title: str = "",
+) -> tuple[str, str]:
     """Infer visible title/subtitle from a conventional title-page document."""
     with zipfile.ZipFile(output_epub) as archive:
         opf_path = _container_opf(archive)
@@ -158,7 +161,7 @@ def infer_epub_title_page(output_epub: str | Path) -> tuple[str, str]:
             "//*[local-name()='manifest']/*[local-name()='item']"
         ):
             href = str(item.get("href") or "")
-            resolved = posixpath.normpath(posixpath.join(opf_dir, href))
+            resolved = posixpath.normpath(posixpath.join(opf_dir, resource_uri_path(href)))
             if Path(resolved).suffix.lower() not in _TEXT_SUFFIXES:
                 continue
             item_id = str(item.get("id") or "").casefold()
@@ -211,7 +214,8 @@ def infer_epub_title_page(output_epub: str | Path) -> tuple[str, str]:
         # Image-only title pages are common. In that case the OPF is a safer
         # source of identity than a generic promotional file whose name happens
         # to contain "front".
-        return _metadata_title_parts(package)
+        title, subtitle = _metadata_title_parts(package)
+        return title or str(fallback_title or "").strip(), subtitle
 
 
 def _localized_label(value: str, labels: Mapping[str, str]) -> str:
@@ -226,7 +230,7 @@ def _manifest_info(package: etree._Element, opf_path: str) -> tuple[dict[str, st
     ncx_files: list[str] = []
     for node in package.xpath("//*[local-name()='manifest']/*[local-name()='item']"):
         href = str(node.get("href") or "")
-        resolved = posixpath.normpath(posixpath.join(opf_dir, href))
+        resolved = posixpath.normpath(posixpath.join(opf_dir, resource_uri_path(href)))
         href_by_id[str(node.get("id") or "")] = resolved
         if "nav" in str(node.get("properties") or "").split():
             nav_files.append(resolved)

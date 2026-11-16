@@ -15,7 +15,7 @@ from typing import Dict, Optional
 
 from lxml import etree
 
-from .resource_links import relative_resource_url
+from .resource_links import relative_resource_url, resource_uri_path
 
 
 OPF_NS = "http://www.idpf.org/2007/opf"
@@ -582,7 +582,7 @@ def _manifest_items(opf_root: etree._Element) -> list[etree._Element]:
 
 
 def _resolved_manifest_path(opf_dir: Path, href: str) -> Path:
-    return (opf_dir / href).resolve()
+    return (opf_dir / resource_uri_path(href)).resolve()
 
 
 def _path_identity(path: str | Path) -> str:
@@ -653,7 +653,7 @@ def _find_probable_cover(
 ) -> tuple[Optional[etree._Element], Optional[etree._Element], str]:
     if not content_files:
         return None, None, ""
-    first_doc_path = _path_identity(opf_dir / content_files[0])
+    first_doc_path = _path_identity(_resolved_manifest_path(opf_dir, content_files[0]))
     docs = {
         _path_identity(path): root
         for path, root in parsed_xhtml_docs.items()
@@ -670,12 +670,12 @@ def _find_probable_cover(
         for item in _manifest_items(opf_root)
         if item.get("href")
     }
-    doc_dir = (opf_dir / content_files[0]).parent
+    doc_dir = _resolved_manifest_path(opf_dir, content_files[0]).parent
     visible_chars = 0
     for element in body.iter():
         image_reference = _image_reference(element)
         if image_reference:
-            image_path = (doc_dir / image_reference).resolve()
+            image_path = _resolved_manifest_path(doc_dir, image_reference)
             item = manifest_by_path.get(image_path)
             if item is not None and _image_is_probable_cover(image_path) and visible_chars <= 400:
                 return item, element, content_files[0]
@@ -703,7 +703,7 @@ def _find_cover_usage(
         for path, root in parsed_xhtml_docs.items()
     }
     for content_href in content_files:
-        doc_path = (opf_dir / content_href).resolve()
+        doc_path = _resolved_manifest_path(opf_dir, content_href)
         root = docs.get(_path_identity(doc_path))
         if root is None:
             continue
@@ -711,7 +711,7 @@ def _find_cover_usage(
             image_reference = _image_reference(image)
             if not image_reference:
                 continue
-            image_path = (doc_path.parent / image_reference).resolve()
+            image_path = _resolved_manifest_path(doc_path.parent, image_reference)
             if image_path == cover_path:
                 return image, content_href
     return None, ""

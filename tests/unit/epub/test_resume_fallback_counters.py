@@ -224,7 +224,8 @@ async def test_file_checkpoint_cleans_matching_partial_and_stores_logical_progre
 
 
 @pytest.mark.asyncio
-async def test_resume_keeps_original_chunk_denominator(monkeypatch, tmp_path):
+@pytest.mark.parametrize("persisted_total", [3, 91, 999])
+async def test_resume_keeps_original_chunk_denominator(monkeypatch, tmp_path, persisted_total):
     async def unexpected_precount(*_args, **_kwargs):
         raise AssertionError("resume must use the pristine-source chunk plan")
 
@@ -232,7 +233,7 @@ async def test_resume_keeps_original_chunk_denominator(monkeypatch, tmp_path):
         def get_job(self, _translation_id):
             return {
                 "progress": {
-                    "total_chunks": 91,
+                    "total_chunks": persisted_total,
                     "completed_chunks": 59,
                     "epub_accumulated_stats": {"processed_chunks": 59},
                 }
