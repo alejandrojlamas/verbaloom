@@ -15,6 +15,7 @@ from typing import Dict, Optional
 
 from lxml import etree
 
+from .xml_helpers import has_illustration_or_table_content
 from .resource_links import relative_resource_url, resource_uri_path
 
 
@@ -416,7 +417,7 @@ def ensure_image_alt_attributes(root: etree._Element) -> int:
         if not alt_text:
             figures = image.xpath("ancestor::*[local-name()='figure'][1]")
             if figures:
-                captions = figures[0].xpath(".//*[local-name()='figcaption'][1]")
+                captions = figures[0].xpath("./*[local-name()='figcaption'][1]")
                 if captions:
                     alt_text = re.sub(
                         r"\s+",
@@ -460,7 +461,7 @@ def _mark_running_furniture(body: etree._Element, identities: set[str]) -> int:
             if match:
                 identity = _normalized_identity(match.group(1))
                 break
-        if identity in identities:
+        if identity in identities and not has_illustration_or_table_content(element):
             marked += int(_add_class(element, _FURNITURE_CLASS))
     return marked
 
@@ -504,7 +505,7 @@ def _commercial_signal_score(text: str) -> int:
 
 def _mark_commercial_furniture(body: etree._Element) -> int:
     """Hide source commercial inserts while preserving literary front/back matter."""
-    children = list(body)
+    children = list(body.iterchildren(tag=etree.Element))
     marked = 0
     cover_index = next(
         (
@@ -672,7 +673,7 @@ def _find_probable_cover(
     }
     doc_dir = _resolved_manifest_path(opf_dir, content_files[0]).parent
     visible_chars = 0
-    for element in body.iter():
+    for element in body.iter(etree.Element):
         image_reference = _image_reference(element)
         if image_reference:
             image_path = _resolved_manifest_path(doc_dir, image_reference)

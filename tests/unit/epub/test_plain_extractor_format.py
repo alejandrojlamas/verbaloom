@@ -74,6 +74,33 @@ class TestExtraction:
         texts, _, _, _ = extract_plain_paragraphs(body)
         assert texts[0] == "see note 1"
 
+    def test_bare_caption_stays_together_after_image_and_omits_editorial_markup(self):
+        body = _body(
+            f'<html xmlns="{XHTML}"><body>Before.'
+            '<figure><img src="scene.jpg"/>Atlas <em>of</em><!-- note --> the city.'
+            '<?layout hidden?></figure>After.'
+            '<p>Cred<!-- private -->it<?layout secret?>.</p></body></html>'
+        )
+        original = etree.tostring(body)
+        texts, tags, images, tables = extract_plain_paragraphs(body)
+
+        assert texts == ["Before.", "Atlas *of* the city.", "After.", "Credit."]
+        assert etree.tostring(body) == original
+        replace_body_with_paragraphs(body, texts, tags, images, table_specs=tables)
+        assert [etree.QName(c).localname for c in body] == ["p"] * 5
+        assert body[1].find("img").get("src") == "scene.jpg"
+        assert body[2].find("em").text == "of"
+        assert "".join(body[2].itertext()) == "Atlas of the city."
+
+    def test_caption_can_contain_full_paragraphs_and_inline_prose(self):
+        body = _body(
+            f'<html xmlns="{XHTML}"><body><figure><img src="a.jpg"/>'
+            '<figcaption><strong>First</strong> <em>plate.</em>'
+            '<p>The building.</p><p>The visitor.</p></figcaption></figure></body></html>'
+        )
+        texts, _, _, _ = extract_plain_paragraphs(body)
+        assert [t for t in texts if t] == ["**First** *plate.*", "The building.", "The visitor."]
+
     def test_internal_epub_note_links_stay_plain(self):
         body = _body(
             f'<html xmlns="{XHTML}"><body><p>ver <a href="../Text/notas.xhtml#nt23">[23]</a></p></body></html>'

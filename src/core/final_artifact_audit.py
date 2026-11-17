@@ -25,7 +25,7 @@ from src.core.book_profiles.rendering import (
 from src.core.llm_output_guard import guard_llm_output
 from src.core.technical_identifiers import matches_outside_technical_literals
 from src.utils.text_encoding import UTF8_BOM, clean_text_artifacts, encode_utf8_text_download
-from src.utils.text_encoding import mojibake_score
+from src.utils.text_encoding import epub_xml_encoding, mojibake_score
 from src.utils.proper_names import extract_symbol_bearing_names, restore_symbol_bearing_names
 
 
@@ -723,6 +723,8 @@ def _clean_xhtml_payload(
 
 
 def _remove_artifact_elements(root: etree._Element) -> int:
+    from src.core.epub.xml_helpers import has_illustration_or_table_content
+
     removed = 0
 
     def visit(parent: etree._Element) -> None:
@@ -736,7 +738,7 @@ def _remove_artifact_elements(root: etree._Element) -> int:
             removable = local in {"p", "div", "span", "h1", "h2", "h3", "h4", "h5", "h6", "li"}
             source_artifact = removable and _is_source_artifact_text(text)
             page_after_source = removable and previous_removed_source and _is_numeric_text(text)
-            if source_artifact or page_after_source:
+            if (source_artifact or page_after_source) and not has_illustration_or_table_content(child):
                 _clear_artifact_element(child)
                 removed += 1
                 previous_removed_source = source_artifact
@@ -772,7 +774,13 @@ def _clear_artifact_element(element: etree._Element) -> None:
 
 
 def _clean_xml_metadata(data: bytes) -> tuple[bytes, int]:
-    text = data.decode("utf-8", errors="ignore")
+    # OCF XML may be UTF-16. Retain its byte order and declaration when
+    # changing a title, and preserve untouched resources byte for byte.
+    encoding = epub_xml_encoding(data)
+    try:
+        text = data.decode(encoding)
+    except UnicodeDecodeError:
+        return data, 0
     before = text
 
     def title_repl(match: re.Match[str]) -> str:
@@ -780,7 +788,7 @@ def _clean_xml_metadata(data: bytes) -> tuple[bytes, int]:
 
     text = re.sub(r"(?is)(<dc:title[^>]*>)(.*?)(</dc:title>)", title_repl, text)
     text = re.sub(r"(?is)(<title[^>]*>)(.*?)(</title>)", title_repl, text)
-    return text.encode("utf-8"), int(text != before)
+    return (text.encode(encoding), 1) if text != before else (data, 0)
 
 
 def _clean_inline_text(value: str) -> str:

@@ -5,8 +5,10 @@ This module provides text splitting functionality that tries different strategie
 in order of preference: sentences -> punctuation -> newlines -> force split.
 """
 import re
-from typing import List, Callable
+from itertools import chain
+from typing import List
 
+from src.common.placeholder_format import PlaceholderFormat
 from src.core.chunking.token_chunker import TokenChunker
 
 
@@ -74,80 +76,29 @@ class TextSplitter:
 
         return result_segments
 
-    def _split_with_strategy(
-        self,
-        text: str,
-        split_func: Callable[[str], List[str]],
-        joiner: str = ""
-    ) -> List[str]:
-        """
-        Generic split method that eliminates code duplication.
-
-        Splits text using the provided function and merges parts
-        that fit within token limits.
-
-        Args:
-            text: Text to split
-            split_func: Function that splits text into parts
-            joiner: String to join parts with (e.g., '\n' for newlines)
-
-        Returns:
-            List of segments that fit within max_tokens
-        """
-        parts = split_func(text)
+    def _split_with_strategy(self, text: str, boundary: str) -> List[str]:
+        """Group contiguous source slices, retaining the separator at each cut."""
         segments = []
-        current = ""
-
-        for part in parts:
-            if not part.strip():
-                continue
-
-            test_text = current + joiner + part if current else part
-            if current and self.token_chunker.count_tokens(test_text) > self.max_tokens:
-                if current.strip():
-                    segments.append(current)
-                current = part
-            else:
-                current = test_text
-
-        if current.strip():
-            segments.append(current)
-
-        return segments if segments else [text]
+        start = previous = 0
+        ends = (match.end() for match in re.finditer(boundary, text))
+        for end in chain(ends, [len(text)]):
+            if (start < previous < end
+                    and self.token_chunker.count_tokens(text[start:end]) > self.max_tokens):
+                segments.append(text[start:previous])
+                start = previous
+            previous = end
+        if start < len(text):
+            segments.append(text[start:])
+        return segments or [text]
 
     def _split_on_sentences(self, text: str) -> List[str]:
-        """
-        Split on sentence boundaries (. ! ?) while preserving placeholders.
-
-        Returns:
-            List of sentence segments
-        """
-        # Find sentence boundaries (. ! ? followed by space or placeholder or end)
-        sentence_pattern = r'(?<=[.!?])\s+(?=\S)|(?<=[.!?])(?=\[\[)'
-        parts = re.split(sentence_pattern, text)
-        return self._split_with_strategy(text, lambda t: parts)
+        return self._split_with_strategy(text, r"(?<=[.!?])(?:\s+(?=\S)|(?=\[\[))")
 
     def _split_on_punctuation(self, text: str) -> List[str]:
-        """
-        Split on strong punctuation (; : ,) while preserving placeholders.
-
-        Returns:
-            List of punctuation-split segments
-        """
-        # Split on ; : , but keep the punctuation with the preceding text
-        punct_pattern = r'(?<=[;:,])\s+(?=\S)|(?<=[;:,])(?=\[\[)'
-        parts = re.split(punct_pattern, text)
-        return self._split_with_strategy(text, lambda t: parts)
+        return self._split_with_strategy(text, r"(?<=[;:,])(?:\s+(?=\S)|(?=\[\[))")
 
     def _split_on_newlines(self, text: str) -> List[str]:
-        """
-        Split on newlines while preserving placeholders.
-
-        Returns:
-            List of newline-split segments
-        """
-        parts = text.split('\n')
-        return self._split_with_strategy(text, lambda t: parts, joiner='\n')
+        return self._split_with_strategy(text, r"\n")
 
     def _force_split_at_tokens(self, text: str) -> List[str]:
         """
@@ -159,6 +110,8 @@ class TextSplitter:
         """
         segments = []
         remaining = text
+        placeholders = iter(PlaceholderFormat.from_config().find_all(text))
+        placeholder = next(placeholders, None)
 
         while remaining:
             # If remaining text fits, we're done
@@ -188,8 +141,17 @@ class TextSplitter:
             if split_pos == 0:
                 split_pos = max(1, best_pos)
 
+            # A placeholder split across model requests cannot be renumbered or
+            # restored. Keep it atomic even if the descriptor itself is large.
+            offset = len(text) - len(remaining)
+            boundary = offset + split_pos
+            while placeholder and placeholder[1] <= boundary:
+                placeholder = next(placeholders, None)
+            if placeholder and placeholder[0] < boundary < placeholder[1]:
+                split_pos = (placeholder[0] if placeholder[0] > offset else placeholder[1]) - offset
+
             segments.append(remaining[:split_pos])
-            remaining = remaining[split_pos:].lstrip()
+            remaining = remaining[split_pos:]
 
         return segments
 
@@ -208,15 +170,8 @@ class TextSplitter:
         if pos >= len(text):
             return len(text)
 
-        # Look backward for a space
+        # Keep the entire source slice within the token budget.
         for i in range(pos, max(0, pos - 50), -1):
-            if text[i] in ' \n\t':
-                return i + 1
-
-        # If no space found backward, look forward
-        for i in range(pos, min(len(text), pos + 50)):
-            if text[i] in ' \n\t':
-                return i + 1
-
-        # No word boundary found, split at pos
+            if text[i - 1].isspace():
+                return i
         return pos

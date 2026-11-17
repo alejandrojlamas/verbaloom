@@ -46,6 +46,15 @@ Texto narrativo despues."""
     assert artifact.report.note_calls_removed >= 1
 
 
+def test_mentions_of_visual_words_in_prose_remain_in_the_narration():
+    prose = "I was still.\n\nLa imagen se desvaneció.\n\nHe put the frame back."
+    artifact = sanitize_for_audiobook(prose, target_language="Spanish")
+
+    assert artifact.main_text == prose
+    assert artifact.appendix_text == ""
+    assert artifact.report.captions_integrated == artifact.report.captions_to_appendix == 0
+
+
 def test_audiobook_profile_loads_and_injects_translation_guidance():
     profile = load_book_profile("audiobook_faithful")
 

@@ -89,8 +89,25 @@ class ChunkTranslationFailedError(EpubTranslationError, RuntimeError):
         chunk_index: int = 0,
         attempts: int = 0,
         reason: str = "translation_failed",
+        detail: str = "",
     ):
         super().__init__(message)
         self.chunk_index = int(chunk_index or 0)
         self.attempts = int(attempts or 0)
         self.reason = reason
+        self.detail = detail
+
+
+def is_epub_content_rejection(error: Exception) -> bool:
+    """Only explicit decisions about a passage break the service failure streak."""
+    from src.core.llm.exceptions import ProviderActionRequiredError
+
+    if isinstance(error, ProviderActionRequiredError):
+        return error.reason == "provider_refusal"
+    return isinstance(error, ChunkTranslationFailedError) and (
+        error.reason == "target_language_gate" or (
+            error.reason == "audit_rejected" and error.detail in {
+                "repair_repeated_candidate", "repair_no_improvement", "repair_attempts_exhausted",
+            }
+        )
+    )

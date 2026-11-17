@@ -102,6 +102,25 @@ class TestTranslationExtractor:
             "No le hicieron el per signum crucis con un alfanje. * * *"
         )
 
+    def test_source_note_markers_survive_cleanup_between_placeholder_pairs(self):
+        # Includes streams loaded from checkpoints created before symbolic
+        # links were made atomic, and an actual Markdown link/emphasis nearby.
+        text = "[id0]Dato[id1]*[id2] y [id3]*[id4]. *Énfasis* y [sitio](https://example.com)."
+        assert clean_text_artifacts(text) == "[id0]Dato[id1]*[id2] y [id3]*[id4]. Énfasis y sitio."
+
+    def test_source_authored_notation_is_checked_per_corresponding_dom_slot(self):
+        source = "[id7]*Reference title*[id8]See it.[id9]"
+        candidate = "[id7]*Reference title*[id8]*Consúltalo*.[id9]"
+        assert clean_text_artifacts(candidate, source_text=source) == (
+            "[id7]*Reference title*[id8]Consúltalo.[id9]"
+        )
+        assert "*Reference title*" not in clean_text_artifacts(
+            candidate, source_text=source.replace("[id7]", "[id0]")
+        )
+
+    def test_spaced_operators_are_not_emphasis(self):
+        assert clean_text_artifacts("a * b * c") == "a * b * c"
+
     def test_clean_text_artifacts_strips_standalone_source_link_artifact(self):
         text = (
             "Texto real.\n\n"
@@ -150,3 +169,19 @@ class TestTranslationExtractor:
     def test_post_processor_strips_decoded_wrapper_tags(self):
         text = "Hola. </TRANSLATIONATION> Seguimos."
         assert clean_translated_text(text) == "Hola. Seguimos."
+
+
+def test_source_backed_marks_do_not_disable_artifact_cleanup():
+    source = "[id0]First ■ and .....[id1]Next[id2]"
+    candidate = "[id0]Uno ■ □ .....[id1]Otro ■ .....\ufffd\ufffc\x01[id2]"
+    cleaned = clean_text_artifacts(candidate, source_text=source)
+    assert cleaned.count("■") == 1 and cleaned.count(".....") == 1
+    assert cleaned.index("■") < cleaned.index("[id1]") and cleaned.index(".....") < cleaned.index("[id1]")
+    for artifact in ("□", "\ufffd", "\ufffc", "\x01"):
+        assert artifact not in cleaned
+    assert "■" not in clean_text_artifacts(candidate)
+    assert "■" not in clean_text_artifacts(candidate, source_text=source.replace("[id0]", "[id5]"))
+    assert clean_text_artifacts("Fin", source_text="End ■.") == "Fin"
+    assert clean_text_artifacts("■□■", source_text="■") == "■"
+    controls = "■\ufffc\ufffd\x01\U000f0000"
+    assert clean_text_artifacts(controls, source_text=controls) == "■\U000f0000"

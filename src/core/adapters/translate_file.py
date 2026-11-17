@@ -14,6 +14,7 @@ import os
 import tempfile
 from typing import Optional, Callable, Dict, Any
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from .generic_translator import GenericTranslator
 from .txt_adapter import TxtAdapter
@@ -25,6 +26,7 @@ from src.utils.file_detector import detect_file_type, detect_file_type_by_conten
 from src.core.fidelity_supervisor import ensure_fidelity_report
 from src.core.layout_sanitizer import LAYOUT_SANITIZER_VERSION, should_use_sanitized_text_pipeline
 from src.core.output_formats import extract_readable_text
+from src.core.llm.exceptions import ProviderActionRequiredError
 
 
 async def translate_file(
@@ -70,7 +72,8 @@ async def translate_file(
         target_language: Target language name
         model_name: LLM model identifier
         llm_provider: LLM provider name (ollama, gemini, openai, openrouter)
-        checkpoint_manager: CheckpointManager instance for resume capability
+        checkpoint_manager: CheckpointManager instance for resume capability. New jobs
+            are registered before translation. Existing jobs retain their saved configuration.
         translation_id: Unique identifier for this translation job
         log_callback: Optional callback for logging (receives type and message)
         stats_callback: Optional callback for statistics updates
@@ -205,13 +208,53 @@ async def translate_file(
         log_callback("file_type_detected",
             f"📄 File with extension '{ext}' detected as '{detected_type.upper()}' format")
 
+    async def run_native(operation, **kwargs):
+        # EPUB and DOCX bypass GenericTranslator, which owns this lifecycle
+        # for the other formats. API and CLI jobs are already registered.
+        if not (checkpoint_manager and translation_id):
+            return await operation(**kwargs)
+        with checkpoint_manager.execution_lock(translation_id):
+            if checkpoint_manager.get_job(translation_id) is None:
+                if resume_from_index:
+                    raise ProviderActionRequiredError("No checkpoint exists for this resume.",
+                                                      reason="checkpoint_missing", provider="checkpoint")
+                from src.core.epub.unit_contract import safe_prompt_options
+                from src.core.pipeline_runtime import active_pipeline
+
+                endpoint = urlsplit(llm_api_endpoint) if llm_api_endpoint else None
+                source = os.path.abspath(input_filepath)
+                destination = os.path.abspath(output_filepath)
+                config = {
+                    "file_type": detected_type,
+                    "file_path": source, "input_file_path": source,
+                    "output_file_path": destination, "output_filepath": destination,
+                    "output_filename": os.path.basename(output_filepath),
+                    "source_language": source_language, "target_language": target_language,
+                    "model": model_name, "model_name": model_name, "llm_provider": llm_provider,
+                    "llm_api_endpoint": urlunsplit((
+                        endpoint.scheme, endpoint.netloc.rsplit("@", 1)[-1], endpoint.path, "", "",
+                    )) if endpoint else None,
+                    "context_window": context_window, "auto_adjust_context": auto_adjust_context,
+                    "min_chunk_size": min_chunk_size, "max_tokens_per_chunk": max_tokens_per_chunk,
+                    "bilingual_output": bilingual_output, "prompt_options": safe_prompt_options(prompt_options),
+                }
+                if "max_attempts" in additional_config:
+                    config["max_attempts"] = additional_config["max_attempts"]
+                runtime = active_pipeline.get()
+                if runtime is not None:
+                    config["pipeline"] = safe_prompt_options(runtime.config)
+                if not checkpoint_manager.start_job(translation_id, detected_type, config, source):
+                    raise ProviderActionRequiredError("Could not create the job checkpoint.",
+                                                      reason="checkpoint_write_failed", provider="checkpoint")
+            return await operation(**kwargs)
+
     # TEMPORARY WORKAROUND: For EPUB files, use the legacy translate_epub_file() directly
     # The generic adapter pattern doesn't work well with EPUB's complex XHTML processing
     # that requires HTML chunking, tag preservation, technical content protection, etc.
     # TODO: Refactor EPUB translation to properly work with the adapter pattern
     if detected_type == 'epub':
         from src.core.epub.translator import translate_epub_file
-        return await translate_epub_file(
+        return await run_native(translate_epub_file,
             input_filepath=input_filepath,
             output_filepath=output_filepath,
             source_language=source_language,
@@ -261,7 +304,7 @@ async def translate_file(
             poe_api_key=poe_api_key
         )
 
-        result = await translate_docx_file(
+        result = await run_native(translate_docx_file,
             input_filepath=input_filepath,
             output_filepath=output_filepath,
             source_language=source_language,

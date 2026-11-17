@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import unescape
-import re
 from typing import Dict, Literal
 
 from src.common.placeholder_format import PlaceholderFormat
@@ -20,8 +19,7 @@ from .tag_classifier import TagClassifier
 
 PartKind = Literal["content", "structure"]
 _TAG_CLASSIFIER = TagClassifier()
-_PARAGRAPH_OPEN = re.compile(r"<p(?:\s[^<>]*)?>\s*$", re.IGNORECASE)
-_PARAGRAPH_CLOSE = re.compile(r"^\s*</p\s*>", re.IGNORECASE)
+_PROSE_BLOCKS = {"p", "figcaption", "caption"}
 
 
 @dataclass(frozen=True)
@@ -117,11 +115,16 @@ def refinement_preserves_paragraphs(
             for start, end, placeholder, _index in fmt.find_all(text)
             if is_structural_tag_group(tag_map.get(placeholder, ""))
         ]
-        return {
-            (opening, closing): len(" ".join(unescape(fmt.remove_all(text[left:right])).split()))
-            for (_, left, opening), (right, _, closing) in zip(boundaries, boundaries[1:])
-            if _PARAGRAPH_OPEN.search(tag_map[opening]) and _PARAGRAPH_CLOSE.match(tag_map[closing])
-        }
+        lengths = {}
+        for (_, left, opening), (right, _, closing) in zip(boundaries, boundaries[1:]):
+            # Tags are grouped: the last block may open before inline emphasis,
+            # and the next group may close the emphasis before the block.
+            last = list(_TAG_CLASSIFIER.block_boundaries(tag_map[opening]))[-1]
+            first = next(_TAG_CLASSIFIER.block_boundaries(tag_map[closing]))
+            if last[0] == "" and last[1] in _PROSE_BLOCKS and first == ("/", last[1]):
+                visible = unescape(fmt.remove_all(text[left:right]))
+                lengths[(opening, closing)] = len(" ".join(visible.split()))
+        return lengths
 
     if not tag_map:
         return True
@@ -129,6 +132,6 @@ def refinement_preserves_paragraphs(
         return False
     before, after = paragraph_lengths(draft), paragraph_lengths(revision)
     return all(
-        size < 40 or 0.28 <= after.get(key, 0) / size <= 4.5
+        size == 0 or (after.get(key, 0) > 0 and (size < 40 or 0.28 <= after[key] / size <= 4.5))
         for key, size in before.items()
     )

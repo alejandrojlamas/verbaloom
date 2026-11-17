@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from lxml import etree
 
 from ..common.translation_orchestrator import TranslationAdapter
-from .body_serializer import extract_body_html, replace_body_content
+from .body_serializer import escape_translated_xml_text, extract_body_html, replace_body_content
 from .container import TranslationContainer
 from .exceptions import XmlParsingError, BodyExtractionError
 
@@ -136,7 +136,7 @@ class EpubTranslationAdapter(TranslationAdapter[etree._Element, bool]):
         """
         preserver = context['preserver']
         full_translated_text = ''.join(translated_chunks)
-        final_html = preserver.restore_tags(full_translated_text, structure_map)
+        final_html = preserver.restore_tags(escape_translated_xml_text(full_translated_text), structure_map)
         return final_html
 
     def finalize_output(
@@ -275,6 +275,7 @@ class EpubTranslationAdapter(TranslationAdapter[etree._Element, bool]):
             resume_state=resume_state,
             stats_callback=stats_callback,
             global_total_chunks=global_total_chunks,
+            on_file_plan=kwargs.get('on_file_plan'),
             global_completed_chunks=global_completed_chunks,
             runtime_state=runtime_state,
         )

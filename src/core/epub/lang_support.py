@@ -205,7 +205,6 @@ def apply_target_language_to_xhtml_directory(
     result["lang_code"] = code
 
     parser = etree.XMLParser(
-        encoding="utf-8",
         recover=True,
         remove_blank_text=False,
         huge_tree=True,

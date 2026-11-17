@@ -16,6 +16,7 @@ import zipfile
 
 from lxml import etree
 
+from .xml_helpers import has_illustration_or_table_content
 from .dom_boundaries import _BLOCK_XPATH, _parse_xhtml, _serialize_xhtml, _write_member
 
 
@@ -193,7 +194,7 @@ def sanitize_epub_page_furniture(
                                 source_blocks, output_blocks, index
                             ):
                                 kind = "page_marker"
-                            if not kind:
+                            if not kind or has_illustration_or_table_content(source_blocks[index]):
                                 continue
                             _hide_preserving_slot(output_block)
                             report.sanitized_blocks += 1

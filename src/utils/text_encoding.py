@@ -11,12 +11,22 @@ boundaries). It is idempotent — applying twice has the same effect as once.
 """
 
 import re
+from collections import Counter
 from typing import Optional
 
 from src.common.inline_markdown import parse_inline_markdown
 
 
 UTF8_BOM = b'\xef\xbb\xbf'
+
+
+def epub_xml_encoding(data: bytes) -> str:
+    """Determine the Unicode byte order for an EPUB XML member without dropping its BOM."""
+    if data.startswith((b"\xff\xfe", b"<\x00")):
+        return "utf-16-le"
+    if data.startswith((b"\xfe\xff", b"\x00<")):
+        return "utf-16-be"
+    return "utf-8"
 
 
 def encode_utf8_text_download(text: str) -> bytes:
@@ -47,7 +57,7 @@ _WJ = '⁠'     # Word joiner
 # Placeholder shape used by tag/equation preservation in EPUB and DOCX pipelines.
 # Normalization avoids modifying tokens matching this pattern as a defensive
 # measure, even though placeholders should never reach this layer.
-_PLACEHOLDER_RE = re.compile(r'\[id\d+\]', re.IGNORECASE)
+_PLACEHOLDER_RE = re.compile(r'(\[id\d+\])', re.IGNORECASE)
 
 # SRT timestamp shape, e.g. "00:01:23,456 --> 00:01:25,789"
 _SRT_TIMESTAMP_RE = re.compile(
@@ -72,16 +82,15 @@ _MOJIBAKE_MARKER_RE = re.compile(
 )
 _C1_CONTROL_RE = re.compile(r'[\u0080-\u009f]')
 _CONTROL_ARTIFACT_RE = re.compile(r'[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]')
-_BOX_ARTIFACT_RE = re.compile(
-    r'[\ufffc\ufffd\u2580-\u259f\u25a0-\u25a1\u25aa-\u25ac\u25ae-\u25b0'
-    r'\u25fb-\u25fe\u2b1b-\u2b1c]+'
-)
+_BOX_DRAWING_CHARS = r'\u2580-\u259f\u25a0-\u25a1\u25aa-\u25ac\u25ae-\u25b0\u25fb-\u25fe\u2b1b-\u2b1c'
+_BOX_ARTIFACT_RE = re.compile(r'[\ufffc\ufffd' + _BOX_DRAWING_CHARS + r']+')
+_SOURCE_PRINT_MARK_RE = re.compile(r'[' + _BOX_DRAWING_CHARS + r']|\.(?:[^\S\r\n]*\.){2,}')
 _TRANSLATION_WRAPPER_ARTIFACT_RE = re.compile(
     r'(?:<|&lt;)\s*/?\s*TRANSLATION(?:ATION)*\s*(?:>|&gt;)',
     re.IGNORECASE,
 )
 _MARKDOWN_ASTERISK_EMPHASIS_RE = re.compile(
-    r"(?<!\*)\*([^\n*]*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][^\n*]*)\*(?!\*)"
+    r"(?<!\*)\*(?![\s*])([^\n*]*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][^\n*]*)(?<!\s)\*(?!\*)"
 )
 _DOT_LEADER_RUN_RE = re.compile(r'(?:\.\s*){5,}')
 _DOT_LEADER_ONLY_PAGE_RE = re.compile(r'^\s*(?:\.\s*){3,}\d{1,5}\s*$')
@@ -207,23 +216,13 @@ def strip_translation_wrapper_artifacts(text: str) -> str:
     return cleaned.strip(' \t')
 
 
-def clean_text_artifacts(text: str) -> str:
+def clean_text_artifacts(text: str, *, source_text: Optional[str] = None) -> str:
     """Repair mojibake and remove visible replacement artifacts."""
-    return remove_source_link_artifacts(
-        remove_pdf_toc_dot_leaders(
-            remove_artifact_glyphs(
-                strip_markdown_link_artifacts(
-                    strip_markdown_emphasis_artifacts(
-                        strip_translation_wrapper_artifacts(
-                            collapse_duplicated_apostrophized_prefixes(
-                                repair_mojibake(text)
-                            )
-                        )
-                    )
-                )
-            )
-        )
-    )
+    text, originals = _protect_source_print_marks(text, source_text)
+    text = strip_translation_wrapper_artifacts(collapse_duplicated_apostrophized_prefixes(repair_mojibake(text)))
+    text = _strip_inline_markdown_artifacts(text, source_text=source_text, originals=originals)
+    cleaned = remove_source_link_artifacts(remove_pdf_toc_dot_leaders(remove_artifact_glyphs(text)))
+    return cleaned.translate(originals) if originals else cleaned
 
 
 def collapse_duplicated_apostrophized_prefixes(text: str) -> str:
@@ -241,6 +240,62 @@ def collapse_duplicated_apostrophized_prefixes(text: str) -> str:
         return f"{match.group('prefix')}{match.group('apostrophe')}"
 
     return _DUPLICATED_APOSTROPHIZED_PREFIX_RE.sub(collapse, text)
+
+
+def _protect_source_print_marks(text: str, source_text: Optional[str]) -> tuple[str, dict[int, str]]:
+    """Shield only print symbols actually present in the same source and target slot."""
+    if not source_text or not text or not _SOURCE_PRINT_MARK_RE.search(text):
+        return text, {}
+    parts = _PLACEHOLDER_RE.split(text)
+    source_parts = _PLACEHOLDER_RE.split(source_text)
+    if source_parts[1::2] != parts[1::2]:
+        return text, {}
+    originals = {}
+    # Use a distinct temporary character for each observed string. A missing
+    # character cannot materialize, and existing private-use text is untouched.
+    marker = 0xF0000
+    markers = {}
+    for index in range(0, len(parts), 2):
+        source_slot = source_parts[index]
+        slot = parts[index]
+        if source_slot and _SOURCE_PRINT_MARK_RE.search(slot):
+            available = Counter(_SOURCE_PRINT_MARK_RE.findall(source_slot))
+
+            def shield(match: re.Match) -> str:
+                nonlocal marker
+                value = match.group()
+                if available[value] == 0:
+                    return value
+                available[value] -= 1
+                if value not in markers:
+                    while marker <= 0xFFFFD and chr(marker) in text:
+                        marker += 1
+                    if marker > 0xFFFFD:
+                        return value
+                    markers[value] = chr(marker)
+                    originals[marker] = value
+                    marker += 1
+                return markers[value]
+
+            slot = _SOURCE_PRINT_MARK_RE.sub(shield, slot)
+        parts[index] = slot
+    return "".join(parts), originals
+
+
+def _strip_inline_markdown_artifacts(text: str, *, source_text: Optional[str], originals: dict[int, str]) -> str:
+    """A Markdown span cannot consume a separate source-owned XHTML text slot."""
+    if not text or ("*" not in text and "[" not in text):
+        return text
+    parts = _PLACEHOLDER_RE.split(text)
+    source_parts = _PLACEHOLDER_RE.split(source_text) if source_text else []
+    aligned = len(source_parts) == len(parts) and source_parts[1::2] == parts[1::2]
+    for index in range(0, len(parts), 2):
+        # Source-authored notation in an identical DOM slot is not model markup.
+        original = parts[index].translate(originals) if originals else parts[index]
+        if aligned and original.strip() == source_parts[index].strip():
+            continue
+        parts[index] = strip_markdown_link_artifacts(strip_markdown_emphasis_artifacts(parts[index]))
+    return "".join(parts)
 
 
 def strip_markdown_link_artifacts(text: str) -> str:

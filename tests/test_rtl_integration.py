@@ -5,6 +5,7 @@ Tests the complete flow from RTL detection to CSS injection and OPF updates.
 """
 
 import pytest
+from lxml import etree
 import sys
 import os
 import tempfile
@@ -188,6 +189,25 @@ class TestRTLIntegration:
         # Check Persian lang code
         content = chapter.read_text(encoding='utf-8')
         assert 'lang="fa"' in content
+
+
+@pytest.mark.parametrize(("source", "target", "direction"), [
+    ("English", "Arabic", "rtl"), ("Arabic", "Spanish", "ltr"),
+])
+def test_direction_change_preserves_utf16_xhtml_and_foreign_namespaces(tmp_path, source, target, direction):
+    chapter = tmp_path / "chapter.xhtml"
+    chapter.write_bytes((
+        '<?xml version="1.0" encoding="UTF-16"?>'
+        '<html xmlns="http://www.w3.org/1999/xhtml" dir="rtl"><head><title>Árbol</title></head>'
+        '<body><p>صورة e ilustración</p><img src="image.png" alt="Árbol"/>'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/></body></html>'
+    ).encode("utf-16"))
+    apply_rtl_to_epub_directory(str(tmp_path), target, source)
+    root = etree.fromstring(chapter.read_bytes())
+    assert root.get("dir") == direction
+    assert root.find(".//{http://www.w3.org/1999/xhtml}p").text == "صورة e ilustración"
+    assert root.find(".//{http://www.w3.org/2000/svg}svg").get("viewBox") == "0 0 1 1"
+    assert root.find(".//{http://www.w3.org/1999/xhtml}head/{http://www.w3.org/1999/xhtml}style") is not None
 
 
 if __name__ == "__main__":

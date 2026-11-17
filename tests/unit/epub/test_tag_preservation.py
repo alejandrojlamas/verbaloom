@@ -172,3 +172,24 @@ class TestTagPreserver:
         assert "</p>" in restored
         assert "<a" in restored
         assert "</a>" in restored
+
+
+
+@pytest.mark.parametrize("technical", [False, True])
+def test_link_symbols_are_source_owned_but_link_prose_remains_editable(technical):
+    preserver = TagPreserver(protect_technical=technical)
+    markup = (
+        '<p title="a > b">Fact<a href="notes.xhtml#n1">*</a> and '
+        '<a href="#n2"><sup>&#8224;</sup></a>. <a href="#n3">See <i>note</i></a>'
+        ' <a href="#n4">* Elsewhere</a>. Literal * outside.</p>'
+        '<!-- x > y -->'
+    )
+    editable, mapping = preserver.preserve_tags_and_technical_content(markup)
+    assert 'Fact' in editable and 'See ' in editable and 'note' in editable
+    assert '* Elsewhere' in editable and 'Literal * outside.' in editable
+    assert editable.count('*') == 2
+    assert '&#8224;' not in editable and 'x > y' not in editable
+    translated = editable.replace('Fact', 'Dato').replace('See ', 'Ver ')
+    assert preserver.restore_tags(translated, mapping) == markup.replace(
+        'Fact', 'Dato'
+    ).replace('See ', 'Ver ')

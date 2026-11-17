@@ -557,3 +557,28 @@ def test_hides_only_commercial_inserts_around_reading_matter(tmp_path: Path):
     assert "verbaloom-furniture" not in str(thanks.get("class") or "")
     assert "verbaloom-furniture" in str(back_ad.get("class") or "")
     assert "verbaloom-furniture" in str(prices.get("class") or "")
+
+
+def test_nested_figures_reuse_only_their_own_captions():
+    from src.core.epub.professionalize import ensure_image_alt_attributes
+
+    root = etree.fromstring(b"""<figure><img src="overview.jpg"/>
+        <figure><img src="detail.jpg"/><figcaption>Detail</figcaption></figure>
+        <figcaption>Overview</figcaption></figure>""")
+    ensure_image_alt_attributes(root)
+    assert root.xpath("//img/@alt") == ["Overview", "Detail"]
+
+
+def test_cover_detection_ignores_xml_comments_and_processing_instructions(tmp_path):
+    (tmp_path / "images").mkdir()
+    Image.new("RGB", (600, 900), "navy").save(tmp_path / "images" / "first.jpg")
+    root = _document()
+    body = root.xpath("//*[local-name()='body']")[0]
+    body.insert(0, etree.Comment("Original publisher note"))
+    body.insert(1, etree.ProcessingInstruction("publisher", "layout"))
+    result = apply_professional_epub_layer(
+        opf_tree=_package(), opf_dir=tmp_path, content_files=["chapter.xhtml"],
+        parsed_xhtml_docs={str(tmp_path / "chapter.xhtml"): root}, target_language="Spanish",
+    )
+    assert result.cover_declared
+    assert root.xpath("//comment()") and root.xpath("//processing-instruction()")

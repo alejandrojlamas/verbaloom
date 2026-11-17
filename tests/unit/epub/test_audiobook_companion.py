@@ -9,7 +9,7 @@ from src.api.handlers import _create_audiobook_companion_outputs
 from src.core.epub.audiobook_companion import create_structured_audiobook_epub
 
 
-def _write_illustrated_epub(path: Path) -> None:
+def _write_illustrated_epub(path: Path, *, extra_markup: str = "") -> None:
     container = """<?xml version="1.0" encoding="utf-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
@@ -43,7 +43,7 @@ def _write_illustrated_epub(path: Path) -> None:
   <head><title>Portada</title></head>
   <body><div class="cover"><img src="images/cover.jpg" alt="Portada"/></div></body>
 </html>"""
-    chapter = """<?xml version="1.0" encoding="utf-8"?>
+    chapter = f"""<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="es" xml:lang="es">
   <head><title>Capítulo uno</title></head>
   <body>
@@ -53,6 +53,7 @@ def _write_illustrated_epub(path: Path) -> None:
       <img src="images/scene.jpg" alt="Escena de la película"/>
       <figcaption>La protagonista observa la ciudad desde el tren.</figcaption>
     </figure>
+    {extra_markup}
     <p>Texto traducido después de la imagen.</p>
   </body>
 </html>"""
@@ -111,9 +112,31 @@ def test_structured_audiobook_epub_preserves_cover_images_positions_and_caption(
         assert companion.infolist()[0].compress_type == zipfile.ZIP_STORED
 
 
+def test_caption_adjacency_skips_editorial_comments_and_instructions(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "companion.epub"
+    _write_illustrated_epub(
+        source,
+        extra_markup=(
+            '<p><img src="images/scene.jpg" alt="Tren"/></p>'
+            '<!-- editorial --><?layout next?>'
+            '<p class="caption">El tren cruza un puente.</p>'
+        ),
+    )
+
+    report = create_structured_audiobook_epub(source, output)
+
+    assert report.publishable
+    assert report.captions_preserved == 2
+    with zipfile.ZipFile(source) as original, zipfile.ZipFile(output) as companion:
+        assert original.read("OEBPS/chapter.xhtml") == companion.read("OEBPS/chapter.xhtml")
+
+
 def test_job_companion_writer_uses_structured_epub_instead_of_flattening(tmp_path):
     source = tmp_path / "Libro (Spanish).epub"
-    _write_illustrated_epub(source)
+    _write_illustrated_epub(
+        source, extra_markup='<div>Pie <em>editorial</em><!-- revisión privada --> de la ilustración.</div>'
+    )
 
     result = _create_audiobook_companion_outputs(
         output_path=str(source),
@@ -123,6 +146,11 @@ def test_job_companion_writer_uses_structured_epub_instead_of_flattening(tmp_pat
     )
 
     epub_name = next(name for name in result["files"] if name.endswith(".epub"))
+    txt_name = next(name for name in result["files"] if name.endswith(".txt"))
+    narration = (tmp_path / txt_name).read_text(encoding="utf-8-sig")
+    assert narration.count("Pie editorial de la ilustración.") == 1
+    assert "revisión privada" not in narration
+    assert "Descripcion de imagen: Texto traducido" not in narration
     report_name = next(name for name in result["files"] if name.endswith("report).json"))
     assert "(Audiobook).epub" in epub_name
     assert "(Audiobook report).json" in report_name

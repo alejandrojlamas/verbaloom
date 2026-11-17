@@ -27,11 +27,13 @@ from src.config import (
 )
 from ..common.translation_orchestrator import GenericTranslationOrchestrator
 from .epub_translation_adapter import EpubTranslationAdapter
+from .exceptions import is_epub_content_rejection
+from .translation_metrics import TranslationMetrics
 from ..post_processor import clean_residual_tag_placeholders
 from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CONTEXT_STEP, MAX_CONTEXT_SIZE
 from .rtl_support import apply_rtl_to_epub_directory, is_rtl_language
 from .lang_support import apply_target_language_to_xhtml_directory
-from .resource_links import resource_uri_path
+from .resource_links import find_package_document, resource_uri_path
 from src.core.fidelity_supervisor import (
     ensure_fidelity_report,
     write_fidelity_report_from_options,
@@ -215,10 +217,8 @@ async def translate_epub_file(
                 checkpoint_manager and translation_id and completed_file_indices
             )
             if restore_attempted:
-                # Count the pristine source before translated XHTML files are
-                # restored over it. Spanish and German versions can tokenize
-                # differently, which otherwise makes resumed progress exceed
-                # (or fall short of) the original denominator.
+                # Reuse the original source plan on resume. Different
+                # languages can produce different numbers of chunks.
                 plain_text_mode = bool(prompt_options and prompt_options.get('plain_text_mode'))
                 original_chunk_plan = await _precount_chunks(
                     manifest_data['content_files'],
@@ -229,7 +229,8 @@ async def translate_epub_file(
                 )
                 restored_docs = await _restore_checkpoint_files(
                     checkpoint_manager, translation_id, temp_dir,
-                    resume_from_index, manifest_data['opf_dir'], log_callback
+                    [manifest_data['content_files'][i] for i in sorted(completed_file_indices)],
+                    manifest_data['opf_dir'], log_callback,
                 )
 
             # 3. Translate all files using orchestrator
@@ -479,26 +480,20 @@ def _extract_epub(input_filepath: str, temp_dir: str, log_callback: Optional[Cal
         safe_extractall(zip_ref, temp_dir)
 
 
-def _find_opf_file(temp_dir: str) -> Optional[str]:
-    """Find OPF file in extracted EPUB."""
-    for root_dir, _, files in os.walk(temp_dir):
-        for file in files:
-            if file.endswith('.opf'):
-                return os.path.join(root_dir, file)
-    return None
-
-
 def _get_content_files_from_spine(spine: etree._Element, manifest: etree._Element) -> list:
-    """Extract content file hrefs from spine."""
+    """Resolve each declared reading-order entry before translating any chapters."""
+    items = {item.get("id"): item for item in manifest.findall("opf:item", NAMESPACES)}
     content_files = []
-    for itemref in spine.findall('.//opf:itemref', namespaces=NAMESPACES):
-        idref = itemref.get('idref')
-        item = manifest.find(f'.//opf:item[@id="{idref}"]', namespaces=NAMESPACES)
-        if item is not None:
-            media_type = item.get('media-type')
-            href = item.get('href')
-            if media_type in ['application/xhtml+xml', 'text/html'] and href:
-                content_files.append(href)
+    for itemref in spine.findall("opf:itemref", NAMESPACES):
+        idref = itemref.get("idref")
+        item = items.get(idref)
+        if not idref or item is None:
+            raise ValueError(f"EPUB spine entry has no matching manifest item: {idref!r}")
+        if item.get("media-type") in ("application/xhtml+xml", "text/html"):
+            href = item.get("href")
+            if not href:
+                raise ValueError(f"EPUB spine resource has no href: {idref}")
+            content_files.append(href)
     return content_files
 
 
@@ -514,11 +509,12 @@ def _parse_epub_manifest(temp_dir: str, log_callback: Optional[Callable] = None)
         Dictionary with keys: opf_path, opf_tree, opf_dir, content_files
     """
     # Find OPF file
-    opf_path = _find_opf_file(temp_dir)
-    if not opf_path:
+    package = find_package_document(Path(temp_dir))
+    if package is None:
         raise FileNotFoundError("CRITICAL ERROR: content.opf not found in EPUB.")
 
     # Parse OPF to get content files
+    opf_path = str(package)
     opf_tree = etree.parse(opf_path)
     opf_root = opf_tree.getroot()
     opf_dir = os.path.dirname(opf_path)
@@ -657,7 +653,7 @@ async def _restore_checkpoint_files(
     checkpoint_manager,
     translation_id: str,
     temp_dir: str,
-    resume_from_index: int,
+    completed_hrefs: List[str],
     opf_dir: str,
     log_callback: Optional[Callable] = None
 ) -> Dict[str, etree._Element]:
@@ -668,7 +664,7 @@ async def _restore_checkpoint_files(
         checkpoint_manager: Checkpoint manager instance
         translation_id: Translation job ID
         temp_dir: Temporary directory
-        resume_from_index: Index to resume from
+        completed_hrefs: Files marked complete by the job checkpoint
         opf_dir: OPF directory
         log_callback: Logging callback
 
@@ -679,20 +675,15 @@ async def _restore_checkpoint_files(
 
     if log_callback:
         log_callback("epub_restore_checkpoint",
-                    f"Restoring {resume_from_index} previously translated files from checkpoint...")
+                    f"Restoring {len(completed_hrefs)} previously translated files from checkpoint...")
 
-    restore_success = checkpoint_manager.restore_epub_files(
-        translation_id=translation_id,
-        work_dir=Path(temp_dir)
-    )
-
-    if not restore_success:
-        if log_callback:
-            log_callback("epub_restore_warning",
-                         "Warning: Could not restore all files from checkpoint. Translation will continue from scratch.")
-        return restored_docs
-
-    # Parse restored files
+    # A write interrupted before its database commit can leave a translated
+    # file in this directory without a completed row. Never overlay the input
+    # tree: pending files must still be translated from their original bytes.
+    completed_paths = {
+        os.path.normpath(os.path.join(opf_dir, resource_uri_path(href)))
+        for href in completed_hrefs
+    }
     checkpoint_files_dir = checkpoint_manager.uploads_dir / translation_id / "translated_files"
 
     if not checkpoint_files_dir.exists():
@@ -719,12 +710,15 @@ async def _restore_checkpoint_files(
                 log_callback("epub_restore_fallback",
                            f"🔄 Using fallback path for old checkpoint: {rel_path_str}")
 
+        if file_path_abs not in completed_paths:
+            continue
+
         try:
-            async with aiofiles.open(file_path_abs, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(saved_file, 'rb') as f:
                 restored_content = await f.read()
 
-            parser = etree.XMLParser(encoding='utf-8', recover=True, remove_blank_text=False, huge_tree=True)
-            doc_root = etree.fromstring(restored_content.encode('utf-8'), parser)
+            parser = etree.XMLParser(remove_blank_text=False, huge_tree=True)
+            doc_root = etree.fromstring(restored_content, parser)
             restored_docs[file_path_abs] = doc_root
             restored_count += 1
 
@@ -741,6 +735,20 @@ async def _restore_checkpoint_files(
                     f"✅ Successfully restored {len(restored_docs)} files from checkpoint")
 
     return restored_docs
+
+
+async def _read_source_xhtml(file_path: str) -> etree._Element:
+    # libxml detects the BOM and XML encoding declaration from the original bytes.
+    async with aiofiles.open(file_path, "rb") as source:
+        data = await source.read()
+    parser = etree.XMLParser(recover=True, remove_blank_text=False, huge_tree=True)
+    root = etree.fromstring(data, parser)
+    for error in parser.error_log:
+        if error.type_name in ("ERR_INVALID_ENCODING", "ERR_UNSUPPORTED_ENCODING"):
+            raise ValueError(f"Invalid EPUB XML encoding: {error.message}")
+    if root is None:
+        raise ValueError("EPUB content document has no root element")
+    return root
 
 
 async def _translate_single_xhtml_file(
@@ -762,6 +770,7 @@ async def _translate_single_xhtml_file(
     global_total_chunks: Optional[int] = None,
     global_completed_chunks: Optional[int] = None,
     runtime_state: Optional[dict] = None,
+    on_file_plan: Optional[Callable[[int, int], int]] = None,
 ) -> Tuple[Optional[etree._Element], bool, Any]:
     """
     Translate a single XHTML file using GenericTranslationOrchestrator.
@@ -806,11 +815,7 @@ async def _translate_single_xhtml_file(
 
     try:
         # Parse XHTML file
-        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-            content = await f.read()
-
-        parser = etree.XMLParser(encoding='utf-8', recover=True, remove_blank_text=False, huge_tree=True)
-        doc_root = etree.fromstring(content.encode('utf-8'), parser)
+        doc_root = await _read_source_xhtml(file_path)
 
         # Create adapter and orchestrator
         adapter = EpubTranslationAdapter()
@@ -838,6 +843,7 @@ async def _translate_single_xhtml_file(
             global_total_chunks=global_total_chunks,
             global_completed_chunks=global_completed_chunks,
             runtime_state=runtime_state,
+            on_file_plan=on_file_plan,
         )
 
         return doc_root, success, stats
@@ -853,23 +859,25 @@ async def _translate_single_xhtml_file(
         if isinstance(e, RateLimitError):
             if not (EPUB_DEFER_FAILED_FILES and is_unit_scoped_provider_stop(e)):
                 raise
-            # A refusal or an unusable audit answer concerns one passage. It
-            # stays blocked for review (and is never re-sent, split or
-            # rephrased); the other documents do not depend on it.
             if log_callback:
-                log_callback(
-                    "epub_unit_requires_review",
-                    f"🛑 '{content_href}': {getattr(e, 'reason', 'provider_stop')}. "
-                    "El pasaje queda pendiente de revisión y no se reenviará; "
-                    "la traducción continúa con el resto del libro.",
-                )
-            return None, False, getattr(e, "stats", None)
-        if log_callback:
+                if is_epub_content_rejection(e):
+                    log_callback("epub_unit_requires_review",
+                                 f"'{content_href}': {e.reason}. Passage retained for review.")
+                else:
+                    log_callback("epub_audit_response_error",
+                                 f"'{content_href}': unusable audit response ({e.reason}).")
+        elif log_callback:
             log_callback("epub_file_error", f"Error processing '{content_href}': {e}")
         # Quality-stage failures carry the file metrics accumulated before the
         # rejected unit.  Preserve them so the caller reports the one unresolved
         # unit instead of converting every translated chunk into a failure.
-        return None, False, getattr(e, "stats", None)
+        stats = getattr(e, "stats", None)
+        if stats is None and getattr(e, "failed_unit_indices", None):
+            stats = TranslationMetrics(failed_chunks=len(e.failed_unit_indices))
+        if is_epub_content_rejection(e):
+            stats = stats or TranslationMetrics()
+            stats.unit_failure_reason = getattr(e, "detail", "") or e.reason
+        return None, False, stats
 
 
 async def _precount_chunks(
@@ -903,11 +911,7 @@ async def _precount_chunks(
 
         try:
             # Parse file
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-
-            parser = etree.XMLParser(encoding='utf-8', recover=True, remove_blank_text=False, huge_tree=True)
-            doc_root = etree.fromstring(content.encode('utf-8'), parser)
+            doc_root = await _read_source_xhtml(file_path)
 
             if plain_text_mode:
                 chunk_count = _precount_chunks_plain_text(doc_root, max_tokens_per_chunk)
@@ -1061,8 +1065,6 @@ async def _process_all_content_files(
         EPUB_DEFER_FAILED_FILES,
         EPUB_MAX_CONSECUTIVE_FAILED_FILES,
     )
-    from .translation_metrics import TranslationMetrics
-
     def _content_path(index: int) -> str:
         return os.path.normpath(os.path.join(opf_dir, resource_uri_path(content_files[index])))
 
@@ -1111,6 +1113,11 @@ async def _process_all_content_files(
             persisted_total = int(persisted_progress.get('total_chunks') or 0)
             if persisted_total > 0:
                 effective_total_chunks = persisted_total
+
+    # A legacy direct caller may supply only a historical global count. Its
+    # per-file baseline cannot be revised until a pristine plan is available.
+    use_file_plans = not plain_text_mode and effective_total_chunks == total_chunks
+    chunks_per_file = list(chunks_per_file)
 
     # Start with restored documents
     parsed_xhtml_docs: Dict[str, etree._Element] = restored_docs.copy() if restored_docs else {}
@@ -1165,6 +1172,11 @@ async def _process_all_content_files(
                 int(getattr(partial_resume_state, 'current_chunk_index', 0) or 0),
             )
 
+    saved_chunks = getattr(partial_resume_state, 'chunks', None)
+    if use_file_plans and saved_chunks and resume_from_index < len(chunks_per_file):
+        effective_total_chunks += len(saved_chunks) - chunks_per_file[resume_from_index]
+        chunks_per_file[resume_from_index] = len(saved_chunks)
+
     # The pristine source chunk plan is the authority for fully completed
     # files.  The persisted global counter can include work from an unfinished
     # XHTML file whose partial state was later rejected (for example after a
@@ -1206,6 +1218,7 @@ async def _process_all_content_files(
             if _prefix_file_available(file_idx):
                 if _content_path(file_idx) not in parsed_xhtml_docs:
                     completed_files += 1
+                consecutive_failed_files = 0
                 continue
             # The checkpoint says this file is done but its translated
             # document could not be restored. Skipping it would package the
@@ -1217,6 +1230,7 @@ async def _process_all_content_files(
                 )
         elif file_idx in sparse_completed:
             # Already counted in ``completed_files`` through the restored set.
+            consecutive_failed_files = 0
             continue
 
         current_file_completed_latest = (
@@ -1232,6 +1246,16 @@ async def _process_all_content_files(
         if log_callback:
             log_callback("epub_file_translate_start",
                          f"Translating file {file_idx + 1}/{total_files}: {content_href} ({chunks_in_this_file} chunks)")
+
+        def on_file_plan(count: int, saved_units: int) -> int:
+            # The validated checkpoint may have a different partition than a
+            # fresh run. Count this file's actual units once for both the UI
+            # and the durable checkpoints taken during its translation.
+            nonlocal chunks_in_this_file, effective_total_chunks, current_file_completed_latest
+            current_file_completed_latest = saved_units
+            effective_total_chunks += count - chunks_in_this_file
+            chunks_in_this_file = count
+            return effective_total_chunks
 
         # Create stats wrapper that reports global statistics
         # NOTE: completed_chunks_global represents chunks from ALL previous files (not including current)
@@ -1284,6 +1308,7 @@ async def _process_all_content_files(
             global_total_chunks=effective_total_chunks,
             global_completed_chunks=completed_chunks_global,
             runtime_state=runtime_state,
+            on_file_plan=on_file_plan if use_file_plans else None,
         )
 
         # Accumulate statistics
@@ -1292,6 +1317,18 @@ async def _process_all_content_files(
 
         # Save the document if translation succeeded
         if success and doc_root is not None:
+            if checkpoint_manager and translation_id:
+                # A later chapter may trigger a paid request. Commit the current
+                # one before counting it as done or advancing to that request.
+                await _save_checkpoint(
+                    checkpoint_manager, translation_id, file_idx, content_href,
+                    doc_root, file_path, temp_dir, log_callback,
+                    total_chunks=effective_total_chunks,
+                    completed_chunks=completed_chunks_global + chunks_in_this_file,
+                    failed_chunks=accumulated_stats.failed_chunks,
+                    epub_accumulated_stats=_snapshot_accumulated_stats(accumulated_stats),
+                    runtime_state=runtime_state,
+                )
             completed_chunks_global += chunks_in_this_file
             pending_file_progress.pop(file_idx, None)
             incomplete_file_completed = sum(pending_file_progress.values())
@@ -1302,7 +1339,11 @@ async def _process_all_content_files(
             pending_file_progress[file_idx] = current_file_completed_latest
             incomplete_file_completed = sum(pending_file_progress.values())
             failed_files += 1
-            consecutive_failed_files += 1
+            if file_stats and file_stats.unit_failure_reason:
+                # A decision about a particular unit is not a service failure.
+                consecutive_failed_files = 0
+            else:
+                consecutive_failed_files += 1
             # A file-level exception used to lose the chunk metrics returned by
             # the XHTML translator.  It represents one unresolved unit unless
             # the translator supplied a more precise count; completed siblings
@@ -1324,18 +1365,6 @@ async def _process_all_content_files(
                 accumulated_stats,
             ))
 
-        # Save checkpoint
-        if checkpoint_manager and translation_id and success and doc_root is not None:
-            await _save_checkpoint(
-                checkpoint_manager, translation_id, file_idx, content_href,
-                doc_root, file_path, temp_dir, log_callback,
-                total_chunks=effective_total_chunks,
-                completed_chunks=completed_chunks_global,
-                failed_chunks=accumulated_stats.failed_chunks,
-                epub_accumulated_stats=_snapshot_accumulated_stats(accumulated_stats),
-                runtime_state=runtime_state,
-            )
-
         # Continuing after a failed XHTML file allowed later checkpoints to
         # jump over the failure and produced a deceptively "complete" EPUB
         # containing the original source chapter.  Stop at the first failed
@@ -1354,9 +1383,8 @@ async def _process_all_content_files(
                         log_callback(
                             "epub_fail_fast",
                             f"⛔ EPUB processing stopped at {content_href}: "
-                            f"{consecutive_failed_files} files failed in a row, "
-                            "which points at the configuration or the provider "
-                            "rather than at the text.",
+                            f"{consecutive_failed_files} consecutive files failed. "
+                            "Check the recorded file errors before resuming.",
                         )
                     break
                 if log_callback and file_idx < total_files - 1:
@@ -1512,58 +1540,59 @@ async def _save_checkpoint(
             file_content=file_content
         )
 
-        if save_result:
-            # Delete partial state AFTER successful file save (atomicity guarantee)
-            checkpoint_manager.delete_xhtml_partial_state(translation_id, content_href)
-            if log_callback:
-                log_callback("xhtml_partial_state_deleted_after_save",
-                    f"🗑️ Partial state deleted for {file_rel_path} (file saved successfully)")
-
-            # Update checkpoint progress with chunk statistics. The
-            # `epub_accumulated_stats` snapshot is what rehydrates the
-            # Fallbacks stat card on resume — without it the cross-file
-            # counters reset to zero after a pause (issue #180).
+        if not save_result:
+            raise OSError(f"Could not save translated XHTML checkpoint for {content_href}")
+        # Update checkpoint progress with chunk statistics. The
+        # `epub_accumulated_stats` snapshot is what rehydrates the
+        # Fallbacks stat card on resume — without it the cross-file
+        # counters reset to zero after a pause (issue #180).
+        translation_context = {}
+        try:
+            from src.core.literary_continuity import export_literary_continuity_state
+            continuity_state = export_literary_continuity_state(runtime_state)
+            if continuity_state:
+                translation_context['literary_continuity_state'] = continuity_state
+        except Exception:
             translation_context = {}
-            try:
-                from src.core.literary_continuity import export_literary_continuity_state
-                continuity_state = export_literary_continuity_state(runtime_state)
-                if continuity_state:
-                    translation_context['literary_continuity_state'] = continuity_state
-            except Exception:
-                translation_context = {}
 
-            checkpoint_manager.save_checkpoint(
-                translation_id=translation_id,
-                # Uniform convention: store the LAST COMPLETED file index
-                # (resume adds +1), matching TXT/SRT. load_checkpoint maps it
-                # back via the 'resume_index_semantics' marker.
-                chunk_index=file_idx,
-                original_text=content_href,
-                translated_text=content_href,
-                chunk_data={
-                    'last_file': content_href,
-                    'file_type': 'epub_xhtml',
-                    'logical_completed_chunks': completed_chunks,
-                    'logical_total_chunks': total_chunks,
-                },
-                translation_context=translation_context or None,
-                total_chunks=total_chunks,
-                completed_chunks=completed_chunks,
-                failed_chunks=failed_chunks,
-                epub_accumulated_stats=epub_accumulated_stats
-            )
+        committed = checkpoint_manager.save_checkpoint(
+            translation_id=translation_id,
+            # Uniform convention: store the LAST COMPLETED file index
+            # (resume adds +1), matching TXT/SRT. load_checkpoint maps it
+            # back via the 'resume_index_semantics' marker.
+            chunk_index=file_idx,
+            original_text=content_href,
+            translated_text=content_href,
+            chunk_data={
+                'last_file': content_href,
+                'file_type': 'epub_xhtml',
+                'logical_completed_chunks': completed_chunks,
+                'logical_total_chunks': total_chunks,
+            },
+            translation_context=translation_context or None,
+            total_chunks=total_chunks,
+            completed_chunks=completed_chunks,
+            failed_chunks=failed_chunks,
+            epub_accumulated_stats=epub_accumulated_stats
+        )
 
-            if log_callback:
-                log_callback("epub_checkpoint_file_saved",
-                           f"💾 Checkpoint saved: {file_rel_path} ({len(file_content)} bytes)")
-        else:
-            if log_callback:
-                log_callback("epub_checkpoint_save_error",
-                             f"⚠️ Warning: Could not save file to checkpoint storage: {content_href}")
+        if not committed:
+            raise OSError(f"Could not commit translated XHTML checkpoint for {content_href}")
     except Exception as e:
         if log_callback:
             log_callback("epub_checkpoint_save_error",
-                         f"⚠️ Warning: Could not save checkpoint: {content_href}: {e}")
+                         f"Could not save checkpoint: {content_href}: {e}")
+        raise
+
+    if log_callback:
+        log_callback("epub_checkpoint_file_saved",
+                     f"💾 Checkpoint saved: {file_rel_path} ({len(file_content)} bytes)")
+    try:
+        checkpoint_manager.delete_xhtml_partial_state(translation_id, content_href)
+    except Exception as cleanup_error:
+        if log_callback:
+            log_callback("epub_partial_cleanup_failed",
+                         f"Checkpoint committed; could not remove partial state for {content_href}: {cleanup_error}")
 
 
 async def _save_translated_files(
@@ -1592,6 +1621,7 @@ async def _save_translated_files(
         except Exception as e_write:
             if log_callback:
                 log_callback("epub_write_error", f"Error writing '{file_path_abs}': {e_write}")
+            raise
 
 
 def _update_ncx_toc_labels_from_translated_docs(
@@ -1624,7 +1654,7 @@ def _update_ncx_toc_labels_from_translated_docs(
 
     for ncx_path in ncx_paths:
         try:
-            parser = etree.XMLParser(encoding="utf-8", recover=True, remove_blank_text=False, huge_tree=True)
+            parser = etree.XMLParser(recover=True, remove_blank_text=False, huge_tree=True)
             tree = etree.parse(str(ncx_path), parser)
             changed = False
             if target_language:
@@ -1674,12 +1704,8 @@ def _update_ncx_toc_labels_from_translated_docs(
                     stats["unchanged"] += 1
 
             if changed:
-                tree.write(
-                    str(ncx_path),
-                    encoding="utf-8",
-                    xml_declaration=True,
-                    pretty_print=True
-                )
+                with ncx_path.open("wb") as output:
+                    tree.write(output, encoding="utf-8", xml_declaration=True, pretty_print=True)
         except Exception as exc:
             stats["errors"] += 1
             if log_callback:
@@ -1964,4 +1990,5 @@ def _update_epub_metadata(
         except Exception:
             pass
 
-    opf_tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+    with open(opf_path, "wb") as output:
+        opf_tree.write(output, encoding='utf-8', xml_declaration=True, pretty_print=True)

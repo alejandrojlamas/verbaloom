@@ -10,7 +10,7 @@ import stat
 import tempfile
 from typing import Mapping
 from urllib.parse import unquote, urlsplit
-from .resource_links import resource_uri_path
+from .resource_links import declared_package_path, resource_uri_path
 import zipfile
 
 from lxml import etree
@@ -64,7 +64,7 @@ def _local_name(node: etree._Element) -> str:
 
 def _container_opf(archive: zipfile.ZipFile) -> str:
     container = etree.fromstring(archive.read("META-INF/container.xml"))
-    return str(container.xpath("string(//*[local-name()='rootfile']/@full-path)") or "")
+    return declared_package_path(container)
 
 
 def _parse(payload: bytes) -> etree._Element:

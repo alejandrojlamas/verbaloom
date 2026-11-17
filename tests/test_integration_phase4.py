@@ -214,6 +214,7 @@ def fibonacci(n):
         # Code block should be protected
         code_blocks = [v for v in tag_map.values() if "fibonacci" in v]
         assert len(code_blocks) >= 1
+        assert "from functools" not in preserved and "def fibonacci" not in preserved
 
         # Restore
         restored = preserver.restore_tags(preserved, tag_map)

@@ -278,7 +278,10 @@ class Database:
         original_text: str,
         translated_text: Optional[str] = None,
         chunk_data: Optional[Dict[str, Any]] = None,
-        status: str = 'completed'
+        status: str = 'completed',
+        *,
+        checkpoint_progress: Optional[Dict[str, Any]] = None,
+        translation_context: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Save a translated chunk to database.
@@ -296,24 +299,32 @@ class Database:
         """
         with self._lock:
             try:
-                conn = self._get_connection()
-                cursor = conn.cursor()
-
-                cursor.execute("""
-                    INSERT OR REPLACE INTO checkpoint_chunks
-                    (translation_id, chunk_index, original_text, translated_text,
-                     chunk_data, status, completed_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (
-                    translation_id,
-                    chunk_index,
-                    original_text,
-                    translated_text,
-                    json.dumps(chunk_data) if chunk_data else None,
-                    status
-                ))
-
-                conn.commit()
+                with self._get_connection() as conn:
+                    conn.execute("""
+                        INSERT OR REPLACE INTO checkpoint_chunks
+                        (translation_id, chunk_index, original_text, translated_text,
+                         chunk_data, status, completed_at)
+                        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, (
+                        translation_id, chunk_index, original_text, translated_text,
+                        json.dumps(chunk_data) if chunk_data else None, status
+                    ))
+                    if checkpoint_progress is not None:
+                        # Hold the same write transaction for the row and the
+                        # resume counters, including the optional continuity state.
+                        row = conn.execute(
+                            "SELECT progress FROM translation_jobs WHERE translation_id = ?",
+                            (translation_id,),
+                        ).fetchone()
+                        progress = json.loads(row["progress"])
+                        progress.update(checkpoint_progress)
+                        conn.execute("""
+                            UPDATE translation_jobs SET progress = ?,
+                                translation_context = COALESCE(?, translation_context),
+                                updated_at = CURRENT_TIMESTAMP WHERE translation_id = ?
+                        """, (json.dumps(progress),
+                              json.dumps(translation_context) if translation_context else None,
+                              translation_id))
                 return True
             except Exception as e:
                 print(f"Error saving chunk: {e}")

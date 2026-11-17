@@ -661,11 +661,10 @@ EPUB_MAX_CONSECUTIVE_FAILED_FILES = max(
     1,
     int(os.getenv('EPUB_MAX_CONSECUTIVE_FAILED_FILES', '3')),
 )
-"""Consecutive failed XHTML files that still stop the book.
+"""Stop after this many adjacent files fail without an explicit content rejection.
 
-Isolated failures are unit problems. Several files failing in a row point at
-the configuration, the model or the provider, and continuing would only spend
-tokens on work that fails the same way.
+Completed chapters, including restored ones, interrupt the streak. Malformed
+provider responses count toward it even when an isolated response can be deferred.
 """
 
 EPUB_PLACEHOLDER_SALVAGE = (

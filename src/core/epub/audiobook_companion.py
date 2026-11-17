@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import hashlib
 from pathlib import Path, PurePosixPath
-import posixpath
 import re
 import shutil
 from tempfile import NamedTemporaryFile
@@ -19,6 +18,8 @@ from typing import Any
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 from lxml import etree
+
+from .resource_links import declared_package_path
 
 from .publication_gate import snapshot_epub
 
@@ -159,11 +160,11 @@ def _clone_epub_with_title_suffix(
 
 def _opf_path(archive: ZipFile) -> str:
     root = etree.fromstring(archive.read(_CONTAINER_PATH), parser=_XML_PARSER)
-    paths = root.xpath("//*[local-name()='rootfile']/@full-path")
-    if not paths:
-        raise AudiobookEpubPreservationError("EPUB container does not declare an OPF package")
-    opf_path = posixpath.normpath(str(paths[0]).replace("\\", "/"))
-    if opf_path.startswith("../") or opf_path not in archive.namelist():
+    try:
+        opf_path = declared_package_path(root)
+    except ValueError as exc:
+        raise AudiobookEpubPreservationError(str(exc)) from exc
+    if opf_path not in archive.namelist():
         raise AudiobookEpubPreservationError(f"Invalid OPF package path: {opf_path}")
     return opf_path
 
@@ -315,7 +316,8 @@ def _nearby_caption(image: etree._Element) -> str:
     parent = image.getparent()
     if parent is None:
         return ""
-    for sibling in (parent.getprevious(), parent.getnext()):
+    for preceding in (True, False):
+        sibling = next(parent.itersiblings("*", preceding=preceding), None)
         if sibling is None:
             continue
         tag = sibling.tag.rsplit("}", 1)[-1].casefold()

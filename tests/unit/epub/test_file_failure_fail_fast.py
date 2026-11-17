@@ -4,7 +4,7 @@ import pytest
 from lxml import etree
 
 from src.core.epub.translation_metrics import TranslationMetrics
-from src.core.epub.translator import _process_all_content_files, translate_epub_file
+from src.core.epub.translator import _process_all_content_files, _save_translated_files, translate_epub_file
 
 
 @pytest.mark.asyncio
@@ -87,6 +87,18 @@ async def test_file_level_quality_failure_does_not_relabel_completed_siblings(mo
     assert result["completed_chunks"] == 0
     assert result["failed_files"] == 1
     assert result["failed_chunks"] == 1
+
+
+@pytest.mark.asyncio
+async def test_unwritable_chapter_aborts_before_packaging(tmp_path):
+    original = tmp_path / "original.xhtml"
+    original.write_text("<html><body>Original</body></html>")
+    docs = {str(original / "missing.xhtml"): etree.fromstring(b"<html><body>Translated</body></html>")}
+    events = []
+    with pytest.raises(OSError):
+        await _save_translated_files(docs, lambda event, _message: events.append(event))
+    assert "epub_write_error" in events
+    assert original.read_text() == "<html><body>Original</body></html>"
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,7 @@ from PIL import Image
 import io
 
 from src.config import NAMESPACES
-from .resource_links import resource_uri_path
+from .resource_links import declared_package_path, resource_uri_path
 
 
 class EPUBCoverExtractor:
@@ -91,23 +91,13 @@ class EPUBCoverExtractor:
     @classmethod
     def _find_opf_file(cls, epub_zip: zipfile.ZipFile) -> Optional[str]:
         """Find the content.opf file in the EPUB."""
-        # Common locations
-        common_paths = [
-            'content.opf',
-            'OEBPS/content.opf',
-            'OPS/content.opf',
-        ]
+        names = epub_zip.namelist()
+        if "META-INF/container.xml" in names:
+            container = etree.fromstring(epub_zip.read("META-INF/container.xml"))
+            return declared_package_path(container)
 
-        for path in common_paths:
-            if path in epub_zip.namelist():
-                return path
-
-        # Search for any .opf file
-        for name in epub_zip.namelist():
-            if name.endswith('.opf'):
-                return name
-
-        return None
+        candidates = [name for name in names if name.lower().endswith(".opf")]
+        return candidates[0] if len(candidates) == 1 else None
 
     @classmethod
     def _find_cover_from_metadata(

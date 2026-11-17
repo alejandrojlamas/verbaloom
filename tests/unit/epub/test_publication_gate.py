@@ -1283,3 +1283,17 @@ def test_publication_gate_does_not_treat_periods_in_acronyms_as_bad_spacing(tmp_
     )
 
     assert report.spacing_findings == 0
+
+
+def test_svg_image_references_keep_document_order(tmp_path):
+    for suffix, refs in (("source", ("first.png", "second.png")), ("output", ("second.png", "first.png"))):
+        body = (
+            '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
+            f'<image xlink:href="{refs[0]}"/><image href="{refs[1]}"/></svg>'
+        )
+        _write_epub(tmp_path / f"{suffix}.epub", language="es", html_language="es", paragraphs=[], body_markup=body)
+
+    source = publication_gate_module.snapshot_epub(tmp_path / "source.epub")
+    output = publication_gate_module.snapshot_epub(tmp_path / "output.epub")
+    assert source.image_refs["chapter.xhtml"] == ["cover.jpg", "first.png", "second.png"]
+    assert output.image_refs["chapter.xhtml"] == ["cover.jpg", "second.png", "first.png"]

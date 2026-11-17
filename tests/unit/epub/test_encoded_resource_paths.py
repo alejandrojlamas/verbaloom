@@ -141,3 +141,96 @@ def test_finishing_and_publication_snapshot_include_encoded_chapters(tmp_path, n
     assert "OEBPS/Text/" + name in snapshot.spine
     href_by_id, _nav, _ncx = _manifest_info(data["opf_tree"].getroot(), "OEBPS/content.opf")
     assert href_by_id["chapter-1"] == "OEBPS/Text/" + name
+
+
+@pytest.mark.asyncio
+async def test_declared_package_and_reading_order_match_for_native_and_adapter(tmp_path):
+    from src.core.adapters.epub_adapter import EpubAdapter
+    from src.core.epub.rtl_support import apply_rtl_to_epub_directory
+
+    directory = tmp_path / "book"
+    directory.mkdir()
+    source = _book(directory)
+    rootfile = Path(source["opf_path"])
+    selected_name = "OEBPS/Selected #1%20 edition.OPF"
+    rootfile.rename(directory / selected_name)
+    decoy = directory / "alternative.opf"
+    decoy.write_text(
+        '<package xmlns="http://www.idpf.org/2007/opf"><manifest/><spine/></package>'
+    )
+    container = directory / "META-INF/container.xml"
+    tree = etree.parse(str(container))
+    declared = tree.xpath("//*[local-name()='rootfile']")[0]
+    declared.set("full-path", quote(selected_name))
+    etree.SubElement(declared.getparent(), declared.tag, {
+        "full-path": decoy.name, "media-type": "application/oebps-package+xml",
+    })
+    tree.write(str(container))
+
+    book = tmp_path / "book.epub"
+    with zipfile.ZipFile(book, "w") as archive:
+        for path in directory.rglob("*"):
+            if path.is_file():
+                archive.write(path, path.relative_to(directory))
+    package = translator._parse_epub_manifest(str(directory))
+    assert Path(package["opf_path"]) == directory / selected_name
+    assert package["content_files"] == source["content_files"]
+    from src.core.epub import audiobook_companion, cover_extractor, metadata_localizer
+    with zipfile.ZipFile(book) as archive:
+        assert cover_extractor.EPUBCoverExtractor._find_opf_file(archive) == selected_name
+        assert metadata_localizer._container_opf(archive) == selected_name
+        assert audiobook_companion._opf_path(archive) == selected_name
+    snapshot = snapshot_epub(book)
+    assert snapshot.spine == ["OEBPS/Text/front.xhtml", "OEBPS/Text/Chapter 1.xhtml"]
+
+    adapter = EpubAdapter(str(book), str(tmp_path / "out.epub"), {})
+    try:
+        assert await adapter.prepare_for_translation()
+        assert [unit.content for unit in adapter.get_translation_units()] == package["content_files"]
+    finally:
+        await adapter.cleanup()
+
+    alternate_bytes = decoy.read_bytes()
+    assert apply_rtl_to_epub_directory(str(directory), "Arabic", "English")["opf_updated"]
+    assert etree.parse(package["opf_path"]).xpath("string(//*[local-name()='spine']/@page-progression-direction)") == "rtl"
+    assert decoy.read_bytes() == alternate_bytes
+    updated = translator._parse_epub_manifest(str(directory))
+    translator._update_epub_metadata(updated["opf_tree"], updated["opf_path"], "Spanish")
+    assert etree.parse(updated["opf_path"]).xpath("string(//*[local-name()='language'])") == "es"
+    assert list((directory / "OEBPS").glob("*.OPF")) == [directory / selected_name]
+
+
+@pytest.mark.parametrize("failure", ["absent-rootfile", "absent-id", "absent-href"])
+def test_inconsistent_container_or_spine_fails_at_ingestion(tmp_path, failure):
+    package = _book(tmp_path)
+    if failure == "absent-rootfile":
+        container = tmp_path / "META-INF/container.xml"
+        content = container.read_text().replace("OEBPS/content.opf", "OEBPS/missing.opf")
+        container.write_text(content)
+    else:
+        tree = package["opf_tree"]
+        if failure == "absent-id":
+            tree.xpath("//*[local-name()='itemref']")[0].set("idref", "missing")
+        else:
+            del tree.xpath("//*[local-name()='item']")[0].attrib["href"]
+        tree.write(package["opf_path"])
+
+    with pytest.raises((ValueError, FileNotFoundError), match="EPUB (package document|spine)"):
+        translator._parse_epub_manifest(str(tmp_path))
+
+
+def test_legacy_unpacked_input_requires_unambiguous_package(tmp_path):
+    package = _book(tmp_path)
+    (tmp_path / "META-INF/container.xml").unlink()
+    assert translator._parse_epub_manifest(str(tmp_path))["opf_path"] == package["opf_path"]
+
+    (tmp_path / "another.opf").touch()
+    with pytest.raises(ValueError, match="Multiple EPUB package documents"):
+        translator._parse_epub_manifest(str(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_source_with_invalid_character_encoding_is_not_silently_planned(tmp_path):
+    (tmp_path / "bad.xhtml").write_bytes(b"<html><body><p>text \xff</p></body></html>")
+    with pytest.raises(ValueError, match="Invalid EPUB XML encoding"):
+        await translator._precount_chunks(["bad.xhtml"], str(tmp_path), 200)

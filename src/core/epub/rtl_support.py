@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Set, Optional
 import os
 
+from lxml import etree
+
+from src.utils.text_encoding import epub_xml_encoding
+from .resource_links import find_package_document
+
 
 # RTL Languages supported with their ISO 639-1 codes
 RTL_LANGUAGES: Set[str] = {
@@ -249,6 +254,16 @@ def generate_rtl_css(language: str) -> str:
     return RTL_CSS_TEMPLATE.format(language=code)
 
 
+def _parse_layout_html(html_content: str) -> etree._Element:
+    # EPUB XHTML is XML: retain its namespaces, case-sensitive attributes,
+    # comments and empty elements when adding direction styles.
+    payload = html_content.encode("utf-8")
+    try:
+        return etree.fromstring(payload, etree.XMLParser(encoding="utf-8", resolve_entities=False))
+    except etree.XMLSyntaxError:
+        return etree.fromstring(payload, etree.HTMLParser(encoding="utf-8", default_doctype=False))
+
+
 def inject_rtl_css_to_html(html_content: str, language: str) -> str:
     """
     Inject RTL CSS into HTML content.
@@ -267,23 +282,23 @@ def inject_rtl_css_to_html(html_content: str, language: str) -> str:
     lang_code = get_language_code(language) or 'ar'
     
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html_content.encode('utf-8'), parser)
+        tree = _parse_layout_html(html_content)
+        namespace = etree.QName(tree).namespace
         
         # Find or create head
-        head = tree.find('.//head')
+        head = tree.find('{*}head')
         if head is None:
             # Create head element
-            head = etree.Element('head')
+            head = etree.Element(etree.QName(namespace, 'head'))
             # Insert before body if exists
-            body = tree.find('.//body')
+            body = tree.find('{*}body')
             if body is not None:
                 body.addprevious(head)
             else:
                 tree.insert(0, head)
         
         # Create style element
-        style_elem = etree.Element('style')
+        style_elem = etree.Element(etree.QName(namespace, 'style'))
         style_elem.set('type', 'text/css')
         style_elem.text = f"\n{css_content}\n"
         
@@ -297,16 +312,7 @@ def inject_rtl_css_to_html(html_content: str, language: str) -> str:
             root.set('dir', 'rtl')
             root.set('lang', lang_code)
         
-        # Convert back to string
-        result = etree.tostring(tree, encoding='unicode', method='html')
-        
-        # Ensure DOCTYPE is preserved if present
-        if '<!DOCTYPE' in html_content.upper() or html_content.strip().startswith('<?xml'):
-            # Add DOCTYPE back if it was stripped
-            if '<!DOCTYPE' not in result.upper():
-                result = '<!DOCTYPE html>\n' + result
-        
-        return result
+        return etree.tostring(tree.getroottree(), encoding="unicode", method="xml")
     
     except Exception:
         # If parsing fails, inject CSS manually
@@ -378,7 +384,8 @@ def update_opf_for_rtl(opf_path: str, language: str) -> bool:
             spine.set('page-progression-direction', 'rtl')
             
             # Write back
-            tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+            with open(opf_path, "wb") as output:
+                tree.write(output, encoding='utf-8', xml_declaration=True, pretty_print=True)
             return True
         
         return False
@@ -415,15 +422,15 @@ blockquote { border-left: 3px solid #ccc; border-right: none; margin: 1em 0; pad
 """
     
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html_content.encode('utf-8'), parser)
+        tree = _parse_layout_html(html_content)
+        namespace = etree.QName(tree).namespace
         
         # Find head
-        head = tree.find('.//head')
+        head = tree.find('{*}head')
         
         # Remove existing RTL style elements (identified by comment or content)
         if head is not None:
-            for style in head.findall('.//style'):
+            for style in head.findall('.//{*}style'):
                 style_text = style.text or ''
                 # Check if it's an RTL style (contains our marker or RTL-specific rules)
                 if ('RTL Support' in style_text or 
@@ -443,20 +450,12 @@ blockquote { border-left: 3px solid #ccc; border-right: none; margin: 1em 0; pad
         
         # Add LTR reset CSS
         if head is not None:
-            style_elem = etree.Element('style')
+            style_elem = etree.Element(etree.QName(namespace, 'style'))
             style_elem.set('type', 'text/css')
             style_elem.text = f"\n{ltr_css}\n"
             head.insert(0, style_elem)  # Insert at beginning
         
-        # Convert back to string
-        result = etree.tostring(tree, encoding='unicode', method='html')
-        
-        # Preserve DOCTYPE
-        if '<!DOCTYPE' in html_content.upper() or html_content.strip().startswith('<?xml'):
-            if '<!DOCTYPE' not in result.upper():
-                result = '<!DOCTYPE html>\n' + result
-        
-        return result
+        return etree.tostring(tree.getroottree(), encoding="unicode", method="xml")
     
     except Exception:
         # Fallback: use regex to remove RTL styles
@@ -518,7 +517,8 @@ def update_opf_for_ltr(opf_path: str) -> bool:
                 spine.set('page-progression-direction', 'ltr')
                 
                 # Write back
-                tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+                with open(opf_path, "wb") as output:
+                    tree.write(output, encoding='utf-8', xml_declaration=True, pretty_print=True)
                 return True
         
         return False
@@ -591,14 +591,7 @@ def _apply_rtl_styles(temp_dir: str, target_language: str, result: dict) -> dict
     result['is_rtl'] = True
     
     # Find and update OPF file
-    opf_path = None
-    for root_dir, _, files in os.walk(temp_dir):
-        for file in files:
-            if file.endswith('.opf'):
-                opf_path = os.path.join(root_dir, file)
-                break
-        if opf_path:
-            break
+    opf_path = find_package_document(Path(temp_dir))
     
     if opf_path:
         result['opf_updated'] = update_opf_for_rtl(opf_path, target_language)
@@ -609,8 +602,8 @@ def _apply_rtl_styles(temp_dir: str, target_language: str, result: dict) -> dict
             if file.endswith(('.xhtml', '.html', '.htm')):
                 file_path = os.path.join(root_dir, file)
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
+                    data = Path(file_path).read_bytes()
+                    content = data.decode(epub_xml_encoding(data)).removeprefix("\ufeff")
                     
                     # Inject RTL CSS
                     modified_content = inject_rtl_css_to_html(content, target_language)
@@ -631,14 +624,7 @@ def _apply_ltr_reset(temp_dir: str, result: dict) -> dict:
     result['was_transition'] = True
     
     # Find and update OPF file
-    opf_path = None
-    for root_dir, _, files in os.walk(temp_dir):
-        for file in files:
-            if file.endswith('.opf'):
-                opf_path = os.path.join(root_dir, file)
-                break
-        if opf_path:
-            break
+    opf_path = find_package_document(Path(temp_dir))
     
     if opf_path:
         result['opf_updated'] = update_opf_for_ltr(opf_path)
@@ -649,8 +635,8 @@ def _apply_ltr_reset(temp_dir: str, result: dict) -> dict:
             if file.endswith(('.xhtml', '.html', '.htm')):
                 file_path = os.path.join(root_dir, file)
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
+                    data = Path(file_path).read_bytes()
+                    content = data.decode(epub_xml_encoding(data)).removeprefix("\ufeff")
                     
                     # Remove RTL CSS and reset to LTR
                     modified_content = remove_rtl_from_html(content)

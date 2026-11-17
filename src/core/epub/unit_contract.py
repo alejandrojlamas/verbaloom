@@ -73,8 +73,8 @@ def _legacy_safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[st
 def _secret_option(key: str) -> bool:
     key = key.casefold()
     return (
-        key in {"key", "token", "secret", "credential", "password", "authorization"}
-        or key.endswith(("api_key", "access_token", "refresh_token", "_secret", "_password"))
+        key in {"key", "token", "secret", "credentials", "credential", "password", "authorization"}
+        or key.endswith(("api_key", "access_token", "refresh_token", "auth_token", "_secret", "_password"))
     )
 
 
@@ -99,7 +99,8 @@ def _dependency_value(value: Any, *, redact_secrets: bool = True) -> Any:
     raise TypeError(f"Unsupported editorial dependency type: {type(value).__name__}")
 
 
-def _safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+def safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """Keep editorial settings, excluding runtime objects and provider credentials."""
     return _dependency_value({
         str(k): v for k, v in (options or {}).items() if not str(k).startswith("_")
     })
@@ -146,7 +147,7 @@ def _stage_option_groups(
     """Split safe prompt options so a later-stage change has narrow invalidation."""
     safe = (
         _legacy_safe_prompt_options(options) if legacy_runtime_identity
-        else _safe_prompt_options(options)
+        else safe_prompt_options(options)
     )
     review_tokens = ("review", "reviewer", "refine", "editorial", "style", "voice", "repair", "postprocess")
     audit_tokens = ("audit", "fidelity", "supervisor", "judge", "guard")

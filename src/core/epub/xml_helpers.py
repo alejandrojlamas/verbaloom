@@ -9,6 +9,21 @@ from typing import Iterator, Dict, Any
 from lxml import etree
 
 
+_ILLUSTRATION_OR_TABLE = etree.XPath(
+    "boolean(ancestor-or-self::*[local-name()='figure' or local-name()='figcaption' "
+    "or local-name()='table' or local-name()='caption' or @role='figure' or @role='caption' "
+    "or contains(concat(' ', normalize-space(@class), ' '), ' caption ') "
+    "or contains(concat(' ', normalize-space(@class), ' '), ' figcaption ')] "
+    "| descendant-or-self::*[local-name()='img' or local-name()='image' or local-name()='svg' "
+    "or local-name()='figure' or local-name()='picture' or local-name()='object' or local-name()='table'])"
+)
+
+
+def has_illustration_or_table_content(element: etree._Element) -> bool:
+    """Whether hiding this block would also hide a figure, caption or table value."""
+    return _ILLUSTRATION_OR_TABLE(element)
+
+
 def safe_iter_children(element: etree._Element) -> Iterator[etree._Element]:
     """
     Safely iterate over element children, handling different lxml/Cython versions

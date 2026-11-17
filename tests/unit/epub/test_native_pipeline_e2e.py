@@ -1,6 +1,7 @@
 """Native EPUB orchestration/resources with synthetic HTTP and actual EPUBCheck."""
 
 import asyncio
+import codecs
 import hashlib
 import io
 import json
@@ -44,7 +45,7 @@ TRANSLATIONS = {
 NS = {"h": "http://www.w3.org/1999/xhtml"}
 
 
-def write_book(path, *, nav_in_spine=False):
+def write_book(path, *, nav_in_spine=False, mixed_encodings=False):
     image = io.BytesIO()
     Image.new("RGB", (320, 480), "green").save(image, "PNG")
 
@@ -86,7 +87,7 @@ def write_book(path, *, nav_in_spine=False):
 <p id="p2">He did not open the door; he waited for Ana until midnight.</p>
 <p id="p3"><strong>It was a cold morning.</strong> <em>She counted 17 coins on the table.</em></p>
 <figure id="map"><img src="map.png" alt="Map"/><figcaption>The map showed the road to the harbor.</figcaption></figure>
-<p id="reference"><a id="ref1" href="#note1" epub:type="noteref">1</a></p>
+<p id="reference"><a id="ref1" href="#note1" epub:type="noteref"><sup>*</sup></a></p>
 <aside id="note1" epub:type="footnote"><p>This note describes the oldest map in the archive.</p><a href="#ref1">Return to the passage</a></aside>
 </section>""",
         ),
@@ -119,6 +120,12 @@ def write_book(path, *, nav_in_spine=False):
             "mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED
         )
         for name, data in resources.items():
+            if mixed_encodings and name in {"OEBPS/one.xhtml", "OEBPS/two.xhtml"}:
+                # A single edition can mix UTF-8 and either UTF-16 byte order.
+                little_endian = name.endswith("one.xhtml")
+                bom = codecs.BOM_UTF16_LE if little_endian else codecs.BOM_UTF16_BE
+                encoding = "utf-16-le" if little_endian else "utf-16-be"
+                data = bom + data.replace('encoding="utf-8"', 'encoding="utf-16"').encode(encoding)
             archive.writestr(name, data)
 
 
@@ -192,22 +199,23 @@ def native_http(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("nav_in_spine", [False, True])
 @pytest.mark.parametrize(
-    "preset",
+    ("preset", "mixed_encodings"),
     [
-        "compatible",
-        "openai_equivalent",
-        "deepseek_source_audited",
-        "openai_source_audited",
+        ("compatible", False),
+        ("openai_equivalent", False),
+        ("deepseek_source_audited", False),
+        ("openai_source_audited", False),
+        pytest.param("compatible", True, id="legacy-utf16"),
     ],
 )
 async def test_native_epub_preserves_resources_and_passes_real_epubcheck(
-    tmp_path, native_http, preset, nav_in_spine
+    tmp_path, native_http, preset, nav_in_spine, mixed_encodings
 ):
     executable = shutil.which("epubcheck")
     if executable is None:
         pytest.skip("Actual EPUBCheck is required; no successful-validator stub")
     source, output = tmp_path / "source.epub", tmp_path / "translated.epub"
-    write_book(source, nav_in_spine=nav_in_spine)
+    write_book(source, nav_in_spine=nav_in_spine, mixed_encodings=mixed_encodings)
     original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
     before = await asyncio.to_thread(
         subprocess.run,
@@ -217,7 +225,13 @@ async def test_native_epub_preserves_resources_and_passes_real_epubcheck(
         timeout=60,
         check=False,
     )
-    assert before.returncode == 0, before.stdout + before.stderr
+    if mixed_encodings:
+        # These legacy chapters are readable XML but EPUB 3.3 requires UTF-8 XHTML.
+        # The publication below must correct both and still pass EPUBCheck.
+        assert before.returncode != 0
+        assert re.findall(r"\(([A-Z]+_\d+)\)", before.stdout + before.stderr) == ["HTM_058"] * 2
+    else:
+        assert before.returncode == 0, before.stdout + before.stderr
     settings = config(preset, refine=True, preserve_technical=True)
     settings["pipeline"]["budget"] = {"limit_usd": "5", "max_calls": 100}
     store = TokenUsageStore(tmp_path / "usage.db")
@@ -277,6 +291,7 @@ async def test_native_epub_preserves_resources_and_passes_real_epubcheck(
             == TRANSLATIONS["The map showed the road to the harbor."]
         )
         assert one.xpath('//*[@id="ref1"]/@href') == ["#note1"]
+        assert one.xpath('string(//*[@id="ref1"]/h:sup)', namespaces=NS) == "*"
         assert one.xpath('//*[@id="note1"]/h:a/@href', namespaces=NS) == ["#ref1"]
         assert two.xpath("//h:td/text()", namespaces=NS) == ["17", "23.50"]
         assert two.xpath('string(//*[@id="formula"])') == "E = mc^2"

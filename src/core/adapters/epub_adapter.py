@@ -20,7 +20,6 @@ from lxml import etree
 
 from .format_adapter import FormatAdapter
 from .translation_unit import TranslationUnit
-from src.config import NAMESPACES
 from src.core.epub.resource_links import resource_uri_path
 
 
@@ -78,47 +77,17 @@ class EpubAdapter(FormatAdapter):
             with zipfile.ZipFile(self.input_file_path, 'r') as zip_ref:
                 safe_extractall(zip_ref, self.work_dir)
 
-            # Find OPF file
-            self.opf_path = self._find_opf_file()
-            if not self.opf_path:
-                return False
+            from src.core.epub.translator import _parse_epub_manifest
 
-            # Parse OPF to get content files
-            self.opf_tree = etree.parse(str(self.opf_path))
-            opf_root = self.opf_tree.getroot()
-            self.opf_dir = self.opf_path.parent
-
-            manifest = opf_root.find('.//opf:manifest', namespaces=NAMESPACES)
-            spine = opf_root.find('.//opf:spine', namespaces=NAMESPACES)
-
-            if manifest is None or spine is None:
-                return False
-
-            # Get content files from spine (in reading order)
-            for itemref in spine.findall('.//opf:itemref', namespaces=NAMESPACES):
-                idref = itemref.get('idref')
-                item = manifest.find(f'.//opf:item[@id="{idref}"]', namespaces=NAMESPACES)
-                if item is not None:
-                    media_type = item.get('media-type')
-                    href = item.get('href')
-                    if media_type in ['application/xhtml+xml', 'text/html'] and href:
-                        self.content_files.append(href)
-
+            package = _parse_epub_manifest(str(self.work_dir))
+            self.opf_path = Path(package["opf_path"])
+            self.opf_dir = Path(package["opf_dir"])
+            self.opf_tree = package["opf_tree"]
+            self.content_files = package["content_files"]
             return True
 
         except Exception:
             return False
-
-    def _find_opf_file(self) -> Optional[Path]:
-        """
-        Find the OPF file in the extracted EPUB.
-
-        Returns:
-            Path to OPF file or None if not found
-        """
-        for file_path in self.work_dir.rglob('*.opf'):
-            return file_path
-        return None
 
     def get_translation_units(self) -> List[TranslationUnit]:
         """

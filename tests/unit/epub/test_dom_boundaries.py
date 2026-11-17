@@ -250,3 +250,39 @@ def test_finds_and_repairs_only_meaningful_empty_epub_blocks(tmp_path):
         chapter = archive.read("Text/chapter.xhtml").decode()
         assert "<em>Tenía frío.</em>" in chapter
         assert archive.read("Images/preserved.bin") == b"unchanged-resource"
+
+
+def test_empty_symbolic_links_are_repaired_in_place_without_copying_link_prose():
+    source = _root(
+        '<p>Before <a href="#note"><sup>*</sup></a> and <a href="#note">†</a>. '
+        '<a href="#note">See <i>note</i></a>. <a href="#other">42</a>.</p>'
+    )
+    output = _root(
+        '<p>Antes <a href="#note"><sup/></a> y <a href="#note">†</a>. '
+        '<a href="#note">Consultar la <i>nota</i></a>. <a href="#other">42</a>.</p>'
+    )
+    assert len(compare_xhtml_boundaries(source, output).structural_mismatches) == 1
+    report = compare_xhtml_boundaries(source, output, repair=True)
+    assert report.clean and report.repaired_boundaries == 1
+    assert output.xpath("string(//*[local-name()='sup'])") == "*"
+    assert [a.xpath("string(.)") for a in output.xpath("//*[local-name()='a']")] == [
+        "*", "†", "Consultar la nota", "42",
+    ]
+    assert compare_xhtml_boundaries(source, output, repair=True).repaired_boundaries == 0
+
+
+def test_reordered_ambiguous_notes_stay_recoverable_without_guessing():
+    source = _root('<p>Text<a href="#n">*</a><a href="#n">†</a></p>')
+    output = _root('<p>Texto<a href="#n">†</a><a href="#n"/></p>')
+    report = compare_xhtml_boundaries(source, output, repair=True)
+    assert report.structural_mismatches and report.repaired_boundaries == 0
+    assert output.xpath("string((//*[local-name()='a'])[2])") == ""
+
+
+def test_extra_or_deleted_link_does_not_hide_a_missing_note_marker():
+    source = _root('<p>Text<a href="#n" id="ref1">*</a><a href="#n" id="ref2">†</a></p>')
+    output = _root('<p>Texto<a href="#n" id="other">→</a><a href="#n" id="ref2"/></p>')
+    report = compare_xhtml_boundaries(source, output, repair=True)
+    assert report.repaired_boundaries == 1 and report.structural_mismatches
+    assert output.xpath("string(//*[@id='ref2'])") == "†"
+    assert output.xpath("string(//*[@id='other'])") == "→"

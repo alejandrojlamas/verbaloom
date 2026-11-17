@@ -9,11 +9,47 @@ Key features:
 - Strict validation ensures placeholder integrity post-translation
 - Automatic mutation detection and correction
 """
+from html import unescape
 import re
 from typing import Dict, List, Tuple
 
 from .placeholder_validator import PlaceholderValidator
 from src.common.placeholder_format import PlaceholderFormat
+
+
+_MARKUP = re.compile(r"""(<!--.*?-->|<\?.*?\?>|<(?:[^<>"']|"[^"]*"|'[^']*')+>)""", re.S)
+_ANCHOR_OPEN = re.compile(r"<(?:[\w.-]+:)?a(?=[\s>])", re.I)
+_ANCHOR_CLOSE = re.compile(r"</(?:[\w.-]+:)?a\s*>", re.I)
+_CODE_OPEN = re.compile(r"<(?:[\w.-]+:)?code(?=[\s>])", re.I)
+_CODE_CLOSE = re.compile(r"</(?:[\w.-]+:)?code\s*>", re.I)
+
+
+def _markup_segments(text: str, *, protect_code: bool = False) -> list[str]:
+    """Keep a symbolic link label with its markup, including nested superscripts.
+
+    Losing the label of a footnote or a backlink leaves a structurally valid
+    but invisible link. Word-bearing labels remain available for translation.
+    """
+    segments = _MARKUP.split(text)
+    result = []
+    anchor_start = None
+    code_start = None
+    for segment in segments:
+        if _ANCHOR_OPEN.match(segment) and not segment.endswith("/>"):
+            anchor_start = len(result)
+        if protect_code and _CODE_OPEN.match(segment) and not segment.endswith("/>"):
+            code_start = len(result)
+        result.append(segment)
+        if code_start is not None and _CODE_CLOSE.fullmatch(segment):
+            result[code_start:] = ["".join(result[code_start:])]
+            code_start = None
+        if anchor_start is not None and _ANCHOR_CLOSE.fullmatch(segment):
+            anchor = result[anchor_start:]
+            label = unescape("".join(part for part in anchor if not part.startswith("<"))).strip()
+            if label and not any(char.isalnum() for char in label):
+                result[anchor_start:] = ["".join(anchor)]
+            anchor_start = None
+    return result
 
 
 def is_non_translatable(text: str) -> bool:
@@ -87,7 +123,7 @@ class TagPreserver:
         self.protect_technical = protect_technical
         self._detector = None  # Lazy-load TechnicalContentDetector when needed
 
-    def preserve_tags(self, text: str) -> Tuple[str, Dict[str, str]]:
+    def preserve_tags(self, text: str, *, legacy_markup: bool = False) -> Tuple[str, Dict[str, str]]:
         """
         Replace HTML/XML tags with grouped placeholders.
 
@@ -120,7 +156,8 @@ class TagPreserver:
 
         # Split text into segments: tags vs non-tags
         # This preserves the order and allows us to analyze each segment
-        segments = re.split(r'(<[^>]+>)', text)
+        # Recorded legacy plans use their original token boundaries on resume.
+        segments = re.split(r'(<[^>]+>)', text) if legacy_markup else _markup_segments(text)
 
         # Build output by grouping tags and non-translatable content
         merged_segments = []
@@ -204,7 +241,7 @@ class TagPreserver:
         text_with_markers, multiline_block_map = self._extract_multiline_blocks(text)
 
         # Step 2: Split on HTML tags
-        tag_segments = re.split(r'(<[^>]+>)', text_with_markers)
+        tag_segments = _markup_segments(text_with_markers, protect_code=True)
 
         # Step 3 & 4: For each segment, split on technical patterns and group
         all_segments = []

@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable, Optional
 from urllib.parse import quote, unquote, urlsplit
-from .resource_links import resource_uri_path
+from .resource_links import declared_package_path, resource_uri_path
 import zipfile
 
 from lxml import etree
@@ -40,7 +40,7 @@ from src.utils.language_detector import LanguageDetector
 
 from .lang_support import get_language_code
 from .dom_boundaries import _BLOCK_XPATH, audit_epub_dom_boundaries
-from .professionalize import count_invalid_blockquote_inline_runs
+from .professionalize import _image_reference, count_invalid_blockquote_inline_runs
 from .publication_structure import (
     GENERATED_COVER_IMAGE,
     GENERATED_COVER_PAGE,
@@ -382,7 +382,7 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
         file_infos = [item for item in infos if not item.is_dir()]
         names = [item.filename for item in file_infos]
         container = etree.fromstring(archive.read("META-INF/container.xml"))
-        opf_path = container.xpath("string(//*[local-name()='rootfile']/@full-path)")
+        opf_path = declared_package_path(container)
         package = etree.fromstring(archive.read(opf_path))
         opf_dir = posixpath.dirname(opf_path)
         manifest_nodes = package.xpath("//*[local-name()='manifest']/*[local-name()='item']")
@@ -502,7 +502,10 @@ def snapshot_epub(path: str | Path, *, source_texts: Optional[list[str]] = None,
                     "' tbl-sanitized-artifact ')]"
                 )
             }
-            image_refs[file_href] = [str(value) for value in root.xpath("//*[local-name()='img']/@src")]
+            image_refs[file_href] = [
+                reference for node in root.xpath("//*[local-name()='img' or local-name()='image']")
+                if (reference := _image_reference(node))
+            ]
             links.extend((file_href, str(value)) for value in root.xpath("//@href") if value)
             for ordinal, element in enumerate(root.xpath(_BLOCK_XPATH)):
                 text = _normalized_text(" ".join(element.itertext()))
@@ -1186,7 +1189,7 @@ def normalize_epub_language_metadata(epub_path: str | Path, target_language: str
     try:
         with zipfile.ZipFile(path, "r") as source, zipfile.ZipFile(tmp_path, "w") as output:
             container = etree.fromstring(source.read("META-INF/container.xml"))
-            opf_path = container.xpath("string(//*[local-name()='rootfile']/@full-path)")
+            opf_path = declared_package_path(container)
             for info in source.infolist():
                 payload = source.read(info.filename)
                 if info.filename == opf_path:

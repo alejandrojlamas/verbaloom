@@ -18,6 +18,7 @@ Historical note: earlier versions DROPPED tables and figures entirely (real
 content loss, not just formatting) and flattened every inline tag. Both were
 core causes of "format not preserved" reports for EPUB.
 """
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -35,7 +36,7 @@ BLOCK_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre"
 # Containers we descend into looking for blocks
 CONTAINER_TAGS = (
     "div", "section", "article", "main", "header", "footer", "aside", "nav",
-    "figure", "picture",
+    "figure", "figcaption", "picture",
 )
 # Subtrees never sent to the LLM in Plain Text Mode (no recoverable text)
 DROP_TAGS = ("svg", "video", "audio", "iframe", "form", "script", "style")
@@ -46,6 +47,12 @@ TABLE_TAGS = ("table",)
 # Inline tags encoded as markdown emphasis
 _BOLD_TAGS = ("strong", "b")
 _ITALIC_TAGS = ("em", "i")
+_PHRASING_TAGS = {
+    "a", "abbr", "b", "bdi", "bdo", "big", "br", "cite", "code", "data",
+    "del", "dfn", "em", "font", "i", "ins", "kbd", "label", "mark", "q",
+    "ruby", "s", "samp", "small", "span", "strike", "strong", "sub", "sup",
+    "time", "tt", "u", "var", "wbr",
+}
 
 XHTML_NS = "http://www.w3.org/1999/xhtml"
 
@@ -110,7 +117,7 @@ def _extract_segments(
                 continue
 
             name = _local_name(current)
-            if name in DROP_TAGS or name in TABLE_TAGS:
+            if not name or name in DROP_TAGS or name in TABLE_TAGS:
                 if c_include_tail and current.tail:
                     emit(current.tail, cb, ci, ch)
                 continue
@@ -229,6 +236,39 @@ def _extract_table(
         table_specs[spec.cell_blocks[0]] = spec
 
 
+def _container_blocks(container: etree._Element) -> list[etree._Element]:
+    """Keep direct prose and inline markup together between structural children."""
+    if (
+        _local_name(container) != "figcaption"
+        and not (container.text or "").strip()
+        and not any((c.tail or "").strip() for c in container)
+    ):
+        return list(container)
+
+    blocks = []
+    phrase = etree.Element("p")
+    phrase.text = container.text
+    for child in container:
+        name = _local_name(child)
+        if name in _PHRASING_TAGS:
+            phrase.append(deepcopy(child))  # Includes its tail; leave the source tree intact.
+            continue
+        if name and name not in DROP_TAGS:
+            if len(phrase) or (phrase.text or "").strip():
+                blocks.append(phrase)
+            blocks.append(child)
+            phrase = etree.Element("p")
+        if child.tail:
+            if len(phrase):
+                last = phrase[-1]
+                last.tail = (last.tail or "") + child.tail
+            else:
+                phrase.text = (phrase.text or "") + child.tail
+    if len(phrase) or (phrase.text or "").strip():
+        blocks.append(phrase)
+    return blocks
+
+
 def _collect_blocks(
     root: etree._Element,
     paragraphs_text: List[str],
@@ -243,12 +283,12 @@ def _collect_blocks(
     For containers (div, section, figure, ...), we descend iteratively.
     For tables, each non-empty cell becomes a block plus a geometry record.
     """
-    stack = list(reversed(list(root)))
+    stack = list(reversed(_container_blocks(root)))
     while stack:
         child = stack.pop()
         name = _local_name(child)
 
-        if name in DROP_TAGS:
+        if not name or name in DROP_TAGS:
             continue
 
         if name in TABLE_TAGS:
@@ -258,14 +298,8 @@ def _collect_blocks(
             )
             continue
 
-        if name in LIST_WRAPPER_TAGS:
-            for nested in reversed(list(child)):
-                stack.append(nested)
-            continue
-
-        if name in CONTAINER_TAGS:
-            for nested in reversed(list(child)):
-                stack.append(nested)
+        if name in LIST_WRAPPER_TAGS or name in CONTAINER_TAGS:
+            stack.extend(reversed(_container_blocks(child)))
             continue
 
         if name in BLOCK_TAGS:

@@ -26,7 +26,7 @@ def test_updates_ncx_nav_labels_from_translated_xhtml_without_changing_jump_targ
     chapter_path = opf_dir / "chapter1.xhtml"
     chapter_path.write_text("<html/>", encoding="utf-8")
 
-    ncx_path = opf_dir / "toc.ncx"
+    ncx_path = opf_dir / "toc%20.ncx"
     ncx_path.write_text(
         f"""<?xml version="1.0" encoding="utf-8"?>
 <ncx xmlns="{NCX_NS}" version="2005-1">

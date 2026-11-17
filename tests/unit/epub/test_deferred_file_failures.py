@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from lxml import etree
 
 from src.core.epub import translator as subject
+from src.core.epub import xhtml_translator as xhtml
+from src.core.epub.exceptions import ChunkTranslationFailedError
 from src.core.epub.translation_metrics import TranslationMetrics
 from src.core.epub.translator import (
     _completed_epub_file_indices,
@@ -199,6 +201,100 @@ async def test_isolated_failures_do_not_trip_the_consecutive_limit(tmp_path, mon
     assert calls == FILES
     assert result["failed_files"] == 2
     assert result["unresolved_files"] == ["one.xhtml", "three.xhtml"]
+
+
+@pytest.mark.asyncio
+async def test_restored_chapters_break_failure_streak_on_resume(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.config.EPUB_MAX_CONSECUTIVE_FAILED_FILES", 2)
+    checkpoint = _Checkpoint(rows=[_row(1, "two.xhtml")])
+    result, calls = await _run(
+        tmp_path, monkeypatch, failing={"one.xhtml", "three.xhtml"},
+        checkpoint=checkpoint, restored=["two.xhtml"], completed={1}, restore_attempted=True,
+    )
+
+    assert calls == ["one.xhtml", "three.xhtml", "four.xhtml"]
+    assert result["unresolved_files"] == ["one.xhtml", "three.xhtml"]
+    assert sorted(row["chunk_index"] for row in checkpoint.rows) == [1, 3]
+
+
+@pytest.mark.asyncio
+async def test_adjacent_rejected_units_do_not_stop_independent_chapters(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.config.EPUB_MAX_CONSECUTIVE_FAILED_FILES", 2)
+    read_file = subject._translate_single_xhtml_file
+    for href in FILES:
+        (tmp_path / href).write_text("<html><body><p>Source.</p></body></html>")
+    calls = []
+
+    async def translate(self, **kwargs):
+        href = kwargs["file_href"]
+        calls.append(href)
+        if href == FILES[0]:
+            raise ChunkTranslationFailedError(
+                "Rejected repair", reason="audit_rejected", detail="repair_repeated_candidate",
+            )
+        if href == FILES[1]:
+            raise ProviderActionRequiredError("Refused", reason="provider_refusal", provider="test")
+        return True, TranslationMetrics()
+
+    monkeypatch.setattr(subject.GenericTranslationOrchestrator, "translate", translate)
+    result, _ = await _run(tmp_path, monkeypatch, failing=(), translate=read_file)
+
+    assert calls == FILES
+    assert result["unresolved_files"] == FILES[:2]
+    assert result["failed_chunks"] == 2
+
+
+@pytest.mark.asyncio
+async def test_repeated_unusable_audit_responses_still_stop_the_book(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.config.EPUB_MAX_CONSECUTIVE_FAILED_FILES", 2)
+    translate_file = subject._translate_single_xhtml_file
+    for href in FILES:
+        (tmp_path / href).write_text("<html><body><p>Source.</p></body></html>")
+    provider = AsyncMock(side_effect=ProviderActionRequiredError(
+        "Malformed audit response", reason="audit_invalid_response", provider="test",
+    ))
+    monkeypatch.setattr(subject.GenericTranslationOrchestrator, "translate", provider)
+    result, _ = await _run(tmp_path, monkeypatch, failing=(), translate=translate_file)
+
+    assert [call.kwargs["file_href"] for call in provider.await_args_list] == FILES[:2]
+    assert result["failed_files"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("protocol_error", [
+    ChunkTranslationFailedError("Malformed judgment", reason="audit_rejected", detail="audit_response_invalid"),
+    ProviderActionRequiredError("Malformed response", reason="audit_invalid_response", provider="test"),
+])
+async def test_mixed_unit_failures_surface_protocol_errors(monkeypatch, protocol_error):
+    content_error = ChunkTranslationFailedError(
+        "Semantic rejection", reason="audit_rejected", detail="repair_no_improvement",
+    )
+    monkeypatch.setattr(xhtml, "_audit_epub_unit", AsyncMock(side_effect=[content_error, protocol_error]))
+    with pytest.raises(type(protocol_error)) as raised:
+        await xhtml._audit_epub_chunks(
+            ["one", "two"], [{}, {}], source_language="English", target_language="Spanish",
+            model_name="test", llm_client=object(), placeholder_format=("[id", "]"), prompt_options={},
+        )
+    assert raised.value is protocol_error
+    assert raised.value.failed_unit_indices == [0, 1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["save_epub_file", "save_checkpoint"])
+async def test_checkpoint_write_failure_stops_before_next_request(tmp_path, monkeypatch, failure):
+    manager = _Checkpoint()
+    setattr(manager, failure, Mock(return_value=False))
+    manager.delete_xhtml_partial_state = Mock()
+    calls = []
+    stats = []
+    with pytest.raises(OSError, match="one.xhtml"):
+        await _run(
+            tmp_path, monkeypatch, failing=(), checkpoint=manager,
+            translate=_fake_translate(calls, set()), stats_callback=stats.append,
+        )
+    assert calls == ["one.xhtml"] and not manager.rows
+    assert not any(tick["completed_chunks"] for tick in stats)
+    manager.delete_xhtml_partial_state.assert_not_called()
 
 
 @pytest.mark.asyncio

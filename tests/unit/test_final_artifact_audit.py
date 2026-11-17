@@ -9,6 +9,7 @@ from src.core.book_profiles import create_profile
 
 from src.core.final_artifact_audit import (
     _clean_inline_text,
+    _clean_xml_metadata,
     _is_sentence_initial_position,
     _reading_structure_findings,
     audit_and_clean_final_artifact,
@@ -672,3 +673,78 @@ def test_literal_offsets_are_recomputed_after_each_spacing_pass():
     assert _clean_inline_text("Antes .Después https://Example.com/XIX.siglo Fin.Otra") == (
         "Antes. Después https://Example.com/XIX.siglo Fin. Otra"
     )
+
+
+@pytest.mark.parametrize("illustration", [
+    '<figure><img src="plate.jpg"/><figcaption>42</figcaption></figure>',
+    '<p><img src="plate.jpg"/>42</p>',
+    '<table><tr><td>42</td></tr></table>',
+    '<div><img src="plate.jpg"/><p class="caption">42</p></div>',
+])
+def test_numeric_illustration_and_table_labels_survive_final_cleaning(tmp_path, illustration):
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    prose = "One longer paragraph with enough surrounding context to trigger page furniture detection during finalization."
+    for epub in (source, output):
+        _write_epub(epub, [("chap-001.xhtml", "Chapter", f"<p>{prose}</p>{illustration}<p>{prose}</p>")], ["Chapter"])
+
+    audit_and_clean_final_artifact(output, output_format="epub", source_epub_path=source, write_report=False)
+
+    root = etree.fromstring(_epub_text(output, "OEBPS/chap-001.xhtml").encode())
+    assert "42" in "".join(root.itertext())
+    assert not root.xpath("//*[@class='verbaloom-sanitized-artifact']")
+
+
+def test_missing_numeric_caption_remains_repairable(tmp_path):
+    from src.core.epub.dom_boundaries import find_epub_missing_text_blocks
+
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    for epub, caption in ((source, "42"), (output, "")):
+        body = f'<figure><img src="plate.jpg"/><figcaption>{caption}</figcaption></figure>'
+        _write_epub(epub, [("chap-001.xhtml", "Chapter", body)], ["Chapter"])
+
+    assert audit_epub_dom_boundaries(source, output).structural_mismatches
+    assert [item.source_text for item in find_epub_missing_text_blocks(source, output)] == ["42"]
+
+
+def test_recover_numeric_figure_label_from_old_draft(tmp_path):
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    source_body = '<p class="plate" style="color: blue"><img src="plate.jpg"/>42</p>'
+    stale_body = (
+        '<p class="plate verbaloom-sanitized-artifact" style="color: blue; display: none">'
+        '<img src="plate.jpg"/></p>'
+    )
+    for epub, body in ((source, source_body), (output, stale_body)):
+        _write_epub(epub, [("chap-001.xhtml", "Chapter", body)], ["Chapter"])
+
+    report = audit_and_clean_final_artifact(output, output_format="epub", source_epub_path=source, write_report=False)
+
+    assert report.dom_boundary_repairs == 1
+    root = etree.fromstring(_epub_text(output, "OEBPS/chap-001.xhtml").encode())
+    image = root.xpath("//*[local-name()='img']")[0]
+    assert image.tail == "42"
+    assert dict(image.getparent().attrib) == {"class": "plate", "style": "color: blue"}
+    assert not audit_epub_dom_boundaries(source, output).structural_mismatches
+
+
+def test_page_break_after_image_is_still_treated_as_pagination(tmp_path):
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    prose = "One longer paragraph with enough surrounding context to trigger page furniture detection during finalization."
+    body = f'<p>{prose}</p><img src="plate.jpg"/><p role="doc-pagebreak">42</p><p>{prose}</p>'
+    for epub in (source, output):
+        _write_epub(epub, [("chap-001.xhtml", "Chapter", body)], ["Chapter"])
+    report = audit_and_clean_final_artifact(output, output_format="epub", source_epub_path=source, write_report=False)
+    root = etree.fromstring(_epub_text(output, "OEBPS/chap-001.xhtml").encode())
+    assert report.source_artifacts_removed == 1
+    assert root.xpath("string(//*[@role='doc-pagebreak']/@style)") == "display: none"
+    assert root.xpath("//*[local-name()='img']/@src") == ["plate.jpg"]
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le", "utf-16-be"])
+def test_metadata_cleanup_preserves_encoding_and_original_bytes(encoding):
+    xml = ('\ufeff<?xml version="1.0" encoding="' + encoding + '"?>'
+           '<metadata><title>El árbol</title><note>星</note></metadata>')
+    original = xml.encode(encoding)
+    assert _clean_xml_metadata(original) == (original, 0)
+    dirty = xml.replace("El árbol", "El_árbol").encode(encoding)
+    cleaned, changes = _clean_xml_metadata(dirty)
+    assert changes == 1
+    assert cleaned == original

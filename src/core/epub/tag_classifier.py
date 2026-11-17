@@ -5,6 +5,12 @@ determining split priorities for HTML-aware chunking.
 """
 
 
+import re
+
+
+_TAG_NAME = re.compile(r"<(/?)(?:[\w.-]+:)?([\w-]+)(?=[\s/>])", re.IGNORECASE)
+
+
 class TagClassifier:
     """Classifies HTML tags by type and determines split priorities.
 
@@ -13,11 +19,18 @@ class TagClassifier:
     """
 
     BLOCK_TAGS = {'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-                  'blockquote', 'section', 'article', 'li', 'tr', 'td', 'th'}
+                  'blockquote', 'section', 'article', 'li', 'tr', 'td', 'th',
+                  'figure', 'figcaption', 'caption'}
 
     CHAPTER_HEADINGS = {'h1', 'h2', 'h3'}
     MAJOR_SECTIONS = {'h4', 'h5', 'h6', 'section', 'article'}
     PARAGRAPHS = {'p', 'div', 'blockquote'}
+
+    def block_boundaries(self, group: str):
+        for match in _TAG_NAME.finditer(group):
+            name = match.group(2).lower()
+            if name in self.BLOCK_TAGS:
+                yield match.group(1), name
 
     def get_split_priority(self, tag: str) -> int:
         """Get priority for splitting at this tag.
@@ -36,21 +49,13 @@ class TagClassifier:
         Returns:
             Priority level (1-4)
         """
-        tag_lower = tag.lower()
-
-        # Priority 1: Chapter headings
-        if any(f'</{ht}>' in tag_lower for ht in self.CHAPTER_HEADINGS):
+        closing = {name for slash, name in self.block_boundaries(tag) if slash}
+        if closing & self.CHAPTER_HEADINGS:
             return 1
-
-        # Priority 2: Major sections
-        if any(f'</{ht}>' in tag_lower for ht in self.MAJOR_SECTIONS):
+        if closing & self.MAJOR_SECTIONS:
             return 2
-
-        # Priority 3: Paragraphs and divs
-        if any(f'</{ht}>' in tag_lower for ht in self.PARAGRAPHS):
+        if closing & self.PARAGRAPHS:
             return 3
-
-        # Priority 4: Other blocks
         return 4
 
     def is_block_closing_tag(self, tag: str) -> bool:
@@ -64,11 +69,7 @@ class TagClassifier:
         Returns:
             True if tag is a block closing tag
         """
-        tag_lower = tag.lower()
-        for bt in self.BLOCK_TAGS:
-            if f'</{bt}>' in tag_lower or f'</{bt} ' in tag_lower:
-                return True
-        return False
+        return any(slash for slash, _name in self.block_boundaries(tag))
 
     def is_block_opening_tag(self, tag: str) -> bool:
         """Check if tag is a block opening tag.
@@ -81,11 +82,7 @@ class TagClassifier:
         Returns:
             True if tag is a block opening tag
         """
-        tag_lower = tag.lower()
-        for bt in self.BLOCK_TAGS:
-            if f'<{bt}>' in tag_lower or f'<{bt} ' in tag_lower:
-                return True
-        return False
+        return any(not slash for slash, _name in self.block_boundaries(tag))
 
     def is_chapter_heading(self, tag: str) -> bool:
         """Check if tag is a chapter heading (h1-h3).
@@ -99,5 +96,4 @@ class TagClassifier:
         Returns:
             True if tag is a chapter heading
         """
-        tag_lower = tag.lower()
-        return any(f'</{ht}>' in tag_lower for ht in self.CHAPTER_HEADINGS)
+        return any(slash and name in self.CHAPTER_HEADINGS for slash, name in self.block_boundaries(tag))

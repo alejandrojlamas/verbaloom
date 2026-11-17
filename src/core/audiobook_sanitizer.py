@@ -77,9 +77,11 @@ _FIGURE_CAPTION_PREFIX_RE = re.compile(
     r")\s*(?:\d+[A-Za-z]?|[IVXLCDM]+)?\s*[:.\-–—]\s*(?P<body>.+)$",
     re.IGNORECASE,
 )
-_FIGURE_CONTEXT_RE = re.compile(
-    r"\b(?:figure|figura|fig\.|image|imagen|photo|foto|caption|pie de foto|"
-    r"still|frame|poster|production still)\b",
+_FIGURE_CREDIT_PREFIX_RE = re.compile(
+    r"^\s*(?:(?:photo(?:graph)?|image|illustration|production still)\s+"
+    r"(?:by\s+|courtesy\s+of\s+|credits?\s*:\s*)|"
+    r"(?:foto(?:graf[ií]a)?|imagen|ilustraci[oó]n)\s+"
+    r"(?:de\s+|cortes[ií]a\s+de\s+|cr[eé]ditos?\s*:\s*))\S",
     re.IGNORECASE,
 )
 _CREDIT_ONLY_RE = re.compile(
@@ -248,7 +250,7 @@ def _is_caption_block(text: str, *, block_type: str) -> bool:
     first_line = next((line.strip() for line in (text or "").splitlines() if line.strip()), "")
     if _FIGURE_CAPTION_PREFIX_RE.match(first_line):
         return True
-    return bool(len(first_line) <= 260 and _FIGURE_CONTEXT_RE.search(first_line))
+    return bool(_FIGURE_CREDIT_PREFIX_RE.match(first_line))
 
 
 def _caption_body(text: str) -> str:

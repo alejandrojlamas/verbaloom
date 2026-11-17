@@ -11,6 +11,7 @@ end-to-end at the persistence layer.
 import os
 import sys
 import tempfile
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -22,6 +23,7 @@ from src.core.epub.translation_metrics import TranslationMetrics
 from src.core.epub.translator import (
     _process_all_content_files,
     _restore_accumulated_stats,
+    _restore_checkpoint_files,
     _save_checkpoint,
     _snapshot_accumulated_stats,
 )
@@ -176,7 +178,8 @@ def test_subsequent_progress_update_keeps_accumulated_stats(checkpoint_manager):
 
 
 @pytest.mark.asyncio
-async def test_file_checkpoint_cleans_matching_partial_and_stores_logical_progress(tmp_path):
+@pytest.mark.parametrize("commit", [True, False])
+async def test_file_checkpoint_retires_partial_only_after_commit(tmp_path, commit):
     class RecordingCheckpoint:
         def __init__(self):
             self.deleted = []
@@ -190,8 +193,9 @@ async def test_file_checkpoint_cleans_matching_partial_and_stores_logical_progre
             return True
 
         def save_checkpoint(self, **kwargs):
+            assert self.deleted == []
             self.saved.append(kwargs)
-            return True
+            return commit
 
     manager = RecordingCheckpoint()
     temp_dir = tmp_path / "book"
@@ -201,26 +205,45 @@ async def test_file_checkpoint_cleans_matching_partial_and_stores_logical_progre
         b'<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Texto</p></body></html>'
     )
 
-    await _save_checkpoint(
-        manager,
-        "job",
-        2,
-        "Text/001.xhtml",
-        root,
-        str(file_path),
-        str(temp_dir),
-        total_chunks=110,
-        completed_chunks=21,
-        failed_chunks=0,
-    )
+    with nullcontext() if commit else pytest.raises(OSError, match="Could not commit"):
+        await _save_checkpoint(
+            manager, "job", 2, "Text/001.xhtml", root, str(file_path), str(temp_dir),
+            total_chunks=110, completed_chunks=21, failed_chunks=0,
+        )
 
-    assert manager.deleted == [("job", "Text/001.xhtml")]
+    assert manager.deleted == ([("job", "Text/001.xhtml")] if commit else [])
     assert manager.saved[0]["chunk_data"] == {
         "last_file": "Text/001.xhtml",
         "file_type": "epub_xhtml",
         "logical_completed_chunks": 21,
         "logical_total_chunks": 110,
     }
+
+
+@pytest.mark.asyncio
+async def test_resume_only_reads_committed_intact_xhtml_and_keeps_source(tmp_path):
+    work = tmp_path / "book"
+    opf = work / "OPS"
+    cache = tmp_path / "uploads" / "job" / "translated_files"
+    source = b"<html><body>Original source</body></html>"
+    good = b"<html><body>Texto traducido</body></html>"
+    opf.mkdir(parents=True)
+    (cache / "OPS").mkdir(parents=True)
+    for name in ("part 1.xhtml", "damaged.xhtml", "orphan.xhtml", "legacy.xhtml"):
+        (opf / name).write_bytes(source)
+    (cache / "OPS" / "part 1.xhtml").write_bytes(good)
+    (cache / "OPS" / "damaged.xhtml").write_bytes(b"<html><body>Truncated")
+    (cache / "OPS" / "orphan.xhtml").write_bytes(good)
+    (cache / "legacy.xhtml").write_bytes(good)
+
+    restored = await _restore_checkpoint_files(
+        SimpleNamespace(uploads_dir=tmp_path / "uploads"), "job", str(work),
+        ["part%201.xhtml", "damaged.xhtml", "legacy.xhtml"], str(opf),
+    )
+    assert set(restored) == {str(opf / "part 1.xhtml"), str(opf / "legacy.xhtml")}
+    assert all(etree.tostring(doc) == good for doc in restored.values())
+    assert all(path.read_bytes() == source for path in opf.iterdir())
+    assert not (work / "legacy.xhtml").exists()
 
 
 @pytest.mark.asyncio
@@ -398,3 +421,42 @@ async def test_resume_ignores_stale_progress_when_partial_state_is_missing(monke
 
     assert emitted[0]["completed_chunks"] == 33
     assert result["completed_chunks"] == 33
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('actual', 'stops_before_translation'), [(2, False), (4, False), (4, True)])
+async def test_source_and_saved_partitions_share_one_book_total(
+    monkeypatch, tmp_path, actual, stops_before_translation,
+):
+    # The first chapter is complete; the current source would have 3 units.
+    # A resumable snapshot may prove a different partition than today's plan.
+    old = SimpleNamespace(current_chunk_index=1, chunks=[{}, {}])
+    checkpoint = SimpleNamespace(
+        get_job=lambda _: {}, load_xhtml_partial_state=lambda *_: old,
+    )
+    ticks, commits = [], []
+
+    async def translate(**kw):
+        assert kw['global_total_chunks'] == 5 + 2
+        saved = 0 if stops_before_translation else 1
+        assert kw['on_file_plan'](actual, saved) == 5 + actual
+        assert kw['on_file_plan'](actual, saved) == 5 + actual
+        if stops_before_translation:
+            return None, False, TranslationMetrics(total_chunks=actual)
+        kw['stats_callback']({'completed_chunks': actual, 'total_chunks': actual})
+        return etree.Element('html'), True, TranslationMetrics(total_chunks=actual)
+
+    async def save(*args, **kw):
+        commits.append((kw['completed_chunks'], kw['total_chunks']))
+
+    monkeypatch.setattr('src.core.epub.translator._translate_single_xhtml_file', translate)
+    monkeypatch.setattr('src.core.epub.translator._save_checkpoint', save)
+    result = await _process_all_content_files(
+        ['done.xhtml', 'current.xhtml'], str(tmp_path), str(tmp_path), 'English', 'Spanish',
+        'model', object(), 450, 1, None, 'job', resume_from_index=1,
+        checkpoint_manager=checkpoint, stats_callback=ticks.append, precount_result=(8, [5, 3]),
+    )
+    assert ticks[0]['completed_chunks'] == 6 and ticks[0]['total_chunks'] == 7
+    assert commits == ([] if stops_before_translation else [(5 + actual, 5 + actual)])
+    assert ticks[-1]['epub_planned_chunks'] == result['total_chunks'] == 5 + actual
+    assert ticks[-1]['completed_chunks'] == result['completed_chunks'] == (5 if stops_before_translation else 5 + actual)

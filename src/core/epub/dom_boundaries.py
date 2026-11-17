@@ -14,6 +14,8 @@ import zipfile
 
 from lxml import etree
 
+from .xml_helpers import has_illustration_or_table_content
+
 
 _TEXT_SUFFIXES = {".xhtml", ".html", ".htm"}
 _BLOCK_TAGS = (
@@ -187,6 +189,41 @@ def _is_source_furniture(text: str) -> bool:
     return bool(len(value) <= 12 and letters <= 3 and symbols >= max(2, letters))
 
 
+def _allows_empty_furniture(
+    source_block: etree._Element, output_block: etree._Element, source_text: str
+) -> bool:
+    marked = _SANITIZED_ARTIFACT_CLASSES.intersection(
+        str(output_block.get("class") or "").split()
+    )
+    return bool(
+        (marked or _is_source_furniture(source_text))
+        and not has_illustration_or_table_content(source_block)
+    )
+
+
+def _unhide_repaired_furniture(source: etree._Element, output: etree._Element) -> None:
+    """Undo the sanitizer's own class and display declaration in older drafts."""
+    original_classes = set(str(source.get("class") or "").split())
+    added = _SANITIZED_ARTIFACT_CLASSES - original_classes
+    classes = str(output.get("class") or "").split()
+    if not added.intersection(classes):
+        return
+    kept = [item for item in classes if item not in added]
+    if kept:
+        output.set("class", " ".join(kept))
+    else:
+        output.attrib.pop("class", None)
+    # Both sanitizers append this exact declaration. Keep publisher styling.
+    style = str(output.get("style") or "")
+    source_style = str(source.get("style") or "")
+    if style.rstrip("; ") != source_style.rstrip("; ") and style.endswith("display: none"):
+        remaining = style.removesuffix("display: none").rstrip("; ")
+        if remaining:
+            output.set("style", remaining)
+        else:
+            output.attrib.pop("style", None)
+
+
 def _block_content_mismatch(
     source_block: etree._Element,
     output_block: etree._Element,
@@ -208,10 +245,8 @@ def _block_content_mismatch(
     if (
         source_is_meaningful
         and not output_text
-        and not _is_source_furniture(source_text)
         and not valid_reflowed_continuation
-        and not _SANITIZED_ARTIFACT_CLASSES
-        & set(str(output_block.get("class") or "").split())
+        and not _allows_empty_furniture(source_block, output_block, source_text)
     ):
         return "non-empty source block became empty"
     if not source_text or not output_text:
@@ -232,6 +267,64 @@ def _block_content_mismatch(
     return ""
 
 
+def _restore_literal_slots(source_slots, output_slots) -> bool:
+    # Text and tail order verifies the nesting too. An image or formatting
+    # change must not move a label to a different side of an inline element.
+    if [(node.tag, attr) for node, attr in source_slots] != [
+        (node.tag, attr) for node, attr in output_slots
+    ]:
+        return False
+    for source_slot, output_slot in zip(source_slots, output_slots):
+        _set_slot_value(output_slot, _slot_value(source_slot))
+    return True
+
+
+def _check_empty_symbolic_links(
+    source_root: etree._Element, output_root: etree._Element, report: BoundaryReport,
+    file_href: str, repair: bool,
+) -> None:
+    """Check literal note markers even when their surrounding paragraph has text."""
+    def group(root):
+        groups = {}
+        for anchor in root.xpath("//*[local-name()='a' and @href]"):
+            # Duplicate destinations are normal for notes. A stable ID or
+            # distinct inline structure can distinguish them even if reordered.
+            key = (anchor.get("href"), anchor.get("id"), tuple(
+                (node.tag, attr) for node, attr in _text_slots(anchor)
+            ))
+            groups.setdefault(key, []).append(anchor)
+        return groups
+
+    output_groups = group(output_root)
+    for key, originals in group(source_root).items():
+        labels = [_normalized_block_text(node) for node in originals]
+        symbols = Counter(label for label in labels if label and not any(c.isalpha() for c in label))
+        if not symbols:
+            continue
+        outputs = output_groups.get(key, [])
+        output_labels = [_normalized_block_text(node) for node in outputs]
+        lost = symbols - Counter(output_labels)
+        shortage = len(originals) - labels.count("") - (len(outputs) - output_labels.count(""))
+        if not lost or shortage <= 0:
+            continue
+        # If occurrences share an identity, only an identical original label
+        # for every occurrence is unambiguous. Never guess by ordinal.
+        if (
+            repair and len(originals) == len(outputs) and len(symbols) == 1
+            and sum(symbols.values()) == len(originals)
+        ):
+            for output, label in zip(outputs, output_labels):
+                if not label and shortage and _restore_literal_slots(
+                    _text_slots(originals[0]), _text_slots(output)
+                ):
+                    report.repaired_boundaries += 1
+                    shortage -= 1
+        if shortage:
+            report.structural_mismatches.append(
+                f"{file_href}: missing symbolic link label ({key[0]})"
+            )
+
+
 def compare_xhtml_boundaries(
     source_root: etree._Element,
     output_root: etree._Element,
@@ -241,6 +334,7 @@ def compare_xhtml_boundaries(
 ) -> BoundaryReport:
     """Compare corresponding DOM text slots and optionally restore lost spaces."""
     report = BoundaryReport(scanned_files=1)
+    _check_empty_symbolic_links(source_root, output_root, report, file_href, repair)
     source_blocks = source_root.xpath(_BLOCK_XPATH)
     output_blocks = output_root.xpath(_BLOCK_XPATH)
     if len(source_blocks) != len(output_blocks):
@@ -294,12 +388,24 @@ def compare_xhtml_boundaries(
             valid_reflowed_continuation=valid_reflowed_continuation,
             valid_reflowed_anchor=valid_reflowed_anchor,
         )
+        source_slots = _text_slots(source_block)
+        output_slots = _text_slots(output_block)
+        if (
+            repair
+            and content_mismatch == "non-empty source block became empty"
+            and _normalized_block_text(source_block).isdecimal()
+            and has_illustration_or_table_content(source_block)
+            and _restore_literal_slots(source_slots, output_slots)
+        ):
+            # Numbers on a plate or in a cell need no translation. Put them
+            # back in their original text slots, including tails after images.
+            _unhide_repaired_furniture(source_block, output_block)
+            report.repaired_boundaries += 1
+            content_mismatch = ""
         if content_mismatch:
             report.structural_mismatches.append(
                 f"{file_href} block {block_index}: {content_mismatch}"
             )
-        source_slots = _text_slots(source_block)
-        output_slots = _text_slots(output_block)
         if len(source_slots) != len(output_slots):
             report.structural_mismatches.append(
                 f"{file_href} block {block_index}: text-slot count differs "
@@ -512,15 +618,9 @@ def find_epub_missing_text_blocks(
             ):
                 source_text = _normalized_block_text(source_block)
                 output_text = _normalized_block_text(output_block)
-                if not source_text or output_text or _is_source_furniture(source_text):
-                    continue
-                if _SANITIZED_ARTIFACT_CLASSES & set(
-                    str(output_block.get("class") or "").split()
+                if not source_text or output_text or _allows_empty_furniture(
+                    source_block, output_block, source_text
                 ):
-                    # The final sanitizer deliberately preserves the DOM slot
-                    # while hiding reader-facing source furniture such as a
-                    # standalone promotional URL. It is an explicit exclusion,
-                    # not omitted translatable content.
                     continue
                 source_is_meaningful = bool(
                     re.search(r"[\w\d]", source_text, re.UNICODE)
@@ -622,6 +722,7 @@ def apply_epub_missing_text_replacements(
                                 output_block.text = text
                             else:
                                 _set_slot_value(target_slot, text)
+                            _unhide_repaired_furniture(source_blocks[block_index], output_block)
                             changed += 1
                         payload = _serialize_xhtml(output_root, payload)
                 _write_member(rebuilt, info, payload)

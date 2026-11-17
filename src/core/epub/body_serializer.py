@@ -5,13 +5,14 @@ This module handles extracting and replacing the content of <body> elements
 in XHTML documents, enabling full-document translation instead of per-element processing.
 """
 from copy import deepcopy
+from html.entities import html5
 import re
 from typing import Optional, Tuple
 
 from lxml import etree
 
-from src.utils.unified_logger import info, LogType
-from .exceptions import XmlParsingError, BodyExtractionError
+from src.utils.unified_logger import info
+from .exceptions import XmlParsingError
 
 _SMALL_CAPS_CLASS = re.compile(r"small[0-9]*|small[-_]?caps?|smallcaps[0-9]*", re.I)
 _DROP_CAP_CLASS = re.compile(r"drop[-_]?cap(?:ital)?s?[0-9]*|lettrine[0-9]*|initial[-_]letter", re.I)
@@ -106,7 +107,7 @@ def _join_decorative_initials(body: etree._Element) -> None:
             first.text = None
 
 
-def normalize_whitespace(html: str) -> str:
+def normalize_whitespace(html: str, *, legacy: bool = False) -> str:
     """
     Normalize excessive whitespace in HTML content while preserving structural breaks.
 
@@ -136,13 +137,19 @@ def normalize_whitespace(html: str) -> str:
     # Protect content in preformatted tags by replacing with placeholders
     preserved_blocks = []
 
+    marker = "__PRESERVED_BLOCK_"
+    if not legacy:
+        while marker in html:
+            marker += "_"
+
     def preserve_block(match):
         preserved_blocks.append(match.group(0))
-        return f"__PRESERVED_BLOCK_{len(preserved_blocks) - 1}__"
+        return f"{marker}{len(preserved_blocks) - 1}__"
 
     # Preserve <pre>, <code>, <script>, <style> blocks (case insensitive)
     html = re.sub(
-        r'<(pre|code|script|style)[^>]*>.*?</\1>',
+        (r'<(pre|code|script|style)[^>]*>.*?</\1>' if legacy else
+         r'<((?:[\w.-]+:)?(?:pre|code|script|style))(?=[\s>])[^>]*>.*?</\1>'),
         preserve_block,
         html,
         flags=re.DOTALL | re.IGNORECASE
@@ -150,6 +157,11 @@ def normalize_whitespace(html: str) -> str:
 
     # Preserve <br> tags (they represent intentional line breaks)
     html = re.sub(r'<br\s*/?\s*>', preserve_block, html, flags=re.IGNORECASE)
+
+    if not legacy:
+        # Keep quoted attributes byte-for-byte, including spaces in a resource
+        # path. Leave angle brackets in place for the tag-boundary rules below.
+        html = re.sub(r"(?<=<)[\w.:-]+\s+[^<>]*(?=>)", preserve_block, html)
 
     # Step 1: Normalize line endings
     html = html.replace('\r\n', '\n').replace('\r', '\n')
@@ -171,11 +183,14 @@ def normalize_whitespace(html: str) -> str:
     html = re.sub(r' \n', '\n', html)  # Remove space before newline
     html = re.sub(r'\n ', '\n', html)  # Remove space after newline
 
-    # Restore preserved blocks
-    for i, block in enumerate(preserved_blocks):
-        html = html.replace(f"__PRESERVED_BLOCK_{i}__", block)
-
-    return html
+    if legacy:
+        for i, block in enumerate(preserved_blocks):
+            html = html.replace(f"{marker}{i}__", block)
+        return html
+    return re.sub(
+        re.escape(marker) + r"(\d+)__",
+        lambda match: preserved_blocks[int(match.group(1))], html,
+    )
 
 
 def extract_body_html(
@@ -183,6 +198,7 @@ def extract_body_html(
     normalize: bool = True,
     *,
     join_decorative_initials: bool = False,
+    legacy_html_serialization: bool = False,
 ) -> Tuple[str, Optional[etree._Element]]:
     """
     Extract the HTML content of <body> as a string.
@@ -205,95 +221,144 @@ def extract_body_html(
     if body is None:
         return "", None
 
-    # Serialize the inner content of body (without the <body> tag itself)
-    serialized_body = body
+    serialized_body = body if legacy_html_serialization and not join_decorative_initials else deepcopy(body)
     if join_decorative_initials:
-        serialized_body = deepcopy(body)
         _join_decorative_initials(serialized_body)
-    inner_html = etree.tostring(serialized_body, encoding='unicode', method='html')
-
-    # Remove the outer <body> tags
-    # <body class="x">content</body> → content
-    inner_html = re.sub(r'^<body[^>]*>', '', inner_html)
-    inner_html = re.sub(r'</body>$', '', inner_html)
+    if legacy_html_serialization:
+        # Byte-for-byte input identity of checkpoints written by the HTML serializer.
+        inner_html = etree.tostring(serialized_body, encoding='unicode', method='html')
+        inner_html = re.sub(r'^<body[^>]*>', '', inner_html)
+        inner_html = re.sub(r'</body>$', '', inner_html)
+    else:
+        # Explicit closing tags keep the established placeholder grouping and
+        # checkpoint identity of ordinary XHTML. HTML serialization can turn a
+        # literal image URL into another URL and emit unclosed void elements.
+        for element in serialized_body.iter():
+            if isinstance(element.tag, str) and not len(element) and element.text is None:
+                element.text = ""
+        serialized = etree.tostring(serialized_body, encoding='unicode', with_tail=False)
+        # XML serialization escapes '>' inside attributes. The body may have
+        # any namespace prefix, and its tail is outside the translated content.
+        inner_html = serialized[serialized.index(">") + 1:serialized.rindex("</")]
 
     inner_html = inner_html.strip()
 
     # Normalize whitespace to remove arbitrary line breaks from source formatting
     if normalize:
-        inner_html = normalize_whitespace(inner_html)
+        inner_html = normalize_whitespace(inner_html, legacy=legacy_html_serialization)
 
     return inner_html, body
 
 
-def replace_body_content(body_element: etree._Element, new_html: str) -> None:
-    """
-    Replace the content of <body> with new translated HTML.
-
-    Args:
-        body_element: The <body> element to modify
-        new_html: New translated HTML content
-    """
-    # Parse the new content FIRST before clearing the body
-    # This prevents data loss if parsing fails
-    # Wrap in a temp element to handle multiple root elements
-    wrapped = f"<temp xmlns='http://www.w3.org/1999/xhtml'>{new_html}</temp>"
-
-    # Try XML parser first with huge_tree option to handle large documents
-    # This preserves exact XML structure without HTML normalization
-    parser = etree.XMLParser(
-        recover=True,           # Recover from errors
-        encoding='utf-8',
-        huge_tree=True,         # Allow parsing very large trees
-        remove_blank_text=False # Preserve whitespace exactly as-is
-    )
-
-    parse_method = "XML"
-    parse_warnings = []
-
+def _parse_fragment(body_element: etree._Element, new_html: str) -> etree._Element:
+    # Child elements and attributes inherit declarations from the real body,
+    # including an absent default namespace in legacy EPUBs.
+    wrapper = etree.tostring(etree.Element("temp", nsmap=body_element.nsmap), encoding="unicode")
+    wrapped = wrapper[:-2] + ">" + new_html + "</temp>"
+    parser = etree.XMLParser(huge_tree=True, resolve_entities=False, no_network=True)
     try:
-        temp = etree.fromstring(wrapped.encode('utf-8'), parser)
-        if parser.error_log:
-            parse_warnings.append(f"recovered from {len(parser.error_log)} errors")
-    except etree.XMLSyntaxError as e:
-        # Fallback: try without namespace
-        wrapped_no_ns = f"<temp>{new_html}</temp>"
-        try:
-            temp = etree.fromstring(wrapped_no_ns.encode('utf-8'), parser)
-            parse_method = "XML (no namespace)"
-        except Exception as e2:
-            # Last resort: HTML parser (but this may alter structure!)
-            temp = etree.HTML(wrapped_no_ns)
-            parse_method = "HTML fallback"
-            if temp is not None:
-                temp_elem = temp.find('.//temp')
-                if temp_elem is not None:
-                    temp = temp_elem
-                else:
-                    raise XmlParsingError(
-                        "Could not find <temp> element after HTML parsing",
-                        original_error=e2,
-                        content_preview=new_html[:200]
-                    )
-            else:
-                raise XmlParsingError(
-                    "All parsing methods failed",
-                    original_error=e2,
-                    content_preview=new_html[:200]
-                )
+        return etree.fromstring(wrapped.encode("utf-8"), parser)
+    except etree.XMLSyntaxError as exc:
+        # Recovery can silently put a caption or the next paragraph inside an
+        # image. Leave the original body intact for the normal recovery path.
+        raise XmlParsingError(str(exc), original_error=exc, content_preview=new_html[:200]) from exc
 
-    # NOW clear the body (only after successful parsing)
-    body_element.text = None
+
+def replace_body_content(body_element: etree._Element, new_html: str) -> None:
+    """Replace a body atomically after strict XML parsing."""
+    temp = _parse_fragment(body_element, new_html)
+    body_element.text = temp.text
     for child in list(body_element):
         body_element.remove(child)
+    body_element.extend(temp)
+    info(f"📄 Body reconstructed: {len(new_html)} chars → {len(body_element)} elements [XML]")
 
-    # Copy content into body
-    body_element.text = temp.text
-    child_count = 0
-    for child in temp:
-        body_element.append(child)
-        child_count += 1
 
-    # Single consolidated log message
-    warnings_str = f" ({', '.join(parse_warnings)})" if parse_warnings else ""
-    info(f"📄 Body reconstructed: {len(new_html)} chars → {child_count} elements [{parse_method}{warnings_str}]")
+_ENTITY = re.compile(r"&(?:#(?:[0-9]+|x[0-9a-fA-F]+);|[a-zA-Z][a-zA-Z0-9]*;)?")
+
+
+def escape_translated_xml_text(text: str) -> str:
+    """Escape model text before reinserting protected markup, keeping existing entities."""
+    def entity(match):
+        literal = match.group()
+        if literal in {"&amp;", "&lt;", "&gt;", "&quot;", "&apos;"} or literal.startswith("&#"):
+            return literal
+        if literal[1:] in html5:
+            return html5[literal[1:]].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return "&amp;" + literal[1:]
+
+    return _ENTITY.sub(entity, text).replace("<", "&lt;").replace(">", "&gt;")
+
+
+# These containers admit interleaved prose. Never create HTML spans inside
+# embedded graphics, mathematical expressions, or element-only table/list rows.
+_FLOW = {
+    "body", "article", "aside", "section", "main", "header", "footer", "nav",
+    "div", "p", "address", "blockquote", "figure", "figcaption", "caption",
+    "li", "dt", "dd", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "pre",
+}
+_STRUCTURAL = _FLOW | {"ul", "ol", "dl", "table", "tr", "thead", "tbody", "tfoot"}
+_SEPARATE = {"img", "picture", "svg", "math", "audio", "video", "object", "script", "style", "hr"}
+
+
+def bilingual_body_fragment(source_html, target_html, body, source_language_code=None):
+    """Pair complete prose runs while retaining the target's single indexed DOM."""
+    source = _parse_fragment(body, source_html)
+    target = _parse_fragment(body, target_html)
+
+    def visit(left, right, parent_name):
+        left_nodes, right_nodes = list(left), list(right)
+        runs = []
+        start = 0
+        for i, (src, dst) in enumerate(zip(left_nodes, right_nodes, strict=True)):
+            if src.tag != dst.tag:
+                raise XmlParsingError("Bilingual XHTML element alignment failed")
+            if not isinstance(dst.tag, str):
+                continue
+            qname = etree.QName(dst)
+            if qname.namespace not in (None, "http://www.w3.org/1999/xhtml") or qname.localname in _SEPARATE:
+                boundary = True
+            else:
+                boundary = qname.localname in _STRUCTURAL
+                if boundary:
+                    visit(src, dst, qname.localname)
+            if boundary:
+                runs.append((start, i))
+                start = i + 1
+        runs.append((start, len(left_nodes)))
+        if parent_name not in _FLOW:
+            return
+
+        def run_text(node, children, first, end):
+            pieces = [node.text if first == 0 else children[first - 1].tail]
+            for child in children[first:end]:
+                if isinstance(child.tag, str):
+                    pieces.extend(child.itertext())
+                pieces.append(child.tail)
+            return "".join(piece or "" for piece in pieces)
+
+        # Start at the end so each insertion index still denotes the original DOM.
+        for first, end in reversed(runs):
+            original = run_text(left, left_nodes, first, end)
+            translation = run_text(right, right_nodes, first, end)
+            if not original.strip() or original.strip() == translation.strip():
+                continue
+            ns = etree.QName(right).namespace if right is not target else etree.QName(body).namespace
+            name = "div" if parent_name == "body" else "span"
+            prefix = etree.Element(etree.QName(ns, name))
+            prefix.set("class", "original")
+            prefix.set("style", "display: block; color: #666; font-size: 0.9em;")
+            if source_language_code:
+                prefix.set("{http://www.w3.org/XML/1998/namespace}lang", source_language_code)
+            prefix.text = original
+            owner, slot = (right, "text") if first == 0 else (right_nodes[first - 1], "tail")
+            prefix.tail = getattr(owner, slot)
+            setattr(owner, slot, None)
+            right.insert(first, prefix)
+
+    visit(source, target, "body")
+    # Element text needs XML encoding too. Keep any prefixes declared on the
+    # real body in scope when returning the serialized fragment.
+    target.text = target.text or ""
+    wrapped = etree.tostring(target, encoding="unicode", with_tail=False)
+    return wrapped[wrapped.index(">") + 1:wrapped.rindex("</")]

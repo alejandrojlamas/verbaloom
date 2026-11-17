@@ -79,6 +79,8 @@ class TranslationMetrics:
     min_chunk_size: int = field(default_factory=lambda: float('inf'))
     max_chunk_size: int = 0
     total_chunk_size: int = 0
+    # Per-file outcome for the EPUB coordinator. Never merged into book stats.
+    unit_failure_reason: Optional[str] = None
 
     def record_success(self, attempt: int, chunk_size: int) -> None:
         """Record successful translation.

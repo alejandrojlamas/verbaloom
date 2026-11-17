@@ -319,6 +319,7 @@ async def resume(
         checkpoint_manager=SimpleNamespace(save_xhtml_partial_state=save),
         translation_id=kwargs.get("translation_id", "book-one"),
         file_href=kwargs.get("file_href", "Text/chapter.xhtml"),
+        on_file_plan=kwargs.get("on_file_plan"),
     )
     assert success and "".join(doc.find("body").itertext()).strip() == expected_text
     assert calls == []
@@ -552,3 +553,57 @@ async def test_entrypoint_profile_edit_cannot_reuse_old_approval(
             await task
         assert caught.value.reason == "profile_change_requires_review"
         assert doc.find("body").text == SOURCE and calls == []
+
+
+@pytest.mark.asyncio
+async def test_resume_old_image_checkpoint_keeps_translation_and_repairs_void_markup(monkeypatch):
+    doc = etree.XML(b'<html><body><figure><img src="My plate.png"/><figcaption>Old caption<a href="#n">*</a></figcaption></figure></body></html>')
+    old_html = '<figure><img src="My%20plate.png"><figcaption>Old caption<a href="#n">*</a></figcaption></figure>'
+    preserver = subject.TagPreserver()
+    masked, tags = preserver.preserve_tags(old_html, legacy_markup=True)
+    fmt = (preserver.placeholder_format.prefix, preserver.placeholder_format.suffix)
+    saved = state()
+    chunks = subject._create_chunks(masked, tags, 450)
+    translated = chunks[0]["text"].replace("Old caption", "Pie anterior")
+    saved.source_document_hash = text_sha256(old_html)
+    saved.chunks, saved.global_tag_map, saved.placeholder_format = chunks, tags, fmt
+    saved.translated_chunks = [translated]
+    record = ensure_unit_records(chunks, saved.file_href, fingerprints=saved.stage_fingerprints)[0]
+    mark_audited(record, translated, review={"status": "pass"}, audit={"status": "pass"})
+    assert saved.validate()
+    await resume(monkeypatch, saved, doc=doc, expected_text="Pie anterior*")
+    assert doc.find(".//figure/img").get("src") == "My plate.png"
+    assert doc.find(".//figure/figcaption").text == "Pie anterior"
+
+
+@pytest.mark.asyncio
+async def test_resume_keeps_paid_units_from_the_saved_chunk_partition(monkeypatch):
+    doc = etree.XML(b'<html><body>First line. Second line.</body></html>')
+    saved = state()
+    body_html, _ = subject.extract_body_html(doc, join_decorative_initials=True)
+    saved.source_document_hash = text_sha256(body_html)
+    saved.chunks = [
+        {'text': text, 'local_tag_map': {}, 'global_indices': []}
+        for text in ('First line.', 'Second line.')
+    ]
+    saved.translated_chunks = ['Primera línea. ', 'Segunda línea.']
+    saved.current_chunk_index = 2
+    saved.stats = {'total_chunks': 2, 'processed_chunks': 2}
+    for candidate, unit in zip(
+        saved.translated_chunks,
+        ensure_unit_records(saved.chunks, saved.file_href, fingerprints=saved.stage_fingerprints),
+    ):
+        mark_audited(unit, candidate, review={'status': 'pass'}, audit={'status': 'pass'})
+    assert saved.validate()
+    assert len(subject._create_chunks(body_html, {}, 450)) == 1
+    plans = []
+    def book_total(count, saved_units):
+        plans.append((count, saved_units))
+        return 6 + count
+
+    snapshots = await resume(
+        monkeypatch, saved, doc=doc, expected_text='Primera línea. Segunda línea.',
+        on_file_plan=book_total,
+    )
+    assert plans == [(2, 2)]
+    assert snapshots and all(s['global_stats']['total_chunks'] == 8 for s in snapshots)

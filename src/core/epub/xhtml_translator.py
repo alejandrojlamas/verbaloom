@@ -44,12 +44,16 @@ from src.core.llm.exceptions import ProviderActionRequiredError, RateLimitError
 from src.core.pipeline_runtime import active_pipeline
 from src.core.review_strategy import bind_runtime_strategy, needs_final_unit_audit, skip_universal_refinement
 
-from .body_serializer import extract_body_html, replace_body_content
+from .lang_support import get_language_code
+from .body_serializer import (
+    bilingual_body_fragment, escape_translated_xml_text, extract_body_html, replace_body_content,
+)
 from .html_chunker import HtmlChunker
 from .translation_metrics import TranslationMetrics
 from .tag_preservation import TagPreserver
 from .exceptions import (
     ChunkTranslationFailedError,
+    is_epub_content_rejection,
     PlaceholderValidationError,
     TagRestorationError,
     XmlParsingError,
@@ -2375,7 +2379,9 @@ def _reconstruct_html(
     global_tag_map: Dict[str, str],
     tag_preserver: TagPreserver,
     original_chunks: Optional[List[Dict]] = None,
-    bilingual: bool = False
+    bilingual: bool = False,
+    body_element: Optional[etree._Element] = None,
+    source_language: Optional[str] = None,
 ) -> str:
     """Reconstruct full HTML from translated chunks.
 
@@ -2383,49 +2389,46 @@ def _reconstruct_html(
         translated_chunks: List of translated chunk texts
         global_tag_map: Global tag map
         tag_preserver: TagPreserver instance
-        original_chunks: Original chunks (required for bilingual mode)
+        original_chunks: Source chunks for boundary whitespace and bilingual output
         bilingual: If True, interleave original and translated content
 
     Returns:
         Reconstructed HTML string
     """
     if bilingual and original_chunks:
-        # Bilingual mode: wrap each original/translation pair in styled divs
-        combined_parts = []
-        for i, (orig_chunk, trans_chunk) in enumerate(zip(original_chunks, translated_chunks)):
-            # Get original text from chunk (has local indices like [id0], [id1])
-            orig_text_local = orig_chunk.get('text', '')
-            global_indices = orig_chunk.get('global_indices', [])
-
-            # Restore global indices in original text before tag restoration
-            # The chunk text has local indices (0, 1, 2...) that need to be
-            # converted back to global indices before we can restore tags
-            orig_text_global = PlaceholderManager.restore_to_global(orig_text_local, global_indices)
-
-            # Restore tags in both original and translated. Escape stray
-            # < and > on both sides before tag restoration so any literal
-            # angle brackets present in text content (LLM passthrough or
-            # source-text markers like Korean webnovel <Skill> windows)
-            # do not corrupt the XML when the body is reinjected. See
-            # _escape_stray_angle_brackets() below.
-            orig_restored = tag_preserver.restore_tags(
-                _escape_stray_angle_brackets(orig_text_global), global_tag_map
-            )
-            trans_restored = tag_preserver.restore_tags(
-                _escape_stray_angle_brackets(clean_text_artifacts(trans_chunk)), global_tag_map
-            )
-
-            # Create bilingual block with inline styling (no CSS required)
-            bilingual_block = f'''<div class="bilingual-chunk" style="margin-bottom: 1.5em; padding-bottom: 1em; border-bottom: 1px dashed #ccc;">
-<div class="original" style="color: #666; font-size: 0.9em;">{orig_restored}</div>
-<div class="translation" style="margin-top: 0.5em;">{trans_restored}</div>
-</div>'''
-            combined_parts.append(bilingual_block)
-
-        return ''.join(combined_parts)
+        source_stream = "".join(
+            PlaceholderManager.restore_to_global(chunk["text"], chunk["global_indices"])
+            for chunk in original_chunks
+        )
+        source_html = tag_preserver.restore_tags(escape_translated_xml_text(source_stream), global_tag_map)
+        translated_html = _reconstruct_html(
+            translated_chunks, global_tag_map, tag_preserver, original_chunks=original_chunks,
+        )
+        return bilingual_body_fragment(
+            source_html, translated_html, body_element if body_element is not None else etree.Element("body"),
+            get_language_code(source_language),
+        )
     else:
         # Standard mode: just join translated chunks
-        full_translated_text = clean_text_artifacts(''.join(translated_chunks))
+        parts = list(translated_chunks)
+        if original_chunks:
+            # Model responses often trim their outer whitespace. Restore only
+            # an actual separator at the same boundary in the source plan.
+            for i in range(1, len(parts)):
+                if parts[i - 1][-1:].isspace() or parts[i][:1].isspace():
+                    continue
+                left = original_chunks[i - 1]['text']
+                right = original_chunks[i]['text']
+                separator = left[len(left.rstrip()):] + right[:len(right) - len(right.lstrip())]
+                parts[i] = separator + parts[i]
+        joined = "".join(parts)
+        source_stream = None
+        if original_chunks:
+            source_stream = "".join(
+                PlaceholderManager.restore_to_global(chunk["text"], chunk.get("global_indices", []))
+                for chunk in original_chunks
+            )
+        full_translated_text = clean_text_artifacts(joined, source_text=source_stream)
         # Escape stray < and > in LLM output before restoring placeholders.
         # By this point the joined text should contain only placeholders [idN]
         # and plain translated text; all real HTML tags came from the source
@@ -2443,10 +2446,8 @@ def _reconstruct_html(
 
 
 def _escape_stray_angle_brackets(text: str) -> str:
-    """Escape every < and > to entities. Placeholders [idN] use square brackets,
-    so they are untouched. Existing HTML entities like &lt; in the text stay
-    intact because we do not re-escape '&'."""
-    return text.replace('<', '&lt;').replace('>', '&gt;')
+    """Escape translated text before restoring XML markup."""
+    return escape_translated_xml_text(text)
 
 
 def _replace_body(
@@ -2830,7 +2831,7 @@ async def _refine_epub_chunks(
                     if quality_rejected:
                         pass
                     else:
-                        refined_text = clean_text_artifacts(refined_text)
+                        refined_text = clean_text_artifacts(refined_text, source_text=source_text)
                         refined_text = apply_profile_glossary_corrections(
                             refined_text,
                             chunk_prompt_options,
@@ -3550,7 +3551,7 @@ candidate with every placeholder preserved."""
                 TRANSLATE_TAG_IN,
                 TRANSLATE_TAG_OUT,
             ).extract(response.content)
-        repaired_local = clean_text_artifacts(str(repaired_local or "")).strip()
+        repaired_local = clean_text_artifacts(str(repaired_local or ""), source_text=source_text).strip()
         if not repaired_local:
             return None
         repaired_local = apply_profile_glossary_corrections(
@@ -3722,7 +3723,7 @@ async def _audit_epub_unit(
         raise ChunkTranslationFailedError(
             f"Semantic audit rejected or could not approve this unit ({reason}); publication is blocked.",
             chunk_index=idx, attempts=bounded_count(record.get("audit_attempts", 0)),
-            reason="audit_rejected",
+            reason="audit_rejected", detail=reason,
         )
 
     def interrupted():
@@ -4143,7 +4144,7 @@ async def _audit_epub_chunks(
         options["fidelity_supervisor"] = True
         options["fidelity_supervisor_mode"] = "strict_full"
         options.setdefault("fidelity_supervisor_model", model_name)
-    audited, failures, provider_stops = [], [], []
+    audited, failures = [], []
     for idx, chunk in enumerate(chunks):
         if check_interruption_callback and check_interruption_callback():
             return audited
@@ -4160,7 +4161,7 @@ async def _audit_epub_chunks(
                 return audited
             audited.append(candidate)
         except ChunkTranslationFailedError as exc:
-            failures.append(exc)
+            failures.append((idx, exc))
         except ProviderActionRequiredError as exc:
             from src.config import EPUB_DEFER_FAILED_FILES
             from src.core.llm.exceptions import is_unit_scoped_provider_stop
@@ -4170,7 +4171,7 @@ async def _audit_epub_chunks(
             # The unit journal already records why this unit needs review.
             # Its neighbors are independent: keep auditing them so the file
             # is not audited one blocked unit at a time across resumes.
-            provider_stops.append(exc)
+            failures.append((idx, exc))
             if log_callback:
                 log_callback(
                     "epub_audit_unit_requires_review",
@@ -4180,11 +4181,11 @@ async def _audit_epub_chunks(
         if progress_callback:
             progress_callback(idx + 1)
     if failures:
-        error = failures[0]
-        error.failed_unit_indices = [exc.chunk_index for exc in failures]
+        # A content rejection in an earlier passage must not hide service
+        # failures from the file-level circuit breaker.
+        error = next((exc for _, exc in failures if not is_epub_content_rejection(exc)), failures[0][1])
+        error.failed_unit_indices = [idx for idx, _ in failures]
         raise error
-    if provider_stops:
-        raise provider_stops[0]
     return audited
 
 
@@ -4212,6 +4213,7 @@ async def translate_xhtml_simplified(
     global_total_chunks: Optional[int] = None,
     global_completed_chunks: Optional[int] = None,
     runtime_state: Optional[dict] = None,
+    on_file_plan: Optional[Callable[[int, int], int]] = None,
 ) -> Tuple[bool, 'TranslationMetrics']:
     """
     Translate an XHTML document using the simplified approach.
@@ -4276,12 +4278,30 @@ async def translate_xhtml_simplified(
     current_body_html, _current_body = extract_body_html(doc_root, join_decorative_initials=True)
     normalized_source_hash = text_sha256(current_body_html or "")
     current_source_document_hash = normalized_source_hash
+    resumed_tags = None
     if resume_state and resume_state.source_document_hash != current_source_document_hash:
-        legacy_body, _ = extract_body_html(doc_root)
-        legacy_hash = text_sha256(legacy_body or "")
-        if resume_state.source_document_hash == legacy_hash:
-            # Existing translated prefixes still refer to their original slots.
-            current_source_document_hash = legacy_hash
+        # Older jobs may have planned the chapter before decorative initials
+        # were normalized or with HTML (rather than XML) markup serialization.
+        # A saved translation is reusable when it addresses exactly the same
+        # editable stream, even if an immutable <img> needs its XML end tag.
+        for joined in (True, False):
+            old_html, _ = extract_body_html(
+                doc_root, join_decorative_initials=joined, legacy_html_serialization=True,
+            )
+            correct_html = current_body_html if joined else extract_body_html(doc_root)[0]
+            if resume_state.source_document_hash == text_sha256(correct_html):
+                current_source_document_hash = resume_state.source_document_hash
+                break
+            if resume_state.source_document_hash != text_sha256(old_html):
+                continue
+            preserver = TagPreserver()
+            preserver.placeholder_format.prefix, preserver.placeholder_format.suffix = resume_state.placeholder_format
+            old_text, old_tags = preserver.preserve_tags(old_html, legacy_markup=True)
+            corrected_text, corrected_tags = preserver.preserve_tags(correct_html, legacy_markup=True)
+            if old_text == corrected_text and resume_state.global_tag_map in (old_tags, corrected_tags):
+                current_source_document_hash = resume_state.source_document_hash
+                resumed_tags = corrected_tags
+                break
     current_stage_fingerprints = build_epub_stage_fingerprints(
         source_language=source_language,
         target_language=target_language,
@@ -4398,7 +4418,7 @@ async def translate_xhtml_simplified(
                     "xhtml_stage_cache_invalidated",
                     "Checkpoint reused with invalidated stages: " + ", ".join(invalidated),
                 )
-        global_tag_map = resume_state.global_tag_map
+        global_tag_map = resumed_tags if resumed_tags is not None else resume_state.global_tag_map
         placeholder_format = resume_state.placeholder_format
         translated_chunks = resume_state.translated_chunks.copy()  # Copy to avoid mutations
         start_chunk_index = resume_state.current_chunk_index
@@ -4480,6 +4500,10 @@ async def translate_xhtml_simplified(
         stats = TranslationMetrics()
         stats.total_chunks = len(chunks)
         original_chunks = chunks.copy() if bilingual else None
+
+    stats.total_chunks = len(chunks)
+    if on_file_plan is not None:
+        global_total_chunks = on_file_plan(len(chunks), stats.processed_chunks)
 
     unit_records = ensure_unit_records(
         chunks,
@@ -4853,8 +4877,8 @@ async def translate_xhtml_simplified(
         translated_chunks,
         global_tag_map,
         tag_preserver,
-        original_chunks=chunks if bilingual else None,
-        bilingual=bilingual
+        original_chunks=chunks,
+        bilingual=bilingual, body_element=body_element, source_language=source_language,
     )
 
     # 6. Replace body

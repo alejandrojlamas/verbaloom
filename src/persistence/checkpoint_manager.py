@@ -196,32 +196,24 @@ class CheckpointManager:
         Returns:
             True if saved successfully
         """
-        # Save chunk
         chunk_status = 'completed' if translated_text else 'failed'
-        chunk_saved = self.db.save_chunk(
+        progress = {
+            "current_chunk_index": chunk_index,
+            "total_chunks": total_chunks,
+            "completed_chunks": completed_chunks,
+            "failed_chunks": failed_chunks,
+            "epub_accumulated_stats": epub_accumulated_stats,
+        }
+        return self.db.save_chunk(
             translation_id,
             chunk_index,
             original_text,
             translated_text,
             chunk_data,
-            chunk_status
+            chunk_status,
+            checkpoint_progress={key: value for key, value in progress.items() if value is not None},
+            translation_context=translation_context,
         )
-
-        # Update job progress
-        progress_saved = self.db.update_job_progress(
-            translation_id,
-            current_chunk_index=chunk_index,
-            total_chunks=total_chunks,
-            completed_chunks=completed_chunks,
-            failed_chunks=failed_chunks,
-            epub_accumulated_stats=epub_accumulated_stats
-        )
-
-        # Update translation context if provided
-        if translation_context:
-            self.db.update_translation_context(translation_id, translation_context)
-
-        return chunk_saved and progress_saved
 
     def update_progress(
         self,
@@ -1092,16 +1084,18 @@ class CheckpointManager:
         Returns:
             True if saved successfully
         """
-        job_dir = self.uploads_dir / translation_id / "translated_files"
-        job_dir.mkdir(parents=True, exist_ok=True)
-
-        # Preserve directory structure
-        file_path = job_dir / file_href
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-
+        file_path = self.uploads_dir / translation_id / "translated_files" / file_href
         try:
-            with open(file_path, 'wb') as f:
-                f.write(file_content)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary = tempfile.mkstemp(dir=file_path.parent, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "wb") as output:
+                    output.write(file_content)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(temporary, file_path)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
             return True
         except Exception as e:
             print(f"Error saving EPUB file {file_href}: {e}")
