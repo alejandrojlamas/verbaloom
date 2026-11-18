@@ -98,6 +98,21 @@ def test_quality_alerts_and_repair_prompt_live_in_extracted_module():
     assert "alert repair pass" in instructions
 
 
+def test_mexican_adaptation_repairs_only_contextually_confirmed_alerts():
+    instructions = _build_quality_alert_repair_instructions(
+        {"coger_regional": 1, "ordenador": 1, "markdown_emphasis_residue": 1},
+        target_language="Spanish",
+        prompt_options={"text_transform_mode": "mexican_spanish"},
+    )
+
+    assert "contemporary Mexican editorial Spanish" in instructions
+    assert "Mexican colloquialisms or slang that suit the speaker and situation" in instructions
+    assert "If the flagged wording is justified by context, retain it." in instructions
+    assert "leave unrelated\npassages verbatim" in instructions
+    assert "markdown" in instructions
+    assert "Mandatory Mexican/LatAm conversions" not in instructions
+
+
 def test_guard_normalization_and_length_ratio_boundaries():
     assert _normalize_guard_text("  uno\n\t dos  ") == "uno dos"
     assert _content_length_ratio_ok("a" * 200, "b" * 140)

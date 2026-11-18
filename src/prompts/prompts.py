@@ -12,6 +12,7 @@ from src.config import (
 )
 from src.core.book_profiles import build_profile_instruction_block, profile_enabled
 from src.core.locale_quality import is_mexican_spanish_target, is_spanish_target
+from src.core.text_transform import text_transform_mode
 from src.prompts.examples import (
     TAG0,
     build_placeholder_section,
@@ -125,7 +126,11 @@ def _target_locale_section(target_language: str, prompt_options: Optional[dict] 
     prompt_options = prompt_options or {}
     if not is_mexican_spanish_target(target_language, prompt_options):
         return ""
-    if str(prompt_options.get("text_transform_mode") or "").strip().lower() == "modernize":
+    mode = text_transform_mode(prompt_options)
+    if mode == "mexican_spanish":
+        # The transformation block carries the full editorial locale policy.
+        return ""
+    if mode == "modernize":
         return """
 # SPANISH LOCALE
 
@@ -253,13 +258,21 @@ _TEXT_TRANSFORM_MODE_SPECS = {
     "mexican_spanish": {
         "label": "Adaptar a mexicano",
         "goal": (
-            "Adapt the text to natural Mexican Spanish / neutral Latin American Spanish "
-            "while preserving register and meaning."
+            "Make the passage read like work originally written in contemporary editorial "
+            "Mexican Spanish (es-MX). Give the prose natural Mexican syntax, precise diction "
+            "and a deliberate cadence suited to its genre, narrator and characters."
         ),
         "rules": [
-            "Remove Peninsular forms such as vosotros, os, sois, vuestro, chitón, hala, and vale as filler.",
-            "Use Mexican/LatAm phrasing that still fits the genre and period.",
-            "Do not add slang, jokes, or local color unless the source already calls for it.",
+            "Where wording feels translated, rebuild sentences or passages substantially within their existing paragraphs. "
+            "Choose Mexican idioms, collocations, word order and forms of address that carry the same effect. "
+            "Resolve English calques and stiff connectors as well as unmotivated regionalisms from other varieties.",
+            "Use Mexican colloquialisms, slang or profanity when they carry the source's familiarity, humor, roughness "
+            "or emphasis. Choose their strength according to the speaker, relationship, social register, era and scene. "
+            "Keep formal or reflective narration in its own register.",
+            "Keep effective passages verbatim, including whole paragraphs when they already read naturally in editorial "
+            "Mexican Spanish. Judge each passage on its own merits and change only what improves locale, voice or cadence.",
+            "Preserve the setting, period, identities, social distance, irony, ambiguity and factual details. "
+            "Keep attributed quotations, distinct voices and intentional contrasts between varieties when they serve the text.",
         ],
     },
     "academic_clarity": {
@@ -1039,6 +1052,14 @@ the profile.
         if _transform_allows_explanatory_expansion(prompt_options)
         else "Free of explanations, notes, summaries, censorship, or unsupported additions"
     )
+
+    # Older clients saved the translated menu label's description as a model
+    # instruction. Drop only the two historical descriptions, not user edits.
+    if transform_mode == "mexican_spanish" and (additional_instructions or "").strip() in {
+        "Adapt into natural Mexican or Latin American Spanish.",
+        "Adapta a español mexicano o latinoamericano natural.",
+    }:
+        additional_instructions = ""
 
     # Add additional instructions section if provided
     additional_instructions_section = ""

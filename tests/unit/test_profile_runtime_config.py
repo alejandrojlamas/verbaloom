@@ -237,3 +237,16 @@ def test_french_goal_is_usable_with_or_without_a_regional_locale(tmp_path, monke
             assert applied["profile_id"] == profile_id
             assert (applied.get("target_locale") or "") == locale
             assert "text_transform_mode" not in applied
+
+
+
+def test_explicit_mexican_adaptation_controls_locale_instead_of_saved_defaults():
+    options = configure_editorial_guard_options({
+        "operation": "transform", "source_language": "Spanish", "target_language": "Spanish",
+        "file_type": "epub", "refine_only": True, "text_transform_mode": "mexican_spanish",
+        "prompt_options": {"spanish_variant": "neutral", "target_locale": "es-ES"},
+    })
+
+    assert options["text_transform_mode"] == "mexican_spanish"
+    assert options["target_locale"] == "es-MX"
+    assert options["spanish_variant"] == "mexican"

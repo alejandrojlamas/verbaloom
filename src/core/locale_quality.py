@@ -6,11 +6,14 @@ from collections import Counter
 import re
 from typing import Mapping, Optional
 
+from .text_transform import text_transform_mode
+
 
 MEXICAN_SPANISH_VARIANTS = {
     "mexican",
     "mexico",
     "mx",
+    "es-mx",
     "latam",
     "latin-american",
     "latin_american",
@@ -18,7 +21,7 @@ MEXICAN_SPANISH_VARIANTS = {
 
 GENERIC_SPANISH_VARIANTS = {"none", "generic", "neutral", "standard"}
 
-_SPANISH_TARGETS = {"spanish", "español", "espanol", "es", "castellano"}
+_SPANISH_TARGETS = {"spanish", "español", "espanol", "es", "es-mx", "castellano"}
 
 _MEXICAN_SPANISH_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("chiton", re.compile(r"\bchit[oó]n\b", re.IGNORECASE)),
@@ -273,11 +276,13 @@ _SPANISH_MODERNIZATION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 
 def is_spanish_target(target_language: str) -> bool:
-    return (target_language or "").strip().lower() in _SPANISH_TARGETS
+    return (target_language or "").strip().lower().replace("_", "-") in _SPANISH_TARGETS
 
 
 def resolve_spanish_variant(prompt_options: Optional[Mapping] = None) -> str:
     prompt_options = prompt_options or {}
+    if text_transform_mode(prompt_options) == "mexican_spanish":
+        return "mexican"
     return str(
         prompt_options.get("spanish_variant")
         or prompt_options.get("target_locale")

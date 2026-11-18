@@ -72,7 +72,7 @@
   "mode_humanize": "Humanizar",
   "mode_humanize_desc": "Quita rigidez de IA y vuelve el texto más natural.",
   "mode_mexican": "Adaptar a mexicano",
-  "mode_mexican_desc": "Adapta a español mexicano o latinoamericano natural.",
+  "mode_mexican_desc": "Adapta la prosa al español editorial mexicano contemporáneo. Reescribe lo necesario para afinar la voz, usa giros coloquiales según el contexto y conserva los pasajes que ya funcionan.",
   "mode_academic": "Claridad académica",
   "mode_academic_desc": "Ordena y aclara prosa académica densa.",
   "mode_literary": "Pulido literario",

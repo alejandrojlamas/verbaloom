@@ -1613,6 +1613,7 @@ async def _maybe_repair_quality_alerts(
         additional_instructions=_build_quality_alert_repair_instructions(
             issue_counts,
             target_language=target_language,
+            prompt_options=repair_options,
         ),
     )
 

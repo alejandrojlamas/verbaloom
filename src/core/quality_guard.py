@@ -13,6 +13,7 @@ from .locale_quality import (
     is_mexican_spanish_target,
     mexican_spanish_issue_codes,
 )
+from .text_transform import text_transform_mode
 
 
 _MARKDOWN_EMPHASIS_RESIDUE_RE = re.compile(r"(?<!\w)_[^_\n]{1,80}_(?!\w)")
@@ -203,8 +204,10 @@ def _build_quality_alert_repair_instructions(
     issue_counts: Dict[str, int],
     *,
     target_language: str,
+    prompt_options: Optional[dict] = None,
 ) -> str:
     sections = []
+    mexican_adaptation = text_transform_mode(prompt_options) == "mexican_spanish"
 
     regional_keys = mexican_spanish_issue_codes()
     regional_counts = {
@@ -212,7 +215,17 @@ def _build_quality_alert_repair_instructions(
         for key, value in issue_counts.items()
         if key in regional_keys and value
     }
-    if regional_counts:
+    if regional_counts and mexican_adaptation:
+        sections.append(f"""
+Regional findings to check: {format_mexican_spanish_issues(regional_counts)}
+
+Read each flagged expression in context. Where the wording clashes with contemporary Mexican editorial Spanish,
+repair the affected sentence in the same voice and register. Preserve meaningful quotations, regional contrasts,
+proper names, technical senses, and Mexican colloquialisms or slang that suit the speaker and situation.
+Keep the force of expressions such as insults, irony, and affectionate language.
+Treat the findings as leads for editorial judgment. Avoid applying blanket word substitutions.
+""".strip())
+    elif regional_counts:
         sections.append(build_mexican_spanish_repair_instructions(regional_counts))
 
     if issue_counts.get("markdown_emphasis_residue"):
@@ -240,13 +253,20 @@ The draft contains awkward literal direct address such as "¡Oh! ustedes".
             f"Lightly copyedit the {target_language} draft only where needed; preserve meaning and structure."
         )
 
-    sections.append(
-        """
+    if mexican_adaptation:
+        sections.append("""
+This alert repair pass is limited to the reported issues. Fix confirmed problems and leave unrelated
+passages verbatim. If the flagged wording is justified by context, retain it. Preserve the complete passage,
+including its facts, relationships, meaningful structure, quotations, and formatting markers.
+""".strip())
+    else:
+        sections.append(
+            """
 This is an alert repair pass, not a rewrite.
 Make the smallest edit that clears the alerts.
 Do not summarize, omit content, reorder paragraphs, or make the prose more ornate just to show improvement.
 """.strip()
-    )
+        )
     return "\n\n".join(sections)
 
 

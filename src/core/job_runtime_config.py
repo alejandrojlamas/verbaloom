@@ -117,6 +117,12 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
 
     validate_active_profile_scope(config, prompt_options)
     activate_inferred_book_profile(config, prompt_options)
+    if transform_mode.lower() == 'mexican_spanish':
+        prompt_options.update(
+            text_transform_mode='mexican_spanish',
+            target_locale='es-MX',
+            spanish_variant='mexican',
+        )
     apply_faithful_modernize_defaults(prompt_options)
 
     # Model substitution must not silently change the baseline review policy.

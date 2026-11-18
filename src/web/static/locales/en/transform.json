@@ -72,7 +72,7 @@
   "mode_humanize": "Humanize",
   "mode_humanize_desc": "Remove AI stiffness and make the text feel more natural.",
   "mode_mexican": "Adapt to Mexican Spanish",
-  "mode_mexican_desc": "Adapt into natural Mexican or Latin American Spanish.",
+  "mode_mexican_desc": "Adapt prose into contemporary Mexican Spanish suitable for publication. Rework phrasing where it improves the voice, use colloquial language when it fits the context, and keep passages that already work.",
   "mode_academic": "Academic clarity",
   "mode_academic_desc": "Organize and clarify dense academic prose.",
   "mode_literary": "Literary polish",
