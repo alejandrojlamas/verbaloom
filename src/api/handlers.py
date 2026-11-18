@@ -3135,6 +3135,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     output_filepath_on_server,
                     source_language=config.get('source_language') or '',
                     target_language=config.get('target_language') or '',
+                    same_language_transform=is_transform_job or bool(config.get('refine_only')),
                     message="Running strict whole-EPUB publication gate.",
                     metadata={'output_format': 'epub', 'scope': 'whole_epub'},
                 )

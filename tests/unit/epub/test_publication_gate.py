@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import zipfile
 
+import pytest
 from PIL import Image
 
 import src.core.epub.publication_gate as publication_gate_module
@@ -161,6 +162,109 @@ def test_publication_gate_accepts_complete_structurally_preserved_translation(tm
     assert report.source_units == report.audited_units
     assert report.preserved_images == 1
     assert report.broken_links == 0
+
+
+@pytest.mark.parametrize(
+    "source_language, target_language, language_code, text, same_language_transform",
+    [
+        (
+            "Spanish", "ES_mx", "es",
+            "Había oscurecido. Salió despacio al jardín y se detuvo junto a la puerta, "
+            "mientras los demás hablaban en la casa.", False,
+        ),
+        (
+            "Auto", "French", "fr",
+            "Elle est sortie dans le jardin et elle a retrouvé devant la porte "
+            "la lettre que le facteur venait de déposer.", True,
+        ),
+        (
+            "ar-SA", "Arabic", "ar",
+            "خرجت من المنزل في الصباح الباكر وذهبت إلى الحديقة حيث كانت تنتظرها "
+            "صديقتها القديمة. جلستا تحت الشجرة وتحدثتا عن الأيام التي قضتاها في المدرسة.", False,
+        ),
+    ],
+)
+def test_publication_accepts_intact_monolingual_prose(
+    tmp_path, source_language, target_language, language_code, text, same_language_transform,
+):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "refined.epub"
+    _write_epub(source, language=language_code, html_language=language_code, paragraphs=[text, text])
+    _write_epub(
+        output, language=language_code, html_language=language_code,
+        paragraphs=[text, text.replace(".", "!")],
+    )
+
+    report = audit_epub_publication(
+        source, output, source_language=source_language, target_language=target_language,
+        same_language_transform=same_language_transform, epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert report.publishable, report.errors
+    assert report.source_language_units == report.mixed_language_units == 0
+    assert report.audited_units == report.source_units
+
+
+def test_monolingual_publication_still_rejects_an_omitted_block(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "refined.epub"
+    first = "Con la lluvia, el suelo del jardín empezaba a llenarse de charcos."
+    second = "Al otro lado de la ventana, alguien dejó una nota sobre la mesa."
+    _write_epub(source, language="es", html_language="es", paragraphs=[first, second])
+    _write_epub(output, language="es", html_language="es", paragraphs=[first, ""])
+
+    report = audit_epub_publication(
+        source, output, source_language="Auto", target_language="Spanish",
+        same_language_transform=True, epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert not report.publishable
+    assert report.dom_boundary_structural_mismatches
+    assert report.source_language_units == 0
+
+
+def test_monolingual_publication_still_rejects_the_wrong_script(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "refined.epub"
+    _write_epub(
+        source, language="es", html_language="es",
+        paragraphs=["Abrió la puerta y salió al jardín, donde la esperaba la carta "
+                    "que el cartero acababa de dejar sobre la mesa."],
+    )
+    _write_epub(
+        output, language="es", html_language="es",
+        paragraphs=["Она открыла дверь и вышла в сад, где на столе её ждало письмо, "
+                    "которое только что принёс почтальон."],
+    )
+
+    report = audit_epub_publication(
+        source, output, source_language="es", target_language="Spanish",
+        epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert not report.publishable
+    assert any("target_script_mismatch" in unit["audit"]["issues"] for unit in report.units)
+
+
+def test_transform_flag_does_not_bypass_translation_when_languages_differ(tmp_path):
+    source = tmp_path / "source.epub"
+    output = tmp_path / "untranslated.epub"
+    text = (
+        "She opened the back door and stepped into the garden, where the letter "
+        "that the postman had just delivered was waiting for her on the table."
+    )
+    _write_epub(source, language="en", html_language="en", paragraphs=[text])
+    _write_epub(output, language="es", html_language="es", paragraphs=[text])
+
+    report = audit_epub_publication(
+        source, output, source_language="English", target_language="Spanish",
+        same_language_transform=True, epubcheck_command=["/usr/bin/true"],
+    )
+
+    assert not report.publishable
+    assert report.source_language_units or any(
+        "untranslated_source" in unit["audit"]["issues"] for unit in report.units
+    )
 
 
 def test_publication_gate_accepts_bounded_professional_cover_and_navigation_assets(tmp_path):

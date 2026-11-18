@@ -25,6 +25,7 @@ from lxml import etree
 
 from src.core.document_structure import DocumentBlockClassifier
 from src.core.fidelity_supervisor import (
+    _AUTO_LANGUAGE_KEYS,
     _translated_word_form_enumeration_spans,
     assess_fidelity,
     target_language_gate_issues,
@@ -36,7 +37,7 @@ from src.core.language_evidence import (
     looks_like_translated_reference_context,
 )
 from src.core.technical_identifiers import matches_outside_technical_literals
-from src.utils.language_detector import LanguageDetector
+from src.utils.language_detector import LANGUAGE_CODE_MAP, LanguageDetector
 
 from .lang_support import get_language_code
 from .dom_boundaries import _BLOCK_XPATH, audit_epub_dom_boundaries
@@ -589,10 +590,26 @@ def audit_epub_publication(
     *,
     source_language: str,
     target_language: str,
+    same_language_transform: bool = False,
     broken_path: str | Path | None = None,
     epubcheck_command: Optional[list[str]] = None,
 ) -> PublicationGateReport:
     report = PublicationGateReport(str(source_path), str(output_path), target_language)
+    target_key = _normalized_language(target_language)
+    expected_code = get_language_code(target_key)
+    source_key = _normalized_language(source_language)
+    source_code = get_language_code(source_key)
+    compare_source_language = not (
+        expected_code
+        and (
+            source_code == expected_code
+            or (same_language_transform and source_key in {"", *_AUTO_LANGUAGE_KEYS})
+        )
+    )
+    if not compare_source_language:
+        # Canonicalize aliases and Auto for the shared fidelity checks so
+        # they do not interpret a retained passage as a missing translation.
+        source_language = target_language = target_key
     source = snapshot_epub(source_path, recover=True)
     output = snapshot_epub(output_path, recover=False)
     broken = snapshot_epub(broken_path, recover=True) if broken_path else None
@@ -626,7 +643,6 @@ def audit_epub_publication(
         report.errors.append(f"temporary files found inside EPUB: {output.temporary_files[:5]}")
     if output.parse_errors:
         report.errors.extend(f"invalid XHTML: {item}" for item in output.parse_errors)
-    expected_code = get_language_code(target_language)
     if not expected_code or expected_code not in output.languages:
         report.errors.append(f"dc:language must be {expected_code or target_language}; found {output.languages}")
     wrong_html_languages = [
@@ -883,7 +899,8 @@ def audit_epub_publication(
             confidence_threshold=0.90,
         )
         file_is_source_language = bool(
-            _normalized_language(detected) == _normalized_language(source_language)
+            compare_source_language
+            and _normalized_language(detected) == source_key
             and len(output_text) >= 80
             and not intentional_foreign_quote
             and not has_target_language_contextual_evidence(
@@ -907,33 +924,26 @@ def audit_epub_publication(
         duplicate_blocks = 0
         for output_unit in output_file_units:
             normalized_block = _normalized_text(output_unit.text)
-            translated_reference_context = looks_like_translated_reference_context(
-                output_unit.text,
-                target_language=target_language,
-            ) or looks_like_structured_language_metadata(
-                output_unit.text,
-                document_hint=output_unit.file_href,
-                target_language=target_language,
-            ) or file_document_context == "glossary"
-            block_detected, block_confidence = LanguageDetector.detect_language_from_text(
-                normalized_block,
-                confidence_threshold=0.90,
-            )
-            block_is_source_language = bool(
-                len(normalized_block) >= 80
-                and _normalized_language(block_detected) == _normalized_language(source_language)
-                and float(block_confidence or 0.0) >= 0.90
-                and not _looks_like_reference_metadata(normalized_block, output_unit.element)
-                and not looks_like_structured_language_metadata(
+            block_is_source_language = False
+            if compare_source_language and len(normalized_block) >= 80:
+                block_detected, block_confidence = LanguageDetector.detect_language_from_text(
                     normalized_block,
-                    document_hint=output_unit.file_href,
-                    target_language=target_language,
+                    confidence_threshold=0.90,
                 )
-                and not has_target_language_contextual_evidence(
-                    normalized_block,
-                    target_language=target_language,
+                block_is_source_language = bool(
+                    _normalized_language(block_detected) == source_key
+                    and float(block_confidence or 0.0) >= 0.90
+                    and not _looks_like_reference_metadata(normalized_block, output_unit.element)
+                    and not looks_like_structured_language_metadata(
+                        normalized_block,
+                        document_hint=output_unit.file_href,
+                        target_language=target_language,
+                    )
+                    and not has_target_language_contextual_evidence(
+                        normalized_block,
+                        target_language=target_language,
+                    )
                 )
-            )
             if block_is_source_language:
                 source_language_blocks += 1
 
@@ -944,7 +954,15 @@ def audit_epub_publication(
             source_unit = source_by_path.get(
                 (output_unit.file_href, output_unit.dom_path)
             )
-            if source_unit is not None and not block_is_source_language:
+            if compare_source_language and source_unit is not None and not block_is_source_language:
+                translated_reference_context = looks_like_translated_reference_context(
+                    output_unit.text,
+                    target_language=target_language,
+                ) or looks_like_structured_language_metadata(
+                    output_unit.text,
+                    document_hint=output_unit.file_href,
+                    target_language=target_language,
+                ) or file_document_context == "glossary"
                 intentional_block_quote = _is_intentional_foreign_quote(
                     source_unit.text,
                     output_unit.text,
@@ -1912,5 +1930,7 @@ def _normalized_language(value: Optional[str]) -> str:
         "es": "spanish", "español": "spanish", "espanol": "spanish",
         "en": "english", "fr": "french", "it": "italian", "pt": "portuguese",
     }
-    key = str(value or "").strip().casefold()
-    return aliases.get(key, key)
+    key = str(value or "").strip().casefold().replace("_", "-")
+    key = aliases.get(key, key)
+    code = get_language_code(key)
+    return LANGUAGE_CODE_MAP.get(code or "", key).casefold()
