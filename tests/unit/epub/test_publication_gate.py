@@ -243,7 +243,7 @@ def test_monolingual_publication_still_rejects_the_wrong_script(tmp_path):
     )
 
     assert not report.publishable
-    assert any("target_script_mismatch" in unit["audit"]["issues"] for unit in report.units)
+    assert any("target_script_mismatch" in unit["audit"].get("issues", []) for unit in report.units)
 
 
 def test_transform_flag_does_not_bypass_translation_when_languages_differ(tmp_path):
