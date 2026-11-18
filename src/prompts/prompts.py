@@ -266,16 +266,28 @@ _TEXT_TRANSFORM_MODE_SPECS = {
             "Where wording feels translated, rebuild sentences or passages substantially within their existing paragraphs. "
             "Change clause order, sentence rhythm, idioms and forms of address to carry the same effect in Mexican Spanish. "
             "Resolve English calques, stiff connectors and unmotivated regionalisms from other varieties.",
-            "Read each exchange as an action. Identify whether a speaker is teasing, evading, reassuring, challenging or keeping "
-            "their distance. Recast the line to do that in the character's own voice. Use nearby dialogue and narration to "
-            "preserve each character's distinctive cadence, treatment and degree of directness across passages.",
+            "Adapt the dialogue turn as a unit. For each turn, first imagine a fresh version as the character would say it "
+            "in Mexico. Identify whether the speaker is teasing, evading, reassuring, challenging or keeping their distance. "
+            "Recast the line to do that in the character's own voice. Take care with kinship terms, forms of address, "
+            "everyday verbs and the order in which a speaker would say things. In a warm conversation at home, "
+            "for example, 'Mi padre obtuvo las entradas para el partido' could become 'Mi papá consiguió los boletos "
+            "para el partido.' A formal setting or a distant relationship can call for a different choice. "
+            "Read verbs with their objects: use the combination an ordinary Mexican speaker uses for that activity, "
+            "such as 'metió un gol' for 'marcó un gol'. Recheck the complete turn after changing a kinship term or a noun "
+            "so that the surrounding syntax also sounds spoken. "
+            "Use nearby dialogue and narration to preserve each character's cadence, treatment and degree of directness.",
             "Use Mexican colloquialisms, slang or profanity when they carry the source's familiarity, humor, roughness "
             "or emphasis. Choose their strength according to the speaker, relationship, social register, era and scene. "
             "Keep formal or reflective narration in its own register.",
-            "Keep effective passages verbatim, including whole paragraphs when they already read naturally in editorial "
-            "Mexican Spanish. Judge each passage on its own merits and change only what improves locale, voice or cadence.",
+            "Keep effective passages verbatim when they already read naturally in editorial Mexican Spanish. "
+            "For speech that still sounds translated, carry through the fresh rendering of the whole turn. "
+            "Check spoken syntax, rhythm and level of intimacy before keeping a turn verbatim. "
+            "Natural Mexican speech includes plain, restrained language as well as slang.",
             "Preserve the setting, period, identities, social distance, irony, ambiguity and factual details. "
-            "Keep attributed quotations, distinct voices and intentional contrasts between varieties when they serve the text.",
+            "Keep the same actions, who performs them, their sequence, and the images carried by the prose. "
+            "Carry each metaphor through in Spanish. Keep explicit movement, direction, routes and objects. "
+            "Leave directions and motives unstated when the source leaves them open. "
+            "Preserve verbatim documentary quotations and intentional contrasts between varieties when they serve the text.",
         ],
     },
     "academic_clarity": {
@@ -387,6 +399,13 @@ Non-negotiable constraints:
             else "Output only the transformed text, without notes or explanations."
         )
 
+        quotation_rule = (
+            "Recast characters' spoken dialogue while retaining its intent and relationships. "
+            "Preserve verbatim quotations from documents and real cited sources."
+            if raw_mode == "mexican_spanish"
+            else "Preserve direct quotations and dialogue treatment; do not change grammatical person "
+            "or normalize away a meaningful historical voice."
+        )
         base = f"""
 TEXT TRANSFORMATION MODE: {label}
 
@@ -399,7 +418,7 @@ Non-negotiable constraints:
 - Stay faithful to the source text's real content; do not invent, censor, omit, or add unsupported facts.
 - Preserve names, dates, numbers, citations, formulas, scene order, argument order, and meaningful paragraph structure.
 - Keep the author's intent and register unless the selected mode explicitly asks for a controlled shift.
-- Preserve direct quotations and dialogue treatment; do not change grammatical person or normalize away a meaningful historical voice.
+- {quotation_rule}
 - If a passage already satisfies this mode's goal, leave it close to unchanged; otherwise apply the mode directly.{explanation_policy}
 - {output_boundary}{rules_text}
 """.strip()

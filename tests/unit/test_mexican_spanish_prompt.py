@@ -143,6 +143,13 @@ def test_mexican_adaptation_uses_one_editorial_policy_in_writing_and_refinement(
         assert "rebuild sentences or passages substantially" in request.system
         assert "Change clause order, sentence rhythm" in request.system
         assert "Recast the line to do that in the character's own voice" in request.system
+        assert "Adapt the dialogue turn as a unit" in request.system
+        assert "kinship terms, forms of address" in request.system
+        assert "fresh version as the character would say it" in request.system
+        assert "Carry each metaphor through in Spanish" in request.system
+        assert "Preserve verbatim quotations from documents and real cited sources" in request.system
+        assert "Preserve direct quotations and dialogue treatment" not in request.system
+        assert "same actions, who performs them" in request.system
         assert "Mexican colloquialisms, slang or profanity" in request.system
         assert "speaker, relationship, social register, era and scene" in request.system
         assert "Keep effective passages verbatim" in request.system
