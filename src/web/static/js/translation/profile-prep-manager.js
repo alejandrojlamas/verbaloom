@@ -6,6 +6,7 @@ import { t } from '../i18n/i18n.js';
 import { TextTransformManager } from './text-transform-manager.js?v=20260705-transform-flow';
 import { PipelineSettings } from '../ui/pipeline-settings.js';
 
+const PURPOSE_STORAGE_KEY = 'verbaloom.profilePrepPurpose';
 const OPENAI_OFFICIAL_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
 // Display names of the models the analysis can run on; other ids are shown as is.
@@ -112,6 +113,28 @@ export const ProfilePrepManager = {
         const start = DomHelpers.getElement('profilePrepStartBtn');
         const clear = DomHelpers.getElement('profilePrepClearBtn');
 
+        const purpose = DomHelpers.getElement('profilePrepPurpose');
+        if (purpose) {
+            try {
+                const saved = localStorage.getItem(PURPOSE_STORAGE_KEY);
+                if (Array.from(purpose.options).some(option => option.value === saved)) {
+                    purpose.value = saved;
+                }
+            } catch { /* Storage may be unavailable. */ }
+            const help = DomHelpers.getElement('profilePrepPurposeHelp');
+            const updateHelp = () => {
+                if (!help) return;
+                const key = 'transform:profile_goal_hint_' + purpose.selectedOptions[0].dataset.profileGoal;
+                help.dataset.i18n = key;
+                help.textContent = t(key);
+            };
+            updateHelp();
+            purpose.addEventListener('change', () => {
+                updateHelp();
+                try { localStorage.setItem(PURPOSE_STORAGE_KEY, purpose.value); } catch { /* optional */ }
+            });
+        }
+
         if (upload) {
             upload.addEventListener('click', () => input?.click());
             upload.addEventListener('dragover', (event) => {
@@ -208,15 +231,15 @@ export const ProfilePrepManager = {
         }
         catch { MessageLogger.showMessage(t('settings:pipe_invalid'), 'error'); return; }
         const language = DomHelpers.getValue('profilePrepLanguage') || DomHelpers.getValue('targetLang') || 'Spanish';
-        const purpose = DomHelpers.getValue('profilePrepPurpose') || 'translation';
+        const purpose = DomHelpers.getElement('profilePrepPurpose')?.selectedOptions[0];
         const formData = new FormData();
         for (const file of this.pendingFiles) {
             formData.append('files', file, file.name);
         }
         formData.append('language', language);
         formData.append('target_locale', /^spanish$/i.test(language) ? 'es-MX' : '');
-        formData.append('transform_mode', purpose);
-        formData.append('profile_goal', purpose);
+        formData.append('transform_mode', purpose?.value || 'translation');
+        formData.append('profile_goal', purpose?.dataset.profileGoal || 'faithful_translation');
         const models = this.analysisModels(pipeline);
         formData.append('llm_full_coverage', 'true');
 
@@ -418,13 +441,16 @@ export const ProfilePrepManager = {
         const profileForSelect = {
             profile_id: profile.profile_id,
             name: profile.profile_name,
+            profile_goal: profile.profile_goal || job.profile_goal,
+            target_language: profile.target_language || job.language,
+            target_locale: profile.target_locale || job.target_locale,
             approved_count: profile.approved_entries,
             pending_count: profile.pending_suggestions,
             editorial_artifact_counts: profile.editorial_artifact_counts || {},
             generated_profile: true,
         };
         TextTransformManager.upsertProfileOption(profileForSelect, true);
-        window.dispatchEvent(new CustomEvent('bookProfilesChanged'));
+        window.dispatchEvent(new CustomEvent('bookProfilesChanged', { detail: { preparedProfile: profileForSelect } }));
 
         const signals = this.editorialSignalCount(profile);
         this.setProgress(100, t('transform:profile_prep_success', {

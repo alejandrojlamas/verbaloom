@@ -16,6 +16,7 @@
 
 import { ApiClient } from '../core/api-client.js';
 import { WebSocketManager } from '../core/websocket-manager.js';
+import { bookProfileName } from '../ui/book-profile-name.js';
 import { DomHelpers } from '../ui/dom-helpers.js';
 import { t, applyToDOM } from '../i18n/i18n.js';
 import { SampleTable } from './sample-table.js';
@@ -245,7 +246,7 @@ function optionHtml(value, label, selected = false) {
 }
 
 function profileOptionLabel(profile) {
-    const name = profile?.name || profile?.profile_name || profile?.profile_id || '';
+    const name = bookProfileName(profile);
     const approved = Number(profile?.approved_count ?? profile?.approved_entries ?? 0);
     const pending = Number(profile?.pending_count ?? profile?.pending_suggestions ?? 0);
     if (approved || pending) {
@@ -2145,6 +2146,7 @@ function wireButtons() {
 
 function rerenderOnLocale() {
     window.addEventListener('localeChanged', () => {
+        populateProfileSelect();
         renderColumns();
         if (SampleTable.hasResults()) {
             applyToDOM($('sampleResults'));

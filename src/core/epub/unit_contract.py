@@ -106,12 +106,15 @@ def safe_prompt_options(options: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     })
 
 
-def with_profile_dependency(options: Optional[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
-    """Capture loaded policy/glossary content, not just the mutable profile ID."""
+def with_profile_dependency(
+    options: Optional[Mapping[str, Any]], *, include_review_policy: bool = False,
+) -> Optional[dict[str, Any]]:
+    """Snapshot profile files and, for staged EPUB review, the effective editorial rules."""
     if options is None:
         return None
     result = dict(options)
     result.pop("_profile_content_hash", None)
+    result.pop("_profile_review_policy_hash", None)
     if result.get("profile_id"):
         from src.core.book_profiles.loader import load_book_profile
 
@@ -128,6 +131,13 @@ def with_profile_dependency(options: Optional[Mapping[str, Any]]) -> Optional[di
         result["_profile_content_hash"] = text_sha256(json.dumps(
             _dependency_value(payload), sort_keys=True, ensure_ascii=False, allow_nan=False,
         ))
+        if include_review_policy:
+            from src.core.book_profiles.rendering import profile_enabled, profile_output_policy
+
+            if profile_enabled(result):
+                policy = profile_output_policy(profile, result)
+                if policy:
+                    result["_profile_review_policy_hash"] = text_sha256(policy)
     return result
 
 
@@ -222,6 +232,9 @@ def stage_fingerprints(
         "prompt_version": active_versions["review"],
         "prompt_options": review_options,
     }
+    if not _legacy_runtime_identity and (prompt_options or {}).get("_profile_review_policy_hash"):
+        # A rule revision reopens review and its dependent audit, keeping the translated draft.
+        review_payload["profile_review_policy_hash"] = prompt_options["_profile_review_policy_hash"]
     review_roles = _role_dependencies(prompt_options, ("refine", "repair"))
     if review_roles:
         review_payload["model_roles"] = review_roles

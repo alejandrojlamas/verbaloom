@@ -3406,7 +3406,7 @@ def _profile_fidelity_audit_context(
         return ""
     try:
         from src.core.book_profiles.loader import load_book_profile
-        from src.core.book_profiles.rendering import profile_terms_dict
+        from src.core.book_profiles.rendering import profile_enabled, profile_output_policy, profile_terms_dict
 
         profile = load_book_profile(profile_id)
         approved_terms = profile_terms_dict(dict(options), source_text=source_text)
@@ -3461,13 +3461,15 @@ def _profile_fidelity_audit_context(
     # evidence that triggered the audit.
     approved = approved_missing + approved_present
     ranked = approved_missing + pending + approved_present
+    policy = profile_output_policy(profile, dict(options)) if profile_enabled(dict(options)) else ""
     if not ranked:
-        return ""
+        return policy
     ranked = ranked[:max(1, int(max_entries or 1))]
 
     lines = [
         "# ACTIVE PROFILE FIDELITY CONTEXT",
         f"Profile: {profile.profile_id}",
+        *([policy] if policy else []),
         (
             "APPROVED entries are authoritative book-scoped terminology. "
             "PENDING HINT entries are non-binding evidence only: they may explain "
@@ -3568,6 +3570,8 @@ including short or repeated utterances, as a material omission. Preserve dialogu
 language. A local language-ID warning on a short utterance is not by itself evidence of untranslated prose.
 When an explicit measurement is localized, require the original numeric value and unit to remain present. A converted
 value may be added in parentheses, but replacing the source measurement with a rounded conversion is a fidelity defect.
+When an active editorial goal calls for explanation, a relationship made explicit is faithful only if the source
+establishes it. Preserve conditions, uncertainty and exceptions; reject invented premises or stronger conclusions.
 For same-language transformations such as modernization, do not require literal wording. Accept safe wording updates,
 but reject changes that alter speaker/addressee relationships, grammatical person, dialogue intent, quoted meaning,
 tone that carries narrative information, ambiguity that the source intentionally preserves, or the order of ideas.

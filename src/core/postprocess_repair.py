@@ -17,6 +17,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from src.config import REQUEST_TIMEOUT, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
 from src.core.book_profiles import build_profile_glossary_block, profile_enabled
 from src.core.book_profiles.audit import run_profile_precheck
+from src.core.book_profiles.rendering import profile_output_policy
 from src.core.book_profiles.detectors import (
     active_profile_from_options,
     has_profile_modernization_signal,
@@ -142,13 +143,13 @@ def detect_repair_issues(
         issues.append(RepairIssue("mojibake_or_artifact", "critical", "Encoding or artifact glyphs remain."))
     if _INDEX_NOISE_RE.search(candidate):
         issues.append(RepairIssue("structure_noise", "high", "PDF/index structure remains flattened or noisy."))
-    if _PENINSULAR_OR_ARCHAIC_RE.search(candidate):
-        issues.append(RepairIssue("peninsular_or_archaic_form", "medium", "Residual archaic/Peninsular form."))
-    if _OS_PRONOUN_RE.search(candidate):
-        issues.append(RepairIssue("os_pronoun", "medium", "Residual second-person plural pronoun."))
-    if _ARCHAIC_RE.search(candidate):
-        issues.append(RepairIssue("lexical_archaism", "medium", "Residual lexical archaism."))
     if is_faithful_modernize(options):
+        if _PENINSULAR_OR_ARCHAIC_RE.search(candidate):
+            issues.append(RepairIssue("peninsular_or_archaic_form", "medium", "Residual archaic/Peninsular form."))
+        if _OS_PRONOUN_RE.search(candidate):
+            issues.append(RepairIssue("os_pronoun", "medium", "Residual second-person plural pronoun."))
+        if _ARCHAIC_RE.search(candidate):
+            issues.append(RepairIssue("lexical_archaism", "medium", "Residual lexical archaism."))
         residue_counts = count_spanish_modernization_residue(candidate)
         residue_total = sum(residue_counts.values())
         if residue_total >= 6:
@@ -222,7 +223,7 @@ def detect_repair_issues(
     profile_id = str(options.get("profile_id") or "").strip()
     if profile_id:
         try:
-            precheck = run_profile_precheck(source, candidate, profile_id=profile_id)
+            precheck = run_profile_precheck(source, candidate, profile_id=profile_id, prompt_options=options)
             for issue in precheck.issues:
                 severity = "high" if issue.severity == "high" else "medium"
                 issues.append(
@@ -548,8 +549,8 @@ def _build_prompt_variants(
     profile_policy = ""
     if active_profile is not None:
         policy_parts = [
-            active_profile.policy_text,
-            active_profile.prompt_texts.get("modernize", ""),
+            profile_output_policy(active_profile, prompt_options, include_saved_policy=True),
+            active_profile.prompt_texts.get(str(prompt_options.get("text_transform_mode") or "translation"), ""),
             active_profile.prompt_texts.get("repair", ""),
         ]
         profile_policy = _trim_context(
@@ -617,13 +618,13 @@ polish already-good prose just because this is a repair pass.
     variants = [
         (
             "postprocess_source_first",
-            "You are a source-faithful literary modernization repair editor.",
+            "You are a source-faithful book repair editor.",
             f"""
 Repair this failed chunk from the source, not from the flawed candidate.
 
-Goal: a faithful transformation for the active profile and target locale.
-Preserve every fact, name, relation, number, scene, order and voice. Do not
-summarize, omit, censor, explain, expand, or flatten the style.
+Use the selected operation and target language. Preserve every fact, name,
+relationship, number, scene, order and voice. Keep explanations within the
+source evidence and the scope of the requested operation.
 
 The current candidate is evidence of what went wrong. Use it only to avoid
 repeating the same failure.
@@ -642,10 +643,8 @@ and following context. The repair must keep the same editorial objective as the
 active profile, but use a different strategy: recast the syntax directly from
 the source instead of polishing the old candidate.
 
-Resolve all listed local issues. If the source uses archaic treatment, choose a
-natural contemporary treatment by context and by the active profile. Keep
-authorial and character voice without preserving obsolete surface forms unless
-the profile explicitly asks for them.
+Resolve the listed issues. Preserve what a shift in register reveals about
+the speaker and addressee. Modernize period diction only when requested.
 
 {common_payload}
 
@@ -654,7 +653,7 @@ the profile explicitly asks for them.
         ),
         (
             "postprocess_voice_and_fidelity",
-            "You are the final literary editor for a profile-scoped modernization.",
+            "You are the final editor checking the source and the selected book profile.",
             f"""
 Produce the safest corrected version of this chunk. Balance two priorities:
 1. absolute content fidelity to the source;
@@ -663,8 +662,8 @@ Produce the safest corrected version of this chunk. Balance two priorities:
 Do not preserve a bad candidate just because it is close to the source. Do not
 make it generic or school-like. Keep the authorial effects, tone, register,
 relationships, and voice differences described by the active profile. Remove
-leaked tags, OCR/encoding artifacts, residual obsolete forms, and profile
-violations unless the active profile explicitly requires preserving them.
+accidental leaked tags or encoding artifacts identified by the audit. Review
+changes in diction against the selected editing task.
 
 {common_payload}
 

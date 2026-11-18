@@ -182,3 +182,58 @@ def test_refine_only_epub_does_not_claim_translation_inline_refinement():
     options = configure_editorial_guard_options(config)
 
     assert "inline_refinement" not in options
+
+
+def test_inference_preserves_explicit_operation_and_the_book_purpose(tmp_path, monkeypatch):
+    monkeypatch.setenv("BOOK_PROFILES_DIR", str(tmp_path))
+    published = {}
+    for goal in ("faithful_translation", "audiobook", "modernization", "explanatory_rewrite", "literary_polish"):
+        profile_dir = create_profile("auto_" + goal, profiles_root=tmp_path)
+        path = profile_dir / "profile.yml"
+        saved = yaml.safe_load(path.read_text())
+        saved.update({
+            "generated_profile": True, "source_name": "Shared title.txt",
+            "source_language": "Spanish", "target_locale": "es-MX", "profile_goal": goal,
+        })
+        path.write_text(yaml.safe_dump(saved))
+        published[goal] = profile_dir.name
+
+    base = {
+        "input_filename": "Shared title.txt", "source_language": "Spanish",
+        "target_language": "Spanish", "operation": "translate",
+    }
+    for goal, profile_id in published.items():
+        config = {**base, "prompt_options": {"profile_goal": goal}}
+        options = configure_editorial_guard_options(config)
+        assert options["profile_id"] == profile_id
+        assert "text_transform_mode" not in options
+
+    options = configure_editorial_guard_options({
+        **base, "operation": "transform",
+        "prompt_options": {"profile_goal": "explanatory_rewrite", "text_transform_mode": "simplify"},
+    })
+    assert options["profile_id"] == published["explanatory_rewrite"]
+    assert options["text_transform_mode"] == "simplify"
+    assert "profile_id" not in configure_editorial_guard_options({**base, "prompt_options": {}})
+
+
+
+def test_french_goal_is_usable_with_or_without_a_regional_locale(tmp_path, monkeypatch):
+    monkeypatch.setenv("BOOK_PROFILES_DIR", str(tmp_path))
+    for index, locale in enumerate(("", "fr-CA")):
+        source_name = f"River essay number {index}.txt"
+        profile_id = f"auto_river_{index}"
+        profile_path = create_profile(profile_id, profiles_root=tmp_path) / "profile.yml"
+        saved = yaml.safe_load(profile_path.read_text())
+        saved.update({
+            "generated_profile": True, "profile_goal": "literary_polish", "source_name": source_name,
+            "source_language": "English", "target_language": "French", "target_locale": locale,
+        })
+        profile_path.write_text(yaml.safe_dump(saved))
+        config = {"input_filename": source_name, "source_language": "English",
+                  "target_language": "French", "llm_provider": "deepseek", "operation": "translate"}
+        for options in ({}, {"profile_id": profile_id, "editorial_mode": "book_profile"}):
+            applied = configure_editorial_guard_options({**config, "prompt_options": options})
+            assert applied["profile_id"] == profile_id
+            assert (applied.get("target_locale") or "") == locale
+            assert "text_transform_mode" not in applied

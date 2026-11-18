@@ -882,8 +882,9 @@ export const FileUpload = {
                 languageConfidence: uploadResult.language_confidence || null,
                 readableCharacters: Number(uploadResult.readable_characters || 0) || null,
                 thumbnail: uploadResult.thumbnail || null,  // EPUB cover thumbnail
-                profileId: uploadResult.profile_id || options.profileId || '',
-                profileName: uploadResult.profile_name || uploadResult.book_profile?.profile_name || '',
+                profileId: options.profileId || uploadResult.profile_id || '',
+                profileName: options.profileId && options.profileId !== uploadResult.profile_id
+                    ? '' : uploadResult.profile_name || uploadResult.book_profile?.profile_name || '',
                 operation: operation,
                 refineAfter: operation === 'translate',
                 outputLabel: outputLabel,

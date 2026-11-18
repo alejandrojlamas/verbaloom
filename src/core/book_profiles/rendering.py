@@ -20,6 +20,7 @@ from .detectors import fold_profile_match_text
 from .knowledge import build_profile_knowledge_base
 from .loader import BookProfileError, load_book_profile
 from .models import BookProfile, ProfileGlossaryEntry
+from .profile_goals import ProfileGoalRules, declared_profile_goal
 from .term_review import (
     suspicious_preserve_entry,
     weakly_supported_generated_preserve_entry,
@@ -267,13 +268,16 @@ def build_profile_instruction_block(
         return ""
 
     normalized_phase = str(phase or "").strip().lower()
+    options = prompt_options or {}
+    mode = str(options.get("text_transform_mode") or "").strip().lower()
     prompt_text = (profile.prompt_texts.get(normalized_phase) or "").strip()
-    if not prompt_text and normalized_phase in {"voice_restoration", "modernize"}:
+    if not prompt_text and normalized_phase == "voice_restoration" and mode in {"", "modernize"}:
         prompt_text = (profile.prompt_texts.get("modernize") or "").strip()
 
     phase_guidance = _phase_guidance(
         normalized_phase,
-        source_language=str((prompt_options or {}).get("_source_language") or ""),
+        transform_mode=mode,
+        source_language=str(options.get("_source_language") or ""),
         target_language=target_language,
     )
 
@@ -283,21 +287,22 @@ def build_profile_instruction_block(
         f"Profile id: {profile.profile_id}",
         f"Profile name: {profile.name}",
     ]
-    if profile.target_locale:
-        lines.append(f"Target locale: {profile.target_locale}")
+    if options.get("target_locale") or profile.target_locale:
+        lines.append(f"Target locale: {options.get('target_locale') or profile.target_locale}")
     if target_language:
         lines.append(f"Output language: {target_language}")
     lines.extend([
         "",
         "Use only the active profile and its approved glossary. Do not apply rules from another book profile.",
         "If a recurring editorial equivalence is needed and not in the active glossary, make the best contextual choice and let the glossary discovery/reporting layer suggest it; do not treat it as a global rule.",
-        "When this profile conflicts with generic light-editing or conservative-modernization instructions, the active profile wins.",
-        "A high-modernization profile may require substantive sentence-level restructuring while preserving every unit of meaning.",
-        "Preserve authorial voice through contemporary literary equivalents; do not preserve obsolete grammar, old conjunctions, enclitic syntax, or archaic/Peninsular address forms merely to create period flavor.",
+        "Apply book-specific decisions within the requested operation and output language. Preserve the source evidence and document structure.",
     ])
     if phase_guidance:
         lines.extend(["", phase_guidance])
-    audiobook_guidance = _audiobook_guidance(profile, normalized_phase)
+    output_policy = profile_output_policy(profile, options)
+    if output_policy:
+        lines.extend(["", output_policy])
+    audiobook_guidance = _audiobook_guidance(profile)
     if audiobook_guidance:
         lines.extend(["", audiobook_guidance])
     editorial_brief = compact_editorial_brief_for_prompt(profile.editorial_artifacts)
@@ -704,16 +709,23 @@ def profile_exact_translation_pairs(
 def _phase_guidance(
     phase: str,
     *,
+    transform_mode: str = "",
     source_language: str = "",
     target_language: str = "",
 ) -> str:
+    if transform_mode:
+        return (
+            f"Same-language operation: {transform_mode}. Keep the source language. "
+            "Use the book glossary and voice decisions within the selected operation. "
+            "In refinement, retain successful edits and correct localized problems."
+        )
     if phase == "translation":
         return f"""
 Translation use of this profile:
 - Use the profile to keep names, concepts, titles, acronyms, relationships, voices, and recurring terms consistent across the whole book.
 - Apply approved source-to-target glossary entries when the source term appears. When a glossary entry is preserve-as-written, preserve it exactly.
 - Use the editorial map as context for register, character/entity continuity, chapter structure, and domain vocabulary.
-- Do not modernize, simplify, summarize, censor, or editorialize beyond what is needed for a faithful translation from {source_language or 'the source language'} to {target_language or 'the target language'}.
+- Start from a faithful translation from {source_language or 'the source language'} to {target_language or 'the target language'}. Match the selected editorial goal while retaining all source-supported content, qualifications and implications.
 - If profile guidance conflicts with source fidelity, source fidelity wins; preserve every fact, number, quotation boundary, argument, and scene/action order.
 """.strip()
 
@@ -723,7 +735,7 @@ Translation refinement use of this profile:
 - Improve fluency, consistency, and target-language editorial quality while preserving the translation's source-faithful content.
 - Enforce approved glossary choices and consistent recurring terms; do not introduce a new synonym for an already established profile term.
 - Keep names, numbers, citations, headings, table values, dialogue roles, and paragraph order intact.
-- Do not turn refinement into rewriting, modernization, simplification, explanation, or censorship unless the active task explicitly asks for that.
+- Retain the level of intervention selected for this job. Keep source-supported clarifications when explanation was requested, and preserve ambiguity where the source does.
 """.strip()
 
     if phase in {"audit", "repair"}:
@@ -737,33 +749,53 @@ Audit/repair use of this profile:
     return ""
 
 
-def _audiobook_guidance(profile: BookProfile, phase: str) -> str:
+def effective_output_goal(profile: BookProfile, prompt_options: Optional[dict] = None) -> ProfileGoalRules | None:
+    """An explicit transformation defines which editorial changes the job permits."""
+    goal = declared_profile_goal(profile.raw_config)
+    mode = str((prompt_options or {}).get("text_transform_mode") or "").strip().lower()
+    if mode and goal:
+        operation_goal = declared_profile_goal({"transform_mode": mode})
+        if operation_goal is None or operation_goal.key != goal.key:
+            return None
+    return goal
+
+
+def profile_output_policy(
+    profile: BookProfile, prompt_options: Optional[dict] = None, *, include_saved_policy: bool = False,
+) -> str:
+    """Editorial criteria shared by writing, judging and repairing the same job."""
+    options = prompt_options or {}
+    goal = effective_output_goal(profile, options)
+    mode = str(options.get("text_transform_mode") or "").strip().lower()
+    lines = []
+    if mode:
+        lines.append(
+            f"Selected operation: {mode} within the source language. This operation determines which "
+            "changes are authorized. Use the book policy and phase notes for all compatible decisions "
+            "about terminology, voice, evidence and structure."
+        )
+    if mode == "modernize" or (not mode and goal and goal.key == "modernization"):
+        strength = options.get("modernization_strength") or profile.modernization_strength
+        lines.append(f"Modernization strength: {strength}. Preserve the social relationships and historical setting.")
+    if goal and goal.output_rules:
+        lines.append(f"Editorial goal: {goal.key}")
+        lines.extend(f"- {rule}" for rule in goal.output_rules)
+    if profile.policy_text.strip() and (include_saved_policy or not profile.raw_config.get("generated_profile")):
+        lines.extend(["Book-specific policy for this operation:", profile.policy_text.strip()])
+    return "\n".join(lines)
+
+
+def _audiobook_guidance(profile: BookProfile) -> str:
     config = profile.raw_config.get("audiobook") or profile.raw_config.get("audio_sanitization") or {}
     enabled = bool(config.get("enabled") or config.get("generate_companion")) if isinstance(config, dict) else bool(config)
     if not enabled:
         return ""
-
-    if phase == "translation":
-        return """
-Audiobook companion policy:
-- Keep the translation faithful; audiobook cleanup must never summarize, censor, or change source facts.
-- Translate informative captions accurately so they can be integrated into the listening text later.
-- Do not expand credit-only captions, raw links, page markers, or download-site watermarks into prose.
-- Notes and references may be translated, but they should not interrupt the main sentence flow.
-""".strip()
-
-    if phase in {"translation_refinement", "refinement", "audit", "repair"}:
-        return """
-Audiobook companion policy:
-- Improve listenability only where it does not alter the source-faithful translation.
-- Flag or repair raw URLs, EPUB note anchors, page markers, watermarks, and disruptive inline note calls.
-- Informative image captions should remain accurate and concise; visual credits and bibliographic apparatus belong outside the main listening flow.
-""".strip()
-
-    return """
-Audiobook companion policy:
-- Preserve content fidelity while making the final companion text suitable for listening.
-""".strip()
+    return (
+        "Audiobook companion policy:\n"
+        "In the main document retain substantive notes, references, informative captions, "
+        "credits and their links to the text. Preserve who supplied each statement. "
+        "Changes to placement or abbreviated presentation for listening belong to the separate companion."
+    )
 
 
 def profile_terms_dict(

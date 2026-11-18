@@ -259,6 +259,31 @@ def test_profile_snapshot_covers_content_and_not_operational_limits(
     }
 
 
+def test_review_policy_is_scoped_to_applicable_epub_reviews(monkeypatch, tmp_path):
+    from dataclasses import replace
+
+    from src.core.book_profiles import loader
+    from src.core.book_profiles.models import BookProfile
+
+    profile = BookProfile(
+        profile_id="book", name="Book", root=tmp_path,
+        raw_config={"profile_goal": "explanatory_rewrite"},
+    )
+    monkeypatch.setattr(loader, "load_book_profile", lambda *_: profile)
+    options = {**OPTIONS, "profile_id": "book", "editorial_mode": "book_profile"}
+    previous = with_profile_dependency(options)
+    current = with_profile_dependency(options, include_review_policy=True)
+    assert invalidated_stages(fingerprints(previous), fingerprints(current)) == ("review", "audit")
+    assert with_profile_dependency(current, include_review_policy=True) == current
+    assert with_profile_dependency(current) == previous
+
+    # An inactive selector and a legacy profile with no effective goal do not change existing receipts.
+    disabled = {**options, "editorial_mode": "standard", "_profile_review_policy_hash": "stale"}
+    assert with_profile_dependency(disabled, include_review_policy=True) == with_profile_dependency(disabled)
+    profile = replace(profile, raw_config={})
+    assert with_profile_dependency(options, include_review_policy=True) == with_profile_dependency(options)
+
+
 def test_nested_secrets_do_not_change_identity_but_glossary_values_do():
     first = {
         **OPTIONS,
@@ -485,9 +510,9 @@ async def test_real_checkpoint_resume_repairs_only_the_pending_candidate(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("refine", [False, True])
+@pytest.mark.parametrize("change,refine", [("file", False), ("file", True), ("purpose", True)])
 async def test_entrypoint_profile_edit_cannot_reuse_old_approval(
-    monkeypatch, tmp_path, refine
+    monkeypatch, tmp_path, change, refine
 ):
     from dataclasses import replace
 
@@ -498,12 +523,15 @@ async def test_entrypoint_profile_edit_cannot_reuse_old_approval(
     from src.core.llm.base import LLMResponse
 
     profile = BookProfile(
-        profile_id="book", name="Book", root=tmp_path, policy_text="Old policy"
+        profile_id="book", name="Book", root=tmp_path, policy_text="Old policy",
+        raw_config={"profile_goal": "explanatory_rewrite"},
     )
     monkeypatch.setattr(loader, "load_book_profile", lambda *_: profile)
-    options = {**OPTIONS, "profile_id": "book", "refine": refine}
-    saved = state(options=with_profile_dependency(options))
-    profile = replace(profile, policy_text="New policy")
+    options = {**OPTIONS, "profile_id": "book", "editorial_mode": "book_profile", "refine": refine}
+    # Older checkpoints captured the files but omitted the effective output policy.
+    saved = state(options=with_profile_dependency(options, include_review_policy=(change == "file")))
+    if change == "file":
+        profile = replace(profile, policy_text="New policy")
     calls = []
 
     async def forbidden(*args, **kwargs):
@@ -511,6 +539,7 @@ async def test_entrypoint_profile_edit_cannot_reuse_old_approval(
 
     async def review(**kwargs):
         calls.append("review")
+        assert kwargs["translated_chunks"] == [TRANSLATION]
         for chunk, text in zip(kwargs["chunks"], kwargs["translated_chunks"]):
             assert chunk["unit"]["review_status"] == "PENDING"
             assert chunk["unit"]["audit_status"] == "PENDING"

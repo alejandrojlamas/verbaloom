@@ -83,25 +83,33 @@ python scripts/glossary_approve.py --profile my_book_mx --min-confidence 0.95
 
 The web UI can create a book profile before the main run:
 
-1. Select files in **Transform text**.
+1. Select the book in **Prepare profile**.
 2. Choose the main purpose: faithful translation, audiobook, modernization,
    explanation, or literary polish.
-3. Click **Analyze with DeepSeek Flash**.
+3. Start the analysis with the model displayed on the button.
 4. The server extracts readable text, scans the full document locally, and runs
-   distributed discovery chunks through `deepseek-flash`.
-5. A generated profile is written under `profiles/auto_<book>/`.
+   distributed discovery chunks through the selected preparation model.
+5. A generated profile is saved under `profiles/` for this source, purpose and language settings.
 6. Mechanically safe entries go to `glossary/terms.yml`.
 7. Context-sensitive discoveries go to `glossary/pending_suggestions.yml`.
 8. The new profile is selected in the **Editorial profile** dropdown before the
    main process starts.
 
-Profile preparation uses goal-specific business rules. A faithful translation
-profile prioritizes canonical names and terms that must be translated
-consistently; an audiobook profile prioritizes listening hygiene, note/caption
-patterns, and reference cleanup; a modernization profile prioritizes archaisms,
-treatments, syntax, and voice. The term-review and pending-suggestion budgets
-scale with the book and the selected goal, so different books should not all
-produce the same number of approved or review-pending entries.
+The main purpose guides glossary preparation, writing and review for the book.
+
+| Main purpose | What a reader should get |
+| --- | --- |
+| Faithful translation | Idiomatic target-language prose that preserves who said what, how certain they were, intentional ambiguity and shifts of voice. |
+| Audiobook | Phrasing a listener can follow, with clear speakers, references and pauses. The main document retains captions, substantive notes, units and the links between table labels and values. Listening-specific presentation belongs in the companion. |
+| Modernize | Contemporary wording for dated expressions, with the historical setting, social distance between speakers and significant quotations preserved. |
+| Explain | Clear prose for an adult reader encountering a difficult subject. Explain a term, formula or relationship from the passage while preserving values, assumptions, exceptions and the strength of each claim. |
+| Literary polish | Local improvements to rhythm, diction and syntax that preserve point of view, images, subtext and intentional repetition. Effective sentences can stand. |
+
+A book can have several profiles. Its saved glossary is reused when the source
+and language settings match the requested purpose. Choose the intended profile
+when the book has more than one. The processing mode still determines the
+operation. For example, an explicit literary polish uses the book's terminology
+and keeps that operation when the book also has an explanatory profile.
 
 This flow uses `/api/book-profiles/prepare-jobs`: the browser starts a
 background preparation job, polls its status, shows stage/chunk progress, and

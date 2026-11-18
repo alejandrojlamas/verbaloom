@@ -3633,6 +3633,8 @@ def test_profile_fidelity_context_separates_approved_rules_from_pending_hints(mo
     )
     profile = SimpleNamespace(
         profile_id="book_a",
+        raw_config={},
+        policy_text="",
         glossary_entries=(approved, pending, unused_pending),
         approved_entries=(approved,),
     )

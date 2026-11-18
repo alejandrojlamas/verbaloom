@@ -23,6 +23,7 @@ from src.utils.json_extraction import extract_tagged_payload, loads_first_json_o
 from .detectors import contains_profile_term, detector_hits
 from .loader import BookProfileError, load_book_profile
 from .models import BookProfile, ProfileDetector, ProfileGlossaryEntry
+from .rendering import effective_output_goal, profile_output_policy
 
 PROFILE_AUDIT_TAG_IN = "<PROFILE_AUDIT_JSON>"
 PROFILE_AUDIT_TAG_OUT = "</PROFILE_AUDIT_JSON>"
@@ -153,11 +154,15 @@ def build_profile_audit_prompt(
     profile: BookProfile,
     glossary_block: str = "",
     local_issues: Optional[list[ProfileAuditIssue]] = None,
+    prompt_options: Optional[dict] = None,
 ) -> tuple[str, str]:
     prompt_text = profile.prompt_texts.get("audit") or _DEFAULT_AUDIT_PROMPT
-    score_fields = score_fields_for_profile(profile)
+    score_fields = score_fields_for_profile(profile, prompt_options)
     local_payload = [issue.to_dict() for issue in (local_issues or [])]
+    output_policy = profile_output_policy(profile, prompt_options)
     system = f"""{prompt_text}
+
+{output_policy}
 
 {UNTRUSTED_BOOK_CONTENT_SECTION}
 
@@ -319,12 +324,12 @@ def profile_audit_result_from_payload(
     )
 
 
-def score_fields_for_profile(profile: BookProfile) -> tuple[str, ...]:
+def score_fields_for_profile(profile: BookProfile, prompt_options: Optional[dict] = None) -> tuple[str, ...]:
     """Return base, goal, preset, and explicitly declared dimensions."""
 
-    goal = _profile_goal(profile)
+    goal = effective_output_goal(profile, prompt_options)
     fields = list(SCORE_FIELDS)
-    for field in PROFILE_GOAL_SCORE_FIELDS.get(goal, ()):
+    for field in PROFILE_GOAL_SCORE_FIELDS.get(goal.key if goal else "", ()):
         if field not in fields:
             fields.append(field)
     configured = profile.raw_config.get("audit_score_fields")
@@ -336,6 +341,10 @@ def score_fields_for_profile(profile: BookProfile) -> tuple[str, ...]:
     elif isinstance(configured, str):
         preset = configured.strip().lower()
         declared = list(AUDIT_DIMENSION_PRESETS.get(preset, ()))
+        if (preset == "translation_audiobook_full" and (prompt_options or {}).get("text_transform_mode")
+                and (goal is None or goal.key != "audiobook")):
+            inapplicable = {"terminology_translation", *PROFILE_GOAL_SCORE_FIELDS["audiobook"]}
+            declared = [field for field in declared if field not in inapplicable]
         if not declared and "," in configured:
             declared = [part.strip() for part in configured.split(",")]
     for field in declared:
@@ -343,17 +352,6 @@ def score_fields_for_profile(profile: BookProfile) -> tuple[str, ...]:
         if normalized and normalized not in fields:
             fields.append(normalized)
     return tuple(fields)
-
-
-def _profile_goal(profile: BookProfile) -> str:
-    rules = profile.raw_config.get("business_rules")
-    if isinstance(rules, Mapping) and rules.get("goal"):
-        return str(rules["goal"]).strip()
-    return str(
-        profile.raw_config.get("profile_goal")
-        or profile.raw_config.get("goal")
-        or ""
-    ).strip()
 
 
 def score_repair_guidance(
@@ -465,15 +463,20 @@ def run_profile_precheck(
     candidate_text: str,
     *,
     profile_id: str,
+    prompt_options: Optional[dict] = None,
 ) -> ProfileAuditResult:
     profile = load_book_profile(profile_id)
     issues: list[ProfileAuditIssue] = []
     _check_profile_detectors(source_text, candidate_text, profile.detectors, issues)
     _check_glossary_compliance(source_text, candidate_text, profile.approved_entries, issues)
     _check_profile_isolation(candidate_text, profile, issues)
-    _check_modernization_residue(source_text, candidate_text, profile, issues)
+    mode = str((prompt_options or {}).get("text_transform_mode") or "").strip().lower()
+    goal = effective_output_goal(profile, prompt_options)
+    if mode == "modernize" or (not mode and goal and goal.key == "modernization"):
+        strength = (prompt_options or {}).get("modernization_strength") or profile.modernization_strength
+        _check_modernization_residue(source_text, candidate_text, profile, issues, strength=strength)
 
-    scores = _default_scores(score_fields_for_profile(profile))
+    scores = _default_scores(score_fields_for_profile(profile, prompt_options))
     for issue in issues:
         _apply_issue_penalty(scores, issue)
     decision = _decision_from_scores(scores, issues, profile.min_dimension_score)
@@ -607,8 +610,10 @@ def _check_modernization_residue(
     candidate_text: str,
     profile: BookProfile,
     issues: list[ProfileAuditIssue],
+    *,
+    strength: str,
 ) -> None:
-    if str(profile.modernization_strength or "").strip().lower() not in {"high", "strong", "aggressive"}:
+    if str(strength or "").strip().lower() not in {"high", "full", "strong", "aggressive"}:
         return
     if not (profile.target_locale or "").lower().startswith("es"):
         return

@@ -14,8 +14,12 @@ from urllib.parse import unquote
 
 import yaml
 
+from src.core.language_evidence import normalize_language_name
+from src.utils.language_detector import LANGUAGE_CODE_MAP
+
 from .artifacts import load_editorial_artifacts, load_editorial_signal_index
 from .models import BookProfile, ProfileDetector, ProfileGlossaryEntry
+from .profile_goals import declared_profile_goal
 
 
 _YAML_SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
@@ -42,6 +46,7 @@ class BookProfileError(RuntimeError):
     """Raised when a book profile is missing or invalid."""
 
 
+PROFILE_PREPARING_MARKER = ".preparing"
 _PROFILE_CACHE_FILE_SUFFIXES = {".json", ".md", ".txt", ".yaml", ".yml"}
 
 
@@ -76,58 +81,91 @@ def infer_profile_id_from_metadata(
     book-specific rules into the engine.
     """
     root = resolve_profiles_root(profiles_root)
-    haystack = " ".join(
-        str(value)
-        for value in metadata.values()
-        if value is not None and str(value).strip()
-    ).casefold()
-    if not haystack or not root.exists():
-        return None
-
     explicit_profile_id = str(
         metadata.get("profile_id")
         or metadata.get("book_profile_id")
         or ""
     ).strip()
-    if (
-        explicit_profile_id
-        and _safe_profile_id(explicit_profile_id)
-        and (root / explicit_profile_id / "profile.yml").exists()
-    ):
-        return explicit_profile_id
+    if explicit_profile_id:
+        if _safe_profile_id(explicit_profile_id) and (root / explicit_profile_id / "profile.yml").is_file():
+            return explicit_profile_id
+        return None
 
-    matches: list[tuple[tuple[int, int, int, int, int, int], str]] = []
+    source_metadata = {
+        key: value for key, value in metadata.items()
+        if key not in {"source_language", "target_language", "target_locale", "profile_goal"}
+    }
+    haystack = " ".join(str(value) for value in source_metadata.values() if value).casefold()
+    if not haystack or not root.exists():
+        return None
+
+    requested_scope = profile_selection_scope(metadata)
+    matches = []
     for config_path in sorted(root.glob("*/profile.yml")):
-        config = _read_yaml_mapping(config_path)
-        profile_id = str(config.get("profile_id") or config_path.parent.name).strip()
-        if not _safe_profile_id(profile_id):
+        profile_id = config_path.parent.name
+        if profile_id.startswith("_") or profile_id == "common" or not _safe_profile_id(profile_id):
+            continue
+        if (config_path.parent / PROFILE_PREPARING_MARKER).exists():
+            continue
+        try:
+            config = _read_yaml_mapping(config_path)
+        except (OSError, yaml.YAMLError):
+            continue
+        scope = profile_selection_scope(config)
+        if requested_scope[0] and requested_scope[0] != scope[0]:
+            continue
+        if any(wanted and actual and actual != wanted for wanted, actual in zip(requested_scope[1:], scope[1:])):
             continue
         auto_detect = _mapping(config.get("auto_detect"))
-        if not auto_detect or auto_detect.get("enabled") is False:
-            if _profile_source_matches_metadata(config, haystack):
-                matches.append((_profile_match_score(config_path, config, specificity=1), profile_id))
-            continue
         all_terms = _as_string_list(auto_detect.get("all"))
         any_terms = _as_string_list(
-            auto_detect.get("any")
-            or auto_detect.get("keywords")
-            or auto_detect.get("match_any")
+            auto_detect.get("any") or auto_detect.get("keywords") or auto_detect.get("match_any")
         )
-        if not all_terms and not any_terms:
-            if _profile_source_matches_metadata(config, haystack) and _safe_profile_id(profile_id):
-                return profile_id
-            continue
-        if all_terms and not all(term.casefold() in haystack for term in all_terms):
-            continue
-        if any_terms and not any(term.casefold() in haystack for term in any_terms):
-            continue
-        matches.append((_profile_match_score(config_path, config, specificity=2), profile_id))
+        if auto_detect.get("enabled") is not False and (all_terms or any_terms):
+            if not all(term.casefold() in haystack for term in all_terms):
+                continue
+            if any_terms and not any(term.casefold() in haystack for term in any_terms):
+                continue
+            specificity = 3
+        else:
+            specificity = _profile_source_match_strength(config, haystack, source_metadata)
+            if not specificity:
+                continue
+        source = _normalize_match_text(Path(unquote(str(config.get("source_name") or ""))).stem)
+        digest = config.get("source_text_sha256") or ""
+        score = _profile_match_score(config_path, config, specificity=specificity)
+        matches.append((score, profile_id, scope, source, digest))
     if not matches:
         return None
-    # Prefer a specifically configured match, then a completed profile with an
-    # approved glossary. This prevents abandoned/empty preparation directories
-    # from shadowing the usable profile merely because they sort first.
+    highest_specificity = max(item[0][0] for item in matches)
+    matches = [item for item in matches if item[0][0] == highest_specificity]
+    # Glossary size can rank duplicates of the same profile, but cannot choose
+    # the reader's editorial intent or target language on their behalf.
+    if len({(scope, source) for _, _, scope, source, _ in matches}) > 1:
+        return None
+    if len({digest for _, _, _, _, digest in matches if digest}) > 1:
+        return None
     return max(matches, key=lambda item: (item[0], item[1]))[1]
+
+
+def profile_selection_scope(config: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    """Canonical purpose, source language, target language and target locale."""
+    goal = declared_profile_goal(config)
+    locale = str(config.get("target_locale") or "").strip().replace("_", "-").casefold()
+    return (
+        goal.key if goal else "",
+        profile_language_key(config.get("source_language")),
+        profile_language_key(config.get("target_language") or locale),
+        locale,
+    )
+
+
+def profile_language_key(value: Any) -> str:
+    raw = str(value or "").strip().casefold().replace("_", "-")
+    if raw in {"", "auto", "autodetect", "autodetectar"}:
+        return ""
+    key = LANGUAGE_CODE_MAP.get(raw) or LANGUAGE_CODE_MAP.get(raw.split("-", 1)[0]) or raw
+    return normalize_language_name(key)
 
 
 def profile_matches_source_metadata(
@@ -155,7 +193,7 @@ def profile_matches_source_metadata(
         for value in metadata.values()
         if value is not None and str(value).strip()
     ).casefold()
-    return _profile_source_matches_metadata(config, haystack)
+    return bool(_profile_source_match_strength(config, haystack, metadata))
 
 
 def _profile_match_score(
@@ -274,7 +312,7 @@ def _load_book_profile_cached(
                 detectors.append(detector)
 
     return BookProfile(
-        profile_id=str(config.get("profile_id") or profile_id),
+        profile_id=profile_id,
         name=str(config.get("name") or profile_id),
         root=profile_dir,
         target_locale=str(config.get("target_locale") or ""),
@@ -440,10 +478,20 @@ def _as_string_list(value: Any) -> list[str]:
     return []
 
 
-def _profile_source_matches_metadata(config: Mapping[str, Any], haystack: str) -> bool:
+def _profile_source_match_strength(
+    config: Mapping[str, Any], haystack: str, metadata: Mapping[str, Any],
+) -> int:
+    """Rank exact input names above partial matches in output names or metadata."""
     source_name = str(config.get("source_name") or "").strip()
     if not source_name:
-        return False
+        return 0
+    source_stem = _normalize_match_text(Path(unquote(source_name)).stem)
+    if source_stem and any(
+        source_stem == _normalize_match_text(Path(unquote(str(metadata[key]))).stem)
+        for key in ("source_name", "input_filename", "original_filename", "file_path", "secure_filename", "output_filename")
+        if metadata.get(key)
+    ):
+        return 2
     candidates = {
         source_name,
         Path(source_name).name,
@@ -454,8 +502,8 @@ def _profile_source_matches_metadata(config: Mapping[str, Any], haystack: str) -
     for candidate in candidates:
         normalized = _normalize_match_text(candidate)
         if len(normalized) >= 12 and normalized in normalized_haystack:
-            return True
-    return False
+            return 1
+    return 0
 
 
 def _normalize_match_text(value: str) -> str:

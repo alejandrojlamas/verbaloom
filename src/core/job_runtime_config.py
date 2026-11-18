@@ -16,6 +16,8 @@ from src.core.book_profiles import (
     load_book_profile,
     profile_matches_source_metadata,
 )
+from src.core.book_profiles.loader import profile_language_key
+from src.core.book_profiles.profile_goals import declared_profile_goal
 from src.core.layout_sanitizer import (
     LAYOUT_SANITIZER_VERSION,
     should_use_sanitized_text_pipeline,
@@ -191,6 +193,16 @@ def configure_editorial_guard_options(config: Dict[str, Any]) -> Dict[str, Any]:
     return apply_review_strategy(config)
 
 
+def _profile_request_metadata(config: Dict[str, Any], options: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = {
+        key: config.get(key) for key in
+        ('output_filename', 'file_path', 'original_filename', 'input_filename')
+    }
+    for key in ('profile_goal', 'source_language', 'target_language', 'target_locale'):
+        metadata[key] = options.get(key) or config.get(key)
+    return metadata
+
+
 def validate_active_profile_scope(
     config: Dict[str, Any],
     prompt_options: Dict[str, Any],
@@ -207,12 +219,7 @@ def validate_active_profile_scope(
         prompt_options.pop('_profile_scope_correction', None)
         return
 
-    metadata = {
-        'output_filename': config.get('output_filename'),
-        'file_path': config.get('file_path'),
-        'original_filename': config.get('original_filename'),
-        'input_filename': config.get('input_filename'),
-    }
+    metadata = _profile_request_metadata(config, prompt_options)
     if profile_matches_source_metadata(profile_id, metadata):
         previous_profile_id = str(
             prompt_options.get('_profile_scope_corrected_from') or ''
@@ -246,7 +253,8 @@ def apply_active_profile_runtime_defaults(prompt_options: Dict[str, Any]) -> Non
     profile = load_book_profile(profile_id, allow_missing=True)
     if profile is None:
         return
-    prompt_options.setdefault('target_locale', profile.target_locale or 'es-MX')
+    if profile.target_locale:
+        prompt_options.setdefault('target_locale', profile.target_locale)
     prompt_options.setdefault('modernization_strength', profile.modernization_strength or 'high')
     prompt_options.setdefault(
         'profile_strength',
@@ -323,7 +331,7 @@ def language_key(value: Any) -> str:
         return "spanish"
     if first_token in {"en", "eng", "english"} or normalized.startswith("en-"):
         return "english"
-    return first_token
+    return profile_language_key(first_token)
 
 
 def profile_matches_intralingual_request(
@@ -403,28 +411,31 @@ def activate_inferred_book_profile(
         return
 
     transform_mode = str(prompt_options.get('text_transform_mode') or '').strip().lower()
-    metadata = {
-        'output_filename': config.get('output_filename'),
-        'file_path': config.get('file_path'),
-        'original_filename': config.get('original_filename'),
-        'input_filename': config.get('input_filename'),
-    }
+    metadata = _profile_request_metadata(config, prompt_options)
     profile_id = infer_profile_id_from_metadata(metadata)
     if not profile_id:
         return
     profile = load_book_profile(profile_id, allow_missing=True)
     if profile is None:
         return
+    profile_language = profile.target_locale or profile.raw_config.get('target_language') or ''
     intralingual_match = profile_matches_intralingual_request(
         config,
         prompt_options,
-        profile_target_locale=profile.target_locale,
+        profile_target_locale=profile_language,
     )
-    if transform_mode != 'modernize' and not intralingual_match:
+    goal = declared_profile_goal(profile.raw_config)
+    legacy_modernization = (
+        not transform_mode
+        and not config.get('operation')
+        and intralingual_match
+        and goal is not None and goal.key == 'modernization'
+    )
+    if transform_mode != 'modernize' and not legacy_modernization:
         if profile_matches_translation_request(
             config,
             prompt_options,
-            profile_target_locale=profile.target_locale,
+            profile_target_locale=profile_language,
         ):
             activate_profile_for_translation(prompt_options, profile)
         return
@@ -434,7 +445,8 @@ def activate_inferred_book_profile(
     prompt_options.setdefault('text_transform_profile', 'faithful_current_spanish')
     prompt_options['editorial_mode'] = 'book_profile'
     prompt_options['profile_id'] = profile.profile_id
-    prompt_options['target_locale'] = profile.target_locale or prompt_options.get('target_locale') or 'es-MX'
+    if profile.target_locale:
+        prompt_options.setdefault('target_locale', profile.target_locale)
     prompt_options['modernization_strength'] = profile.modernization_strength or 'high'
     prompt_options['preserve_author_voice'] = profile.preserve_author_voice
     prompt_options['preserve_archaisms'] = False

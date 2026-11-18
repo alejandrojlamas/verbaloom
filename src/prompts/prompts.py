@@ -132,7 +132,7 @@ def _target_locale_section(target_language: str, prompt_options: Optional[dict] 
 Write in natural Mexican Spanish / neutral Latin American Spanish when modernizing ordinary prose.
 - Rewrite historically marked dialogue, titles, and ceremonial distance as natural contemporary editorial prose chosen by context.
 - Preserve relationships, voice, and social distance through current language; do not preserve obsolete surface grammar as a substitute for voice.
-- For Mexican/LatAm output, do not leave "vosotros", "os", "vuestro/vuestra", "podéis", "queréis", "tenéis", "habéis", "sois", "estáis", or similar second-person plural forms unless the active profile glossary explicitly requires them.
+- For Mexican/LatAm output, do not leave "vosotros", "os", "vuestro/vuestra", "podéis", "queréis", "tenéis", "habéis", "sois", "estáis", or similar second-person plural forms in ordinary modernized prose. Preserve quoted wording when its historical form is itself cited or discussed, and honor explicit glossary exceptions.
 - Convert archaic/Peninsular address by context: use "usted", "ustedes", "su/sus", "lo/la/le/los/las/les", or a natural rewritten sentence while preserving who speaks to whom and the social distance.
 - Replace old conjunction "e" with "y" except where modern Spanish genuinely requires "e" before an /i/ sound.
 - Do not add local slang or contemporary idioms unless the source tone clearly supports it.
@@ -143,11 +143,11 @@ Write in natural Mexican Spanish / neutral Latin American Spanish when modernizi
 # SPANISH LOCALE
 
 Write in natural Mexican Spanish / neutral Latin American Spanish.
-- Literary or archaic source language must become elevated Mexican Spanish, not Peninsular/archaic Spanish.
-- Forbidden output forms: "vosotros", "vosotras", "os", "sois", "estáis", "habéis", "rendisteis", "vuestro", "vuestra", "vuestros", "vuestras", "chitón", "hala", "vale" as filler, "avisaos", "avispaos", "precipitaos", and similar "-aos/-eos" imperatives.
+- Use elevated Mexican Spanish when the source calls for an elevated register. Preserve an intentional period voice, a cited expression, or a regional contrast that carries meaning.
+- In ordinary Mexican narration avoid unmotivated Peninsular forms: "vosotros", "vosotras", "os", "sois", "estáis", "habéis", "rendisteis", "vuestro", "vuestra", "vuestros", "vuestras", "chitón", "hala", "vale" as filler, "avisaos", "avispaos", "precipitaos", and similar "-aos/-eos" imperatives.
 - Prefer Mexican/LatAm phrasing that still sounds literary and publishable: "ustedes" when plural address is needed, "se rindieron" over "os rendisteis", "sus" over "vuestros", "cállense/guarden silencio" over "chitón", "estén atentos" over "avispaos", and "precipítense" over "precipitaos".
 - Do not add local slang unless the source tone clearly calls for colloquial speech.
-- Final self-check: scan the entire output before answering and remove every Peninsular/archaic Spanish form listed above.
+- Check that ordinary prose suits the requested locale and that intentionally marked language still serves its original purpose.
 """.strip()
 
 
@@ -159,7 +159,7 @@ def _literary_style_contract_section(target_language: str, prompt_options: Optio
     preservation = (
         "# LITERARY FIDELITY\n"
         "Unless the requested transformation says otherwise, preserve ambiguity, irony, social register, "
-        "and contrasts between narration and dialogue without adding explanations. Carry speaker, addressee and "
+        "and contrasts between narration and dialogue. Keep deliberately implicit subtext implicit. Carry speaker, addressee and "
         "formality through interruptions. Keep distinct catchphrases distinct and intentional repetitions intact. "
         "Translate sentences across inline tags; emphasis marks meaning, not word boundaries."
     )
@@ -304,8 +304,10 @@ _TEXT_TRANSFORM_MODE_SPECS = {
 def build_text_transform_instructions(
     prompt_options: Optional[dict],
     target_language: str = "English",
+    *,
+    include_profile: bool = True,
 ) -> str:
-    """Return monolingual transformation instructions for refinement mode."""
+    """Return operation instructions, optionally including the active book profile."""
     options = prompt_options or {}
     raw_mode = str(options.get("text_transform_mode") or "").strip().lower()
     if not raw_mode:
@@ -333,10 +335,9 @@ def build_text_transform_instructions(
     if rules_text:
         rules_text = f"\n\nMode-specific rules:\n{rules_text}"
 
-    profile_section = build_profile_instruction_block(
-        options,
-        phase=raw_mode or "modernize",
-        target_language=target_language,
+    profile_section = (
+        build_profile_instruction_block(options, phase=raw_mode, target_language=target_language)
+        if include_profile else ""
     )
 
     if profile_enabled(options) and raw_mode == "modernize":
@@ -655,17 +656,11 @@ def generate_translation_prompt(
     locale_section = _target_locale_section(target_language, prompt_options)
     literary_style_contract = _literary_style_contract_section(target_language, prompt_options)
     transform_mode = str(prompt_options.get("text_transform_mode") or "").strip().lower()
-    transform_instructions = build_text_transform_instructions(prompt_options, target_language)
     transform_extra_rule = (
         "Do not add separate notes, prefaces, censorship, or unsupported facts; "
         "integrated explanatory rewriting is allowed only when the active mode asks for it."
         if _transform_allows_explanatory_expansion(prompt_options)
         else "Do not add explanations, notes, summaries, censorship, or unsupported facts"
-    )
-    profile_section = build_profile_instruction_block(
-        prompt_options,
-        phase="modernize" if transform_mode == "modernize" else "translation",
-        target_language=target_language,
     )
 
     # Build custom instructions section
@@ -687,6 +682,7 @@ def generate_translation_prompt(
             or _TEXT_TRANSFORM_MODE_SPECS.get(transform_mode, {}).get("label")
             or transform_mode.replace("_", " ").title()
         ).strip()
+        transform_instructions = build_text_transform_instructions(prompt_options, target_language)
         system_prompt = f"""You are a professional {role_language} same-language transformation editor.
 
 {UNTRUSTED_BOOK_CONTENT_SECTION}
@@ -695,8 +691,8 @@ def generate_translation_prompt(
 
 Transform {source_language_label} text into the requested {target_language} version using mode: {mode_label}.
 This is not a translation-between-languages prompt and not a light copyedit prompt.
-This is an active rewriting task: if the mode/profile calls for modernization,
-"the prose is already good" is NOT a reason to skip the transformation.
+This is an active rewriting task. Fluent wording is NOT a reason to skip a change required by the selected operation.
+Preserve passages that already serve its purpose.
 
 **PRIORITY ORDER:**
 1. Preserve every real unit of source content: facts, names, numbers, chronology, dialogue roles, arguments, formulas, and citations
@@ -709,7 +705,7 @@ This is an active rewriting task: if the mode/profile calls for modernization,
 - Does the output satisfy the active transformation mode/profile?
 - Is every source detail still present?
 - Does it sound natural to a native {target_language} reader?
-- If this is modernization, did you modernize syntax and diction rather than only spelling?
+- Did you preserve the author's distinctions, qualifications and deliberate stylistic effects?
 
 **LAYOUT PRESERVATION:**
 - Keep meaningful text layout, spacing, line breaks, and indentation
@@ -763,6 +759,9 @@ Provide the transformed text now:"""
 
         return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
+    profile_section = build_profile_instruction_block(
+        prompt_options, phase="translation", target_language=target_language,
+    )
     # SYSTEM PROMPT - Role and instructions (stable across requests)
     system_prompt = f"""You are a professional {role_language} translator and writer.
 
@@ -1009,7 +1008,9 @@ def generate_refinement_prompt(
     optional_sections = _build_optional_prompt_sections(prompt_options)
     locale_section = _target_locale_section(target_language, prompt_options)
     literary_style_contract = _literary_style_contract_section(target_language, prompt_options)
-    profile_phase = "voice_restoration" if transform_mode else "translation_refinement"
+    profile_phase = "translation_refinement"
+    if transform_mode:
+        profile_phase = "voice_restoration" if transform_mode == "modernize" else "refine"
     profile_section = build_profile_instruction_block(
         prompt_options,
         phase=profile_phase,
@@ -1054,6 +1055,9 @@ the profile.
             or _TEXT_TRANSFORM_MODE_SPECS.get(transform_mode, {}).get("label")
             or transform_mode.replace("_", " ").title()
         ).strip()
+        transform_instructions = build_text_transform_instructions(
+            prompt_options, target_language, include_profile=False,
+        )
         system_prompt = f"""You are an elite {role_language} literary transformation editor.
 
 {UNTRUSTED_BOOK_CONTENT_SECTION}
@@ -1062,8 +1066,8 @@ the profile.
 
 You will receive a {target_language} text and must perform the active same-language transformation: {mode_label}.
 This is a first-class transformation task, not a light copyedit pass.
-This is an active rewriting task: if the mode/profile calls for modernization,
-"the prose is already good" is NOT a reason to skip the transformation.
+This is an active rewriting task. Fluent wording is NOT a reason to skip a change required by the selected operation.
+Preserve passages that already serve its purpose.
 
 **YOUR OUTPUT MUST BE:**
 - A complete transformed version in {target_language}
@@ -1077,7 +1081,7 @@ This is an active rewriting task: if the mode/profile calls for modernization,
 1. Preserve source content, facts, names, numbers, speaker relationships, sequence, and meaningful structure
 2. Apply the active transformation/profile at the requested strength
 3. Repair mechanical defects, OCR artifacts, bad spacing, and punctuation when present
-4. Preserve authorial voice through equivalent target-language effects, not by mechanically preserving obsolete surface forms
+4. Preserve the author's voice and the effect of deliberate stylistic choices within the selected operation
 5. Keep terms consistent with the active glossary; do not import rules from other profiles
 
 **WHAT TO CHANGE:**
@@ -1113,6 +1117,7 @@ This is an active rewriting task: if the mode/profile calls for modernization,
 {optional_sections}
 {locale_section}
 {literary_style_contract}
+{transform_instructions}
 {profile_section}
 {profile_override_section}
 {placeholder_section}

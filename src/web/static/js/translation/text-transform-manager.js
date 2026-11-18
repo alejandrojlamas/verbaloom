@@ -1,6 +1,7 @@
 import { FileUpload } from '../files/file-upload.js';
 import { BatchController } from './batch-controller.js?v=20261114-publication';
 import { ApiClient } from '../core/api-client.js';
+import { bookProfileName } from '../ui/book-profile-name.js';
 import { DomHelpers } from '../ui/dom-helpers.js';
 import { MessageLogger } from '../ui/message-logger.js';
 import { t } from '../i18n/i18n.js';
@@ -8,6 +9,7 @@ import { t } from '../i18n/i18n.js';
 export const TextTransformManager = {
     pendingFiles: [],
     profilesLoaded: false,
+    profilesRequestVersion: 0,
 
     init() {
         this.bindEvents();
@@ -97,13 +99,13 @@ export const TextTransformManager = {
         const transformSelect = DomHelpers.getElement('transformProfile');
         const translationSelect = DomHelpers.getElement('bookProfileSelect');
         if (!transformSelect && !translationSelect) return;
-        const currentTransform = transformSelect?.value || '';
-        const currentTranslation = translationSelect?.value || '';
+        const version = ++this.profilesRequestVersion;
         try {
             const data = await ApiClient.getBookProfiles();
+            if (version !== this.profilesRequestVersion) return;
             const profiles = Array.isArray(data.profiles) ? data.profiles : [];
-            this.populateProfileSelect(transformSelect, profiles, currentTransform, t('transform:profile_none'));
-            this.populateProfileSelect(translationSelect, profiles, currentTranslation, t('settings:select_none'));
+            this.populateProfileSelect(transformSelect, profiles, transformSelect?.value, t('transform:profile_none'));
+            this.populateProfileSelect(translationSelect, profiles, translationSelect?.value, t('settings:select_none'));
             this.profilesLoaded = true;
         } catch (error) {
             if (!this.profilesLoaded) {
@@ -151,7 +153,7 @@ export const TextTransformManager = {
     },
 
     profileOptionLabel(profile) {
-        const name = profile?.name || profile?.profile_name || profile?.profile_id || '';
+        const name = bookProfileName(profile);
         const approved = Number(profile?.approved_count ?? profile?.approved_entries ?? 0);
         const pending = Number(profile?.pending_count ?? profile?.pending_suggestions ?? 0);
         const signals = this.editorialSignalCount(profile);

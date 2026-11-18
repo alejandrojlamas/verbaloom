@@ -307,8 +307,10 @@ def suggest_glossary_entries(
 def merge_pending_suggestions(
     profile_id: str,
     suggestions: list[GlossarySuggestion | Mapping[str, Any]],
+    *,
+    profiles_root: str | Path | None = None,
 ) -> Path:
-    profile = load_book_profile(profile_id)
+    profile = load_book_profile(profile_id, profiles_root=profiles_root)
     path = profile.root / "glossary" / "pending_suggestions.yml"
     payload = _read_yaml_mapping(path)
     existing = [

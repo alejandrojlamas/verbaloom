@@ -681,16 +681,17 @@
                             </div>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label data-i18n="transform:profile_prep_purpose_label">Primary use</label>
+                            <label for="profilePrepPurpose" data-i18n="transform:profile_prep_purpose_label">Primary use</label>
                             <div class="neu-inset-light">
-                                <select class="form-control" id="profilePrepPurpose">
-                                    <option value="translation" selected data-i18n="transform:profile_prep_purpose_translation">Faithful translation</option>
-                                    <option value="audiobook" data-i18n="transform:profile_prep_purpose_audiobook">Audiobook</option>
-                                    <option value="modernize" data-i18n="transform:mode_modernize">Modernize</option>
-                                    <option value="simplify" data-i18n="transform:mode_simplify">Explain</option>
-                                    <option value="literary_polish" data-i18n="transform:mode_literary">Literary polish</option>
+                                <select class="form-control" id="profilePrepPurpose" aria-describedby="profilePrepPurposeHelp">
+                                    <option value="translation" data-profile-goal="faithful_translation" selected data-i18n="transform:profile_prep_purpose_translation">Faithful translation</option>
+                                    <option value="audiobook" data-profile-goal="audiobook" data-i18n="transform:profile_prep_purpose_audiobook">Audiobook</option>
+                                    <option value="modernize" data-profile-goal="modernization" data-i18n="transform:mode_modernize">Modernize</option>
+                                    <option value="simplify" data-profile-goal="explanatory_rewrite" data-i18n="transform:mode_simplify">Explain</option>
+                                    <option value="literary_polish" data-profile-goal="literary_polish" data-i18n="transform:mode_literary">Literary polish</option>
                                 </select>
                             </div>
+                            <p id="profilePrepPurposeHelp" class="profile-prep-body" data-i18n="transform:profile_goal_hint_faithful_translation">Identifies how names and terms are used in context so the translation preserves meaning, register and ambiguity.</p>
                         </div>
                     </div>
 

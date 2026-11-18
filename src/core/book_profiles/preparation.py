@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import hashlib
 import html
 import io
 import json
@@ -11,6 +12,8 @@ import math
 import posixpath
 import re
 import tempfile
+import threading
+import unicodedata
 from urllib.parse import unquote
 import zipfile
 from pathlib import Path
@@ -39,7 +42,15 @@ from .discovery import (
     merge_pending_suggestions,
     parse_glossary_discovery_payload,
 )
-from .loader import create_profile, load_book_profile, profile_exists, resolve_profiles_root
+from .loader import (
+    PROFILE_PREPARING_MARKER,
+    BookProfileError,
+    create_profile,
+    load_book_profile,
+    profile_exists,
+    profile_selection_scope,
+    resolve_profiles_root,
+)
 from .profile_goals import ProfileGoalRules, resolve_profile_goal
 from .term_review import (
     review_profile_terms,
@@ -69,6 +80,7 @@ SUPPORTED_PREP_EXTENSIONS = {
     ".pdf",
 }
 
+_PROFILE_CREATION_LOCK = threading.Lock()
 _FULL_TEXT_CAP = 5_000_000
 _MIN_CHUNK_CHARS = 900
 _MAX_FULL_DISCOVERY_CHUNKS = 600
@@ -556,12 +568,24 @@ async def prepare_book_profile_from_text(
         profile_goal=goal_rules.key,
     )
     root = resolve_profiles_root(profiles_root)
+    # All preparation components must receive the same intent even when an old
+    # client submits its default transform mode alongside an explicit goal.
+    transform_mode = {"modernization": "modernize", "faithful_translation": "translate"}.get(
+        goal_rules.key, goal_rules.key,
+    )
+    target_locale = target_locale or _locale_for_language(language)
+    source_digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     existing_profile = _existing_generated_profile_for_source(
         root,
         source_name=source_name,
         requested_profile_id=profile_id,
+        source_digest=source_digest,
+        requested_scope=profile_selection_scope({
+            "profile_goal": goal_rules.key, "source_language": source_language,
+            "target_language": language, "target_locale": target_locale,
+        }),
     )
-    if existing_profile is not None and existing_profile.approved_count > 0:
+    if existing_profile is not None:
         warning = (
             "Reused existing generated profile with an approved glossary for this source; "
             "skipped regeneration to avoid replacing useful glossary entries."
@@ -594,24 +618,29 @@ async def prepare_book_profile_from_text(
             review_model=term_review_model,
             editorial_artifact_counts=editorial_artifact_counts(existing_profile.editorial_artifacts),
             term_review={},
-            profile_goal=str(existing_profile.raw_config.get("profile_goal") or goal_rules.key),
+            profile_goal=goal_rules.key,
             profile_goal_label=goal_rules.label,
             business_limits={},
             warnings=(warning,),
         )
 
-    resolved_id = _unique_profile_id(
-        profile_id or _profile_id_from_source(source_name),
-        profiles_root=root,
-    )
+    with _PROFILE_CREATION_LOCK:
+        resolved_id = _unique_profile_id(
+            profile_id or _profile_id_from_source(source_name), profiles_root=root,
+        )
+        profile_dir = create_profile(resolved_id, profiles_root=root)
+    # The glossary can already have approved entries while discovery is still
+    # running. Make the product eligible for automatic use only after completion.
+    in_progress = profile_dir / PROFILE_PREPARING_MARKER
+    in_progress.touch()
     resolved_name = profile_name.strip() or _profile_name_from_source(source_name, resolved_id)
-
-    profile_dir = create_profile(resolved_id, profiles_root=root)
     _write_generated_profile_config(
         profile_dir,
         profile_id=resolved_id,
         profile_name=resolved_name,
         source_name=source_name,
+        source_digest=source_digest,
+        requested_profile_id=profile_id,
         source_language=source_language,
         language=language,
         target_locale=target_locale,
@@ -983,7 +1012,7 @@ async def prepare_book_profile_from_text(
         },
     )
 
-    pending_path = merge_pending_suggestions(resolved_id, pending)
+    pending_path = merge_pending_suggestions(resolved_id, pending, profiles_root=root)
     pending_count = _count_entries(pending_path)
     _emit_progress(
         progress_callback,
@@ -1031,6 +1060,7 @@ async def prepare_book_profile_from_text(
         },
         warnings=tuple(_dedupe(warnings)),
     )
+    in_progress.unlink()
     _emit_progress(
         progress_callback,
         "completed",
@@ -1213,26 +1243,36 @@ def _existing_generated_profile_for_source(
     profiles_root: Path,
     *,
     source_name: str,
-    requested_profile_id: str = "",
+    requested_profile_id: str,
+    source_digest: str,
+    requested_scope: tuple[str, str, str, str],
 ) -> Any | None:
     source_key = _source_match_key(source_name)
     requested = str(requested_profile_id or "").strip()
     for profile_path in sorted(profiles_root.glob("*/profile.yml")):
         profile_id = profile_path.parent.name
-        if profile_id.startswith("_") or profile_id == "common":
-            continue
-        if requested and profile_id != requested:
+        if profile_id.startswith("_") or profile_id == "common" or (profile_path.parent / PROFILE_PREPARING_MARKER).exists():
             continue
         try:
-            profile = load_book_profile(profile_id, profiles_root=profiles_root, allow_missing=True)
-        except Exception:
+            config = _read_yaml_mapping(profile_path)
+            if not (config.get("generated_profile") is True or profile_id.startswith("auto_")):
+                continue
+            if requested and requested not in (profile_id, config.get("requested_profile_id")):
+                continue
+            if profile_selection_scope(config) != requested_scope:
+                continue
+            if not source_key or _source_match_key(str(config.get("source_name") or "")) != source_key:
+                continue
+            saved_digest = config.get("source_text_sha256")
+            if saved_digest and saved_digest != source_digest:
+                continue
+            # Historical generic upload names cannot establish book identity.
+            if not saved_digest and source_key in {"pasted text", "combined book profile"}:
+                continue
+            profile = load_book_profile(profile_id, profiles_root=profiles_root)
+        except (OSError, ValueError, TypeError, BookProfileError, yaml.YAMLError):
             continue
-        if profile is None:
-            continue
-        if not (profile.raw_config.get("generated_profile") is True or profile.profile_id.startswith("auto_")):
-            continue
-        existing_key = _source_match_key(str(profile.raw_config.get("source_name") or ""))
-        if requested or (source_key and existing_key == source_key):
+        if profile and any(entry.scope != "common" for entry in profile.approved_entries):
             return profile
     return None
 
@@ -1240,7 +1280,7 @@ def _existing_generated_profile_for_source(
 def _source_match_key(value: str) -> str:
     decoded = unquote(str(value or ""))
     stem = Path(decoded).stem or decoded
-    return re.sub(r"[^a-z0-9]+", " ", stem.casefold()).strip()
+    return re.sub(r"[_\W]+", " ", unicodedata.normalize("NFC", stem).casefold()).strip()
 
 
 def _unique_profile_id(base: str, *, profiles_root: Path) -> str:
@@ -1264,6 +1304,8 @@ def _write_generated_profile_config(
     profile_id: str,
     profile_name: str,
     source_name: str,
+    source_digest: str,
+    requested_profile_id: str,
     source_language: str,
     language: str,
     target_locale: str,
@@ -1276,7 +1318,6 @@ def _write_generated_profile_config(
 ) -> None:
     path = profile_dir / "profile.yml"
     data = _read_yaml_mapping(path)
-    is_audiobook = str(transform_mode or "").strip().lower() == "audiobook"
     data.update({
         "profile_id": profile_id,
         "name": profile_name,
@@ -1291,6 +1332,9 @@ def _write_generated_profile_config(
         "glossary_suggestions_enabled": True,
         "auto_approve_glossary_suggestions": False,
         "generated_profile": True,
+        "requested_profile_id": requested_profile_id,
+        "source_text_sha256": source_digest,
+        "transform_mode": transform_mode,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_name": source_name,
         "source_language": source_language or "Auto",
@@ -1302,7 +1346,7 @@ def _write_generated_profile_config(
         "term_review_provider": term_review_provider_name,
         "term_review_model": term_review_model,
     })
-    if is_audiobook:
+    if goal_rules.key == "audiobook":
         data.update({
             "audit_dimensions": "translation_audiobook_full",
             "max_repair_rounds": 1,
@@ -1335,7 +1379,7 @@ def _write_generated_policy(
     target = target_locale or _locale_for_language(language) or language or "target locale"
     mode = transform_mode or "transform"
     audiobook_section = ""
-    if str(transform_mode or "").strip().lower() == "audiobook":
+    if goal_rules.key == "audiobook":
         audiobook_section = """
 
 ## Politica de audiolibro
@@ -1370,9 +1414,6 @@ Perfil editorial generado antes del proceso principal a partir de `{source_name}
 - Idioma destino: {language or "auto"}
 - Locale objetivo: {target}
 - Proceso previsto: {mode}
-- Modelo recomendado para descubrimiento previo: deepseek-flash
-- Modelo recomendado para revision/clasificacion del glosario: deepseek-v4-pro
-- Modelo recomendado para el proceso principal: deepseek-v4-pro
 {audiobook_section}
 """
     (profile_dir / "editorial_policy.md").write_text(policy, encoding="utf-8")

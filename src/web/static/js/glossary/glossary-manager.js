@@ -10,6 +10,7 @@
 
 import { ApiClient } from '../core/api-client.js';
 import { toast } from '../ui/toast.js';
+import { bookProfileName } from '../ui/book-profile-name.js';
 import { DomHelpers } from '../ui/dom-helpers.js';
 import { ApiKeyUtils } from '../utils/api-key-utils.js';
 import { t } from '../i18n/i18n.js';
@@ -323,6 +324,7 @@ function switchTopTab(name) {
 
 let _dropdownGlossaries = [];
 let _dropdownBookProfiles = [];
+let _dropdownRefreshVersion = 0;
 
 function _getDropdownSelects() {
     return DROPDOWN_SELECT_IDS.map((id) => $(id)).filter(Boolean);
@@ -401,7 +403,7 @@ function _syncBookProfileSelection(dropdownValue) {
 }
 
 function _profileOptionLabel(profile) {
-    const name = profile?.name || profile?.profile_name || profile?.profile_id || '';
+    const name = bookProfileName(profile);
     const approved = Number(profile?.approved_count ?? profile?.approved_entries ?? 0);
     const pending = Number(profile?.pending_count ?? profile?.pending_suggestions ?? 0);
     const signals = _profileEditorialSignalCount(profile);
@@ -453,9 +455,9 @@ function _populateBookProfileOptions(select, profiles) {
         opt.value = _profileDropdownValue(profile.profile_id);
         const approved = Number(profile.approved_count || 0);
         const pending = Number(profile.pending_count || 0);
-        const locale = profile.target_locale || '?';
+        const locale = profile.target_locale || profile.target_language || '?';
         opt.textContent = t('glossary:profile_dropdown_summary', {
-            name: profile.name || profile.profile_id,
+            name: bookProfileName(profile, { includeLanguage: false }),
             approved,
             pending,
             locale,
@@ -469,8 +471,7 @@ function _populateBookProfileOptions(select, profiles) {
 async function refreshDropdown() {
     const selects = _getDropdownSelects();
     if (!selects.length) return;
-
-    const previous = _currentDropdownSelection();
+    const version = ++_dropdownRefreshVersion;
 
     let glossaries = [];
     let profiles = [];
@@ -478,6 +479,7 @@ async function refreshDropdown() {
         ApiClient.getGlossaries(),
         ApiClient.getBookProfiles(),
     ]);
+    if (version !== _dropdownRefreshVersion) return;
     if (glossaryResult.status === 'fulfilled') {
         glossaries = (glossaryResult.value && glossaryResult.value.glossaries) || [];
     } else {
@@ -491,6 +493,7 @@ async function refreshDropdown() {
     _dropdownGlossaries = glossaries;
     _dropdownBookProfiles = profiles;
 
+    const previous = _currentDropdownSelection();
     for (const select of selects) {
         select.innerHTML = '';
 
@@ -3334,7 +3337,15 @@ export const GlossaryManager = {
                 renderProfileGlossaryDetail();
             }
         });
-        window.addEventListener('bookProfilesChanged', () => {
+        window.addEventListener('bookProfilesChanged', (event) => {
+            const prepared = event.detail?.preparedProfile;
+            if (prepared?.profile_id) {
+                const value = _profileDropdownValue(prepared.profile_id);
+                for (const select of _getDropdownSelects()) {
+                    if (!_optionExists(select, value)) _populateBookProfileOptions(select, [prepared]);
+                }
+                _setDropdownSelection(value);
+            }
             refreshDropdown().catch(() => { /* profile list changed elsewhere */ });
         });
     },

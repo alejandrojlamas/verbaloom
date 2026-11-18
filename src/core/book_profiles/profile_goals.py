@@ -40,6 +40,7 @@ class ProfileGoalRules:
         "If a candidate is translatable into the target language, source==target "
         "is not a faithful decision; keep it pending or translate it."
     )
+    output_rules: tuple[str, ...] = ()
 
     def local_terms_limit(self, text_chars: int, *, requested: int | None = None, hard_cap: int = 5000) -> int:
         if requested is not None:
@@ -75,6 +76,7 @@ class ProfileGoalRules:
             "glossary_goal": self.glossary_goal,
             "discovery_focus": list(self.discovery_focus),
             "reviewer_rules": list(self.reviewer_rules),
+            "output_rules": list(self.output_rules),
             "same_target_translatable_policy": self.same_target_translatable_policy,
         }
 
@@ -117,20 +119,23 @@ _GOALS: dict[str, ProfileGoalRules] = {
         key="faithful_translation",
         label="Traducción fiel",
         description="Consistencia terminológica y editorial para traducir sin omitir, suavizar ni dejar términos traducibles en la lengua fuente.",
-        glossary_goal="Traducir con fidelidad y consistencia: nombres canónicos, términos técnicos/culturales traducidos cuando corresponda, y preservación solo cuando sea una decisión editorial real.",
+        glossary_goal="Establish stable equivalents for recurring names, terms and phrases while keeping different senses distinct.",
         discovery_focus=(
-            "nombres de personas, lugares, pueblos, instituciones, obras y variantes canónicas",
-            "términos técnicos, culturales, históricos o de dominio que necesitan traducción estable",
-            "expresiones recurrentes cuyo sentido no debe variar entre capítulos",
-            "títulos de obras, cargos, tratamientos y relaciones sociales",
-            "términos que parecen nombres propios pero podrían ser conceptos traducibles",
+            "Track names, aliases and forms of address together with the speaker and referent that distinguish them.",
+            "Find recurring technical or cultural terms with a defined sense; collect contrasting uses if the same word changes meaning.",
+            "Record verbal echoes, idioms and cited titles whose identity matters across passages.",
         ),
         reviewer_rules=(
-            "Fidelidad no significa conservar literalmente la lengua fuente.",
-            "Aprueba source==target solo para nombres propios, siglas, códigos, obras o entidades que realmente se preservan.",
-            "Si un término técnico o conceptual tiene traducción directa al idioma destino, aprueba translate_exact o déjalo pendiente con una traducción sugerida.",
-            "Mantén nombres de personajes consistentes, pero permite forma canónica en la lengua destino cuando exista.",
+            "Approve an equivalent when the cited usage supports the same referent, sense and register in the target language.",
+            "Keep a context-dependent rendering when an idiom, title or form of address changes with the speaker or situation.",
+            "Distinguish an authentic cited title from the surrounding translatable description. Leave uncertain identities pending.",
         ),
+        output_rules=(
+            "Translate each assertion and implication idiomatically, carrying over the clues to who did what to whom and when. Leave identities open wherever the source does.",
+            "Match the force of the original, including negation, doubt, understatement and deliberate ambiguity.",
+            "Use approved equivalents in their documented sense. Preserve a repeated phrase when its return matters to the passage.",
+        ),
+        source_equals_target_note="An identical spelling can be the attested target-language form or a quoted original. Require evidence for that use.",
         preferred_entry_types=("proper_noun", "canonical_proper_noun", "technical_term", "concept", "term", "title", "acronym", "idiom"),
         translatable_categories=_COMMON_TRANSLATABLE,
         preserve_categories=_COMMON_PRESERVE,
@@ -150,20 +155,23 @@ _GOALS: dict[str, ProfileGoalRules] = {
         key="modernization",
         label="Modernización literaria",
         description="Modernización intralingüística por obra: actualizar época lingüística sin borrar voz, personajes ni intención.",
-        glossary_goal="Detectar arcaísmos, tratamientos, fórmulas, voces y patrones sintácticos que requieren decisiones de modernización consistentes.",
+        glossary_goal="Map obsolete senses, spellings and sentence patterns to contemporary usage while preserving the period being described.",
         discovery_focus=(
-            "arcaísmos léxicos y ortográficos recurrentes",
-            "tratamientos, fórmulas de cortesía y distancia social",
-            "patrones sintácticos antiguos que deben modernizarse por contexto",
-            "voces de narrador y personajes que no deben homogeneizarse",
-            "frases icónicas o efectos de voz que conviene recrear, no aplanar",
+            "Pair each dated word with evidence for its sense at this point in the work, especially when its modern sense differs.",
+            "Track address forms by speaker, listener and occasion; note changes of intimacy, deference or hostility.",
+            "Distinguish period-wide syntax from an individual speaker's habitual phrasing or a quotation from an older text.",
         ),
         reviewer_rules=(
-            "No conviertas arcaísmo superficial en regla global; apruébalo solo en este perfil.",
-            "No preserves source==target cuando impide la modernización esperada.",
-            "Distingue rasgo de voz de obstáculo lingüístico antiguo.",
-            "Los tratamientos requieren decisión contextual; no apruebes equivalencias automáticas dudosas.",
+            "Approve a current equivalent only for the documented historical sense; leave competing readings contextual.",
+            "Use the relationship to judge a treatment. A mechanical pronoun swap can change social distance.",
+            "Keep historically specific objects, offices and institutions identifiable. Record deliberate archaism as a voice or quotation decision.",
         ),
+        output_rules=(
+            "Modernize dated syntax, word order and diction to the selected strength in the target language. Ordinary current wording can stand.",
+            "Express deference, intimacy and irony through contemporary usage while preserving differences between speakers.",
+            "Keep the historical setting, events, material objects and marked quotations recognizable. Avoid anachronistic comparisons.",
+        ),
+        source_equals_target_note="Retain already-current wording and deliberate historical quotations. A dated form needs a context-specific reason to be retained.",
         preferred_entry_types=("lexical_archaism", "orthographic_variant", "address_form", "syntax_pattern", "character_voice", "iconic_phrase", "proper_noun", "title"),
         translatable_categories=_COMMON_TRANSLATABLE + ("address_form", "character_voice"),
         preserve_categories=_COMMON_PRESERVE + ("iconic_phrase",),
@@ -183,20 +191,23 @@ _GOALS: dict[str, ProfileGoalRules] = {
         key="audiobook",
         label="Faithful audiobook",
         description="Traducción fiel optimizada para escucha: continuidad, limpieza auditiva, notas manejables y pies de imagen integrables.",
-        glossary_goal="Preparar una traducción fiel que se escuche bien: nombres consistentes, términos traducibles, notas/captions/rótulos tratados sin romper la narración.",
+        glossary_goal="Keep people, terms and references recognizable on first hearing while retaining the full written work.",
         discovery_focus=(
-            "nombres propios y títulos que deben pronunciarse o preservarse de forma consistente",
-            "pies de imagen informativos que pueden reescribirse como prosa escuchable",
-            "créditos visuales, URLs, numeración, notas y referencias que deben moverse o limpiarse",
-            "términos de dominio que deben traducirse para no sonar como restos de la fuente",
-            "patrones de tablas, listas o aparatos críticos que necesitan reconstrucción auditiva",
+            "Identify names, abbreviations and homographs whose spoken interpretation depends on a definition or a speaker in the text.",
+            "Locate phrases in which clause length, a delayed subject or ambiguous attribution can obscure who is speaking.",
+            "Distinguish substantive captions, notes and table labels from page furniture using the text and its placement.",
         ),
         reviewer_rules=(
-            "La salida debe seguir siendo traducción fiel, no resumen.",
-            "No apruebes URLs, paginación, créditos de imagen o basura visual como glosario inyectable.",
-            "Distingue pies de imagen informativos de créditos visuales.",
-            "Los términos traducibles deben traducirse; preserve_exact solo para nombres, siglas o títulos reales.",
+            "Use an expansion or pronunciation cue only when supported by the source or approved glossary; keep spellings canonical in print.",
+            "Treat captions, credits, pagination and URLs as document structure. A recurring layout pattern is not a glossary replacement.",
+            "Keep definitions and qualifications from notes linked to the claims they qualify. Flag uncertain readings for review.",
         ),
+        output_rules=(
+            "Shape clauses into natural breath groups. Keep the source's clues to who is speaking, addressed or mentioned audible, even when their identities remain open.",
+            "Preserve meaningful pauses and repetitions. Use source-supported names and expansions, retaining written numbers, units and identifiers.",
+            "Translate captions, notes and table labels in their own places. Keep attribution, note links and the relationship of each value to its label.",
+        ),
+        source_equals_target_note="Keep an identical written form when the target language uses it for this referent; confirm unfamiliar spellings against the source.",
         preferred_entry_types=("proper_noun", "canonical_proper_noun", "technical_term", "concept", "caption_pattern", "note_pattern", "reference_pattern", "title", "acronym"),
         translatable_categories=_COMMON_TRANSLATABLE + ("caption", "caption_pattern", "note_pattern", "reference_pattern"),
         preserve_categories=_COMMON_PRESERVE,
@@ -249,18 +260,23 @@ _GOALS: dict[str, ProfileGoalRules] = {
         key="explanatory_rewrite",
         label="Explicación universitaria",
         description="Reescritura explicativa en lenguaje común con precisión conceptual y nivel universitario.",
-        glossary_goal="Identificar conceptos complejos, términos culturales/técnicos, tablas y referencias que deben explicarse con precisión sin simplificación infantil.",
+        glossary_goal="Identify the concepts and argumentative steps that an adult reader outside the field needs to understand this passage.",
         discovery_focus=(
-            "conceptos difíciles que necesitan explicación consistente",
-            "términos técnicos o culturales que no deben banalizarse",
-            "tablas, ejemplos, notas y referencias que requieren interpretación clara",
-            "nombres y obras que deben mantenerse reconocibles",
+            "Find terms whose everyday sense differs from their use here, and the source definitions or contrasts that resolve the difference.",
+            "Identify unstated referents and compressed steps whose relationships can be recovered from the author's own argument.",
+            "Connect a table heading, unit or formula symbol with the sentence that explains what it measures and under which conditions.",
         ),
         reviewer_rules=(
-            "No conviertas términos clave en nombres preservados si deben explicarse o traducirse.",
-            "Aprueba pocos preserve_exact; prioriza contextual y translate_exact.",
-            "El glosario debe ayudar a explicar con precisión, no a simplificar de más.",
+            "Approve a short gloss when the source supports both the definition and its scope. Mark an unresolved concept as pending.",
+            "Keep the technical term available alongside its plain-language sense when later passages depend on the distinction.",
+            "Use an example the author gives and retain its limits. A plausible analogy or outside explanation is insufficient evidence for a glossary rule.",
         ),
+        output_rules=(
+            "Write for an intelligent adult new to this subject. At the first difficult use, retain the key term and unpack its meaning using the passage.",
+            "Make a compressed relationship explicit when the source establishes it. Keep assumptions, hypotheses, findings and exceptions distinguishable.",
+            "Explain what a formula or table compares using its own labels and units. Preserve every value and qualification; introduce no new examples or conclusions.",
+        ),
+        source_equals_target_note="A precise technical name can remain unchanged while its source-supported meaning is explained in the surrounding prose.",
         preferred_entry_types=("concept", "technical_term", "term", "proper_noun", "title", "idiom"),
         translatable_categories=_COMMON_TRANSLATABLE,
         preserve_categories=_COMMON_PRESERVE,
@@ -280,18 +296,23 @@ _GOALS: dict[str, ProfileGoalRules] = {
         key="literary_polish",
         label="Pulido literario",
         description="Revisión de estilo manteniendo fidelidad, voz, continuidad y consistencia literaria.",
-        glossary_goal="Preparar señales de voz, nombres, motivos, frases recurrentes y decisiones de estilo para un pulido consistente.",
+        glossary_goal="Record the voice, motifs and word choices that a line editor should recognize before revising a passage.",
         discovery_focus=(
-            "nombres, lugares, relaciones y motivos recurrentes",
-            "voces narrativas y registros de personajes",
-            "frases recurrentes, imágenes, símbolos e ironías que deben mantenerse",
-            "términos regionales o culturales que afectan tono y naturalidad",
+            "Identify shifts among narrator, dialogue and interior thought through syntax, diction or a change in form of address.",
+            "Track repeated images, refrains and recurring concrete details, including variations that change their effect.",
+            "Distinguish an awkward literal construction from deliberate dialect, interruption, irony or syntactic roughness.",
         ),
         reviewer_rules=(
-            "No apruebes cambios que homogenicen voces.",
-            "Mantén términos de voz como decisiones contextuales salvo que sean mecánicamente seguros.",
-            "Preserva nombres reales; traduce conceptos o títulos cuando el perfil lo requiera.",
+            "Require a passage-specific example before treating a verbal habit as a character's voice. Leave isolated quirks contextual.",
+            "Reserve fixed renderings for stable names and deliberate verbal echoes; preserve a meaningful variation of a motif.",
+            "Approve idiomatic alternatives that retain the same image, register and viewpoint. Leave effective wording in place.",
         ),
+        output_rules=(
+            "Edit locally for idiom, cadence and precise diction. Leave a line that already carries the intended effect.",
+            "Keep viewpoint, narrative distance and the rhythm of each speaker distinct, including fragments, pauses and interruptions.",
+            "Retain the original image, degree of emphasis and deliberate repetition. Keep subtext implicit where the author leaves it implicit.",
+        ),
+        source_equals_target_note="An already-effective phrase may remain unchanged. A fixed glossary entry still needs evidence of a recurring editorial choice.",
         preferred_entry_types=("proper_noun", "character_voice", "iconic_phrase", "idiom", "term", "title", "concept"),
         translatable_categories=_COMMON_TRANSLATABLE + ("character_voice",),
         preserve_categories=_COMMON_PRESERVE + ("iconic_phrase",),
@@ -331,6 +352,28 @@ _ALIASES = {
     "literary_polish": "literary_polish",
     "style": "literary_polish",
 }
+
+
+def declared_profile_goal(config: Mapping[str, Any]) -> ProfileGoalRules | None:
+    """Read a profile's saved purpose, including explicit settings from older profiles."""
+    business_rules = config.get("business_rules")
+    goal = (
+        config.get("profile_goal")
+        or (business_rules.get("goal") if isinstance(business_rules, Mapping) else "")
+        or config.get("goal")
+    )
+    if goal:
+        # A custom goal owns its policy even if it also requests an audio companion.
+        return _GOALS.get(_ALIASES.get(str(goal).strip().casefold(), ""))
+
+    audio = config.get("audiobook") or config.get("audio_sanitization")
+    if isinstance(audio, Mapping):
+        audio = audio.get("enabled") is True or audio.get("generate_companion") is True
+    if audio is True or config.get("audit_dimensions") == "translation_audiobook_full":
+        return _GOALS["audiobook"]
+
+    mode = str(config.get("transform_mode") or config.get("mode") or "").strip().casefold()
+    return _GOALS.get(_ALIASES.get(mode, ""))
 
 
 def resolve_profile_goal(

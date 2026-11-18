@@ -105,3 +105,14 @@ def test_spanish_locale_rules_can_be_disabled():
 
     assert "Mexican Spanish" not in prompt.system
     assert "professional Spanish translator" in prompt.system
+
+
+def test_literary_polish_preserves_intentional_period_voice_in_mexican_spanish():
+    prompt = generate_refinement_prompt(
+        draft_translation="Hízome entonces el escribano una seña.",
+        target_language="Spanish",
+        prompt_options={"text_transform_mode": "literary_polish", "spanish_variant": "mexican"},
+    )
+
+    assert "Preserve an intentional period voice" in prompt.system
+    assert "remove every Peninsular/archaic Spanish form" not in prompt.system

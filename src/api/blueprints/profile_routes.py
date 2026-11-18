@@ -39,7 +39,8 @@ from src.core.book_profiles.glossary_editor import (
     editable_profile_glossary_files,
     merge_profile_glossary_entries,
 )
-from src.core.book_profiles.profile_goals import resolve_profile_goal
+from src.core.book_profiles.loader import PROFILE_PREPARING_MARKER
+from src.core.book_profiles.profile_goals import declared_profile_goal, resolve_profile_goal
 from src.core.llm.factory import create_llm_provider
 from src.core.output_formats import extract_readable_text
 from src.core.usage import reset_usage_context, set_usage_context
@@ -83,6 +84,11 @@ def create_profile_blueprint(state_manager=None):
                 profile_id = config_path.parent.name
                 if profile_id.startswith("_") or profile_id == "common":
                     continue
+                if (config_path.parent / PROFILE_PREPARING_MARKER).exists():
+                    profiles.append(_broken_profile_row(
+                        config_path, load_error="Profile preparation has not completed.", state_manager=state_manager,
+                    ))
+                    continue
                 try:
                     profile = load_book_profile(profile_id, allow_missing=True)
                 except Exception as exc:
@@ -101,7 +107,8 @@ def create_profile_blueprint(state_manager=None):
                     "target_locale": profile.target_locale,
                     "approved_count": profile.approved_count,
                     "pending_count": profile.pending_count,
-                    "profile_goal": _profile_goal_from_config(profile.raw_config),
+                    **_profile_goal_metadata(profile.raw_config),
+                    "target_language": profile.raw_config.get("target_language") or "",
                     "generated_profile": bool(profile.raw_config.get("generated_profile")),
                     "source_name": profile.raw_config.get("source_name") or "",
                     "preflight_model": profile.raw_config.get("preflight_model") or "",
@@ -434,20 +441,20 @@ def _profile_can_be_deleted(profile_id: str) -> bool:
 def _broken_profile_row(config_path, *, load_error: str, state_manager=None) -> dict[str, Any]:
     profile_id = config_path.parent.name
     config = _read_yaml_mapping_safe(config_path)
-    resolved_id = str(config.get("profile_id") or profile_id).strip() or profile_id
     return {
-        "profile_id": resolved_id,
-        "name": str(config.get("name") or resolved_id),
+        "profile_id": profile_id,
+        "name": str(config.get("name") or profile_id),
         "target_locale": str(config.get("target_locale") or ""),
         "approved_count": 0,
         "pending_count": 0,
-        "profile_goal": _profile_goal_from_config(config),
+        **_profile_goal_metadata(config),
+        "target_language": config.get("target_language") or "",
         "generated_profile": bool(config.get("generated_profile")),
         "source_name": config.get("source_name") or "",
         "preflight_model": config.get("preflight_model") or "",
         "editorial_artifact_counts": {},
-        "deletable": _profile_can_be_deleted(resolved_id),
-        "in_use": _profile_in_active_job(resolved_id, state_manager),
+        "deletable": _profile_can_be_deleted(profile_id),
+        "in_use": _profile_in_active_job(profile_id, state_manager),
         "load_error": load_error,
     }
 
@@ -533,28 +540,30 @@ def _read_yaml_mapping_safe(path) -> dict[str, Any]:
     return dict(data) if isinstance(data, Mapping) else {}
 
 
-def _profile_goal_from_config(config: Mapping[str, Any]) -> str:
+def _profile_goal_metadata(config: Mapping[str, Any]) -> dict[str, Any]:
+    goal = declared_profile_goal(config)
     rules = config.get("business_rules")
-    if isinstance(rules, Mapping):
-        explicit = str(config.get("profile_goal") or rules.get("goal") or "").strip()
-        if explicit:
-            return explicit
-    explicit = str(config.get("profile_goal") or config.get("goal") or "").strip()
-    if explicit:
-        return explicit
-    if config.get("audiobook") or config.get("audio_sanitization"):
-        return "audiobook"
-    if bool(config.get("generated_profile")) or str(config.get("editorial_mode") or "") == "book_profile":
-        return resolve_profile_goal(
-            "",
-            transform_mode=str(config.get("transform_mode") or ""),
-            source_name=str(config.get("source_name") or ""),
-            profile_config=config,
-        ).key
-    return ""
+    custom_goal = (
+        config.get("profile_goal") or config.get("goal")
+        or (rules.get("goal") if isinstance(rules, Mapping) else "")
+    )
+    inferred = goal is None and not custom_goal and bool(config.get("generated_profile"))
+    if inferred:
+        # Preserve the listing contract for historical generated profiles.
+        # This display fallback is never evidence for automatic glossary reuse.
+        goal = resolve_profile_goal("", source_name=str(config.get("source_name") or ""))
+    return {
+        "profile_goal_inferred": inferred,
+        "profile_goal": goal.key if goal else "",
+        "profile_goal_label": goal.label if goal else "",
+    }
 
 
 def _profile_in_active_job(profile_id: str, state_manager=None) -> bool:
+    with _PROFILE_PREP_LOCK:
+        if any(job.get("profile_id") == profile_id and job.get("status") in {"queued", "running"}
+               for job in _PROFILE_PREP_JOBS.values()):
+            return True
     if state_manager is None:
         return False
     try:
@@ -991,6 +1000,8 @@ def _new_profile_prep_job(
         "current_stage": "queued",
         "message": "Preparacion de perfil en cola.",
         "source_name": payload["source_name"],
+        "language": payload.get("language") or "",
+        "target_locale": payload.get("target_locale") or "",
         "provider": payload["provider_type"],
         "model": payload["model"],
         "review_model": payload.get("review_model") or "",
@@ -1030,6 +1041,7 @@ def _run_profile_prep_job(prep_id: str, payload: dict[str, Any]) -> None:
             status="running",
             progress=event.get("progress"),
             current_stage=event.get("stage"),
+            profile_id=event.get("profile_id"),
             message=event.get("message"),
             event=event,
         )
@@ -1142,13 +1154,22 @@ def _profile_prep_request_fingerprint(payload: Mapping[str, Any]) -> str:
     digest = hashlib.sha256()
     for field in (
         "source_name",
+        "source_language",
         "language",
         "target_locale",
         "transform_mode",
         "profile_goal",
         "profile_id",
+        "profile_name",
+        "provider_type",
+        "api_endpoint",
         "model",
+        "review_provider_type",
         "review_model",
+        "llm_full_coverage",
+        "max_llm_chunks",
+        "llm_chunk_chars",
+        "max_local_terms",
     ):
         digest.update(str(payload.get(field) or "").encode("utf-8", errors="replace"))
         digest.update(b"\0")

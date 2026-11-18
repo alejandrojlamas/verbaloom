@@ -15,7 +15,6 @@ from src.config import (
     THINKING_MODELS, ADAPTIVE_CONTEXT_INITIAL_THINKING, temperature_for_phase
 )
 from src.prompts.prompts import (
-    build_text_transform_instructions,
     generate_translation_prompt,
     generate_subtitle_block_prompt,
     generate_refinement_prompt,
@@ -106,6 +105,7 @@ from .book_profiles import (
     load_book_profile,
     profile_enabled,
 )
+from .book_profiles.rendering import profile_output_policy
 from .book_profiles.audit import (
     CRITICAL_ISSUE_TYPES,
     CRITICAL_SCORE_FIELDS,
@@ -592,7 +592,7 @@ async def _run_combined_quality_audit(
     if profile_id and profile_enabled(prompt_options):
         try:
             profile = load_book_profile(profile_id)
-            profile_policy = profile.policy_text or ""
+            profile_policy = profile_output_policy(profile, prompt_options, include_saved_policy=True)
             profile_audit_prompt = profile.prompt_texts.get("audit") or ""
             glossary_block = build_profile_glossary_block(
                 source_text,
@@ -612,6 +612,7 @@ async def _run_combined_quality_audit(
                     source_text,
                     candidate_text,
                     profile_id=profile_id,
+                    prompt_options=prompt_options,
                 )
         except Exception as exc:
             raise ProviderActionRequiredError(
@@ -634,7 +635,7 @@ async def _run_combined_quality_audit(
         profile_policy=profile_policy,
         profile_audit_prompt=profile_audit_prompt,
         glossary_block=glossary_block,
-        profile_score_fields=score_fields_for_profile(profile) if profile is not None else (),
+        profile_score_fields=score_fields_for_profile(profile, prompt_options) if profile is not None else (),
     )
     audit_model = _resolve_combined_quality_audit_model(model, prompt_options)
     if log_callback:
@@ -667,7 +668,7 @@ async def _run_combined_quality_audit(
     if response and not response.was_truncated and getattr(response, "status", "completed") == "completed":
         payload = parse_combined_quality_audit_response(
             response.content,
-            profile_score_fields=score_fields_for_profile(profile) if profile is not None else (),
+            profile_score_fields=score_fields_for_profile(profile, prompt_options) if profile is not None else (),
         )
     if not payload:
         if log_callback:
@@ -729,6 +730,8 @@ async def _make_profile_repair_request(
 You are a profile-specific literary repair editor.
 
 {repair_prompt}
+
+{profile_output_policy(profile, prompt_options)}
 
 # OUTPUT FORMAT
 
@@ -913,6 +916,7 @@ async def _run_profile_audit(
             source_text,
             candidate_text,
             profile_id=profile_id,
+            prompt_options=prompt_options,
         )
     if not _profile_audit_enabled(prompt_options):
         return local_result, None
@@ -936,6 +940,7 @@ async def _run_profile_audit(
         profile=profile,
         glossary_block=glossary_block,
         local_issues=local_result.issues,
+        prompt_options=prompt_options,
     )
     audit_model = _resolve_profile_audit_model(model, prompt_options)
     if log_callback:
@@ -972,7 +977,7 @@ async def _run_profile_audit(
     if (audit_response and not audit_response.was_truncated
             and getattr(audit_response, "status", "completed") == "completed"):
         parsed = parse_profile_audit_response(
-            audit_response.content, score_fields=score_fields_for_profile(profile),
+            audit_response.content, score_fields=score_fields_for_profile(profile, prompt_options),
         )
     if not parsed:
         if log_callback:
@@ -991,7 +996,7 @@ async def _run_profile_audit(
         parsed,
         local_issues=local_result.issues,
         min_score=profile.min_dimension_score,
-        score_fields=score_fields_for_profile(profile),
+        score_fields=score_fields_for_profile(profile, prompt_options),
     )
     if log_callback:
         low_scores = {
@@ -2863,11 +2868,6 @@ async def _make_refinement_request(
     """
     # Extract refinement instructions from prompt_options
     refinement_instructions = prompt_options.get('refinement_instructions', '') if prompt_options else ''
-    transform_instructions = build_text_transform_instructions(prompt_options, target_language)
-    if transform_instructions:
-        refinement_instructions = "\n\n".join(
-            part for part in (transform_instructions, refinement_instructions) if part
-        )
 
     # Filter glossary/profile entries against both the source chunk and the
     # draft. Source terms disappear after translation, but they are still the
@@ -3789,7 +3789,7 @@ async def refine_chunks(
                                     active_profile = load_book_profile(profile_id)
                                     validate_profile_audit_payload(
                                         combined_profile,
-                                        score_fields=score_fields_for_profile(active_profile),
+                                        score_fields=score_fields_for_profile(active_profile, prompt_options),
                                     )
                                     if (prompt_options or {}).get("profile_local_precheck_enabled") is False:
                                         local_profile_issues = []
@@ -3798,13 +3798,14 @@ async def refine_chunks(
                                             source_text,
                                             refined_text,
                                             profile_id=profile_id,
+                                            prompt_options=prompt_options,
                                         ).issues
                                     profile_audit = profile_audit_result_from_payload(
                                         profile_id,
                                         combined_profile,
                                         local_issues=local_profile_issues,
                                         min_score=active_profile.min_dimension_score,
-                                        score_fields=score_fields_for_profile(active_profile),
+                                        score_fields=score_fields_for_profile(active_profile, prompt_options),
                                     )
                                     if log_callback:
                                         low_scores = {
