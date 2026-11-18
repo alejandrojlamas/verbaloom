@@ -20,6 +20,7 @@ from src.api.resume_schedule import (
 )
 from src.api.safe_payloads import client_safe_config, client_safe_logs
 from src.api.services.path_validator import PathValidator
+from src.api.services.resume_delivery import find_superseding_delivery
 from src.api.socket_events import EVENT_TRANSLATION_UPDATE
 from src.api.translation_state import translation_lifecycle_guard
 from src.config import (
@@ -709,6 +710,7 @@ def create_translation_blueprint(
             'max_attempts': int(data.get('max_attempts', MAX_TRANSLATION_ATTEMPTS)),
             'retry_delay': int(data.get('retry_delay', 2)),
             'output_filename': data['output_filename'],
+            '_requested_output_filename': data['output_filename'],
             'input_filename': input_filename,
             'original_filename': original_filename,
             'llm_provider': provider,
@@ -993,6 +995,9 @@ def create_translation_blueprint(
         """
         resumable_jobs = state_manager.get_resumable_jobs()
         for job in resumable_jobs:
+            superseded_by = find_superseding_delivery(state_manager.checkpoint_manager, output_root, job)
+            if superseded_by:
+                job['superseded_by'] = superseded_by
             cfg = job.get('config')
             if isinstance(cfg, dict):
                 job['publication_error'] = cfg.get('publication_error')
@@ -1167,6 +1172,14 @@ def create_translation_blueprint(
                 return jsonify({
                     "error": "Cannot resume: active translation in progress",
                     "message": "A translation became active while resume was being prepared. Refresh and try again.",
+                }), 409
+
+            superseded_by = find_superseding_delivery(state_manager.checkpoint_manager, output_root, job)
+            if superseded_by:
+                return jsonify({
+                    "error": "A later job already published this delivery.",
+                    "code": "superseded_job",
+                    "superseded_by": superseded_by,
                 }), 409
 
             restored = state_manager.restore_job_from_checkpoint(

@@ -1,4 +1,8 @@
 {
+  "job_card_superseded": "较早的草稿",
+  "job_card_download_published": "下载已发布的版本",
+  "job_card_published_at": "最终版发布于 {{date}}",
+  "job_superseded_message": "可在此卡片下载更新的已发布版本。",
   "job_card_download_draft": "下载草稿",
   "job_card_validating_saved": "正在使用已保存的文本验证文件…",
   "job_card_finalization_pending": "等待发布",

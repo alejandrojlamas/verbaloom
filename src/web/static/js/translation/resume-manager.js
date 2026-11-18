@@ -34,10 +34,9 @@ function formatCheckpointDate(value, locale) {
  * Format resumable job card HTML
  * @param {Object} job - Job data
  * @param {boolean} hasActiveTranslation - Whether there's an active translation
- * @param {string} activeNames - Names of active translations
  * @returns {string} HTML for job card
  */
-function formatJobCard(job, hasActiveTranslation, activeNames) {
+function formatJobCard(job, hasActiveTranslation) {
     const progress = job.progress || {};
     const completedChunks = progress.completed_chunks || 0;
     const totalChunks = progress.total_chunks || 0;
@@ -47,11 +46,15 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
     const isPartial = job.status === 'partial';
     const isError = job.status === 'error';
     const finalizationPending = job.finalization_pending === true;
+    const publishedFilename = job.superseded_by?.output_filename;
+    const canChangeModel = !publishedFilename && !finalizationPending;
 
     const failedBadgeLabel = t('translation:job_card_failed_badge', { count: failedChunks });
     const warningBadgeStyle = 'display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: #92400e; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px;';
     const errorBadgeStyle = 'display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: #991b1b; background: #fee2e2; border: 1px solid #ef4444; border-radius: 4px;';
-    const statusBadge = finalizationPending
+    const statusBadge = publishedFilename
+        ? `<span style="${warningBadgeStyle}">${t('translation:job_card_superseded')}</span>`
+        : finalizationPending
         ? `<span style="${warningBadgeStyle}">${t('translation:job_card_finalization_pending')}</span>`
         : isError
         ? `<span style="${errorBadgeStyle}" title="${t('translation:job_card_error_title')}">${t('translation:job_card_error_badge')}</span>`
@@ -70,22 +73,16 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
         ? t('translation:job_card_stopped', { date: pausedDate })
         : t('translation:job_card_paused', { date: pausedDate });
 
-    // Extract original filename (remove 16-char hash prefix + underscore)
     const unknownText = t('translation:job_card_unknown');
-    const inputFilename = job.input_filename || unknownText;
+    const cfg = job.config || {};
+    const storedFilename = job.input_filename?.replace(/^[a-f0-9]{16}_/i, '');
+    const inputFilename = cfg.original_filename || cfg.input_filename || storedFilename || unknownText;
     const outputFilename = job.output_filename || unknownText;
-
-    // Extract hash and original name from input filename
-    const inputMatch = inputFilename.match(/^([a-f0-9]{16})_(.+)$/);
-    const inputHash = inputMatch ? inputMatch[1] : null;
-    const inputOriginalName = inputMatch ? inputMatch[2] : inputFilename;
-
-    // Format the display name (capitalize first letter, remove extension for display)
-    const displayName = inputOriginalName.replace(/\.[^.]+$/, '');
-    const displayNameFormatted = displayName.charAt(0).toUpperCase() + displayName.slice(1);
-
-    const idValue = inputHash || job.translation_id.replace('trans_', '');
-    const typeIdLine = t('translation:job_card_type_id', { type: fileType, id: idValue });
+    const operationLabel = cfg.text_transform_label || cfg.prompt_options?.text_transform_label;
+    const typeIdLine = t('translation:job_card_type_id', {
+        type: operationLabel ? `${fileType} · ${operationLabel}` : fileType,
+        id: job.translation_id.replace(/^trans_/, ''),
+    });
     const resumeTitle = hasActiveTranslation
         ? t('translation:cannot_resume_in_progress_title')
         : t('translation:resume_btn_title');
@@ -93,7 +90,6 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
     // Original model/provider, used to seed the override picker and to show what
     // the resumed portion would switch away from. Keys were already stripped
     // server-side from job.config.
-    const cfg = job.config || {};
     const origProvider = cfg.llm_provider || 'ollama';
     const origModel = cfg.model || '';
     const origEndpoint = cfg.llm_api_endpoint || '';
@@ -102,24 +98,28 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
         <div class="resumable-job-card" style="border: 1px solid #e5e7eb; padding: 20px; margin-bottom: 15px; border-radius: 8px; background: #f9fafb;">
             <div class="resumable-job-header">
                 <div style="flex: 1; min-width: 0;">
-                    <div class="resumable-job-title" title="${DomHelpers.escapeHtml(displayNameFormatted)}">
-                        ${DomHelpers.escapeHtml(displayNameFormatted)}
+                    <div class="resumable-job-title" title="${DomHelpers.escapeHtml(inputFilename)}">
+                        ${DomHelpers.escapeHtml(inputFilename)}
                     </div>
                     <div class="resumable-job-filename" title="→ ${DomHelpers.escapeHtml(outputFilename)}">
                         → ${DomHelpers.escapeHtml(outputFilename)}
                     </div>
-                    <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
-                        ${typeIdLine}${statusBadge}
+                    <div style="font-size: 12px; color: #9ca3af; margin-top: 8px; overflow-wrap: anywhere;">
+                        ${DomHelpers.escapeHtml(typeIdLine)}${statusBadge}
                     </div>
                 </div>
 
                 <div class="resumable-job-actions">
+                    ${publishedFilename ? `
+                    <a class="btn btn-primary" href="${DomHelpers.escapeHtml(ApiClient.getFileDownloadUrl(publishedFilename))}">
+                        ${t('translation:job_card_download_published')}
+                    </a>` : `
                     <button class="btn btn-primary" onclick="resumeJob('${job.translation_id}')"
                             title="${resumeTitle}"
                             ${hasActiveTranslation ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                         ${t(finalizationPending ? 'translation:job_card_retry_finalization' : 'translation:job_card_resume_btn')}
-                    </button>
-                    ${finalizationPending && job.draft_filename ? `
+                    </button>`}
+                    ${!publishedFilename && finalizationPending && job.draft_filename ? `
                     <a class="btn btn-secondary" href="${DomHelpers.escapeHtml(ApiClient.getFileDownloadUrl(job.draft_filename))}">
                         ${t('translation:job_card_download_draft')}
                     </a>` : ''}
@@ -128,7 +128,7 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
                     </button>
                 </div>
             </div>
-            ${finalizationPending && job.publication_error ? `
+            ${!publishedFilename && finalizationPending && job.publication_error ? `
                 <p class="resumable-job-filename">${DomHelpers.escapeHtml(job.publication_error)}</p>
             ` : ''}
 
@@ -145,16 +145,20 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
                 <div class="resumable-job-dates">
                     <span>${t('translation:job_card_created', { date: createdDate })}</span>
                     <span>${stoppedOrPausedLine}</span>
+                    ${publishedFilename && job.superseded_by.completed_at ? `<span>${t('translation:job_card_published_at', {
+                        date: formatCheckpointDate(job.superseded_by.completed_at, dateLocale),
+                    })}</span>` : ''}
                 </div>
-                ${finalizationPending ? '' : `<button class="resume-change-model" data-tid="${job.translation_id}"
+                ${canChangeModel ? `<button class="resume-change-model" data-tid="${job.translation_id}"
                         title="${t('translation:resume_change_model_title')}"
                         ${hasActiveTranslation ? 'disabled' : ''}
                         style="display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 2px 4px; font-size: 12px; color: #3b82f6; cursor: pointer; white-space: nowrap;${hasActiveTranslation ? ' opacity: 0.5; cursor: not-allowed;' : ''}">
                     <span class="material-symbols-outlined" style="font-size: 0.95rem;">tune</span>
                     <span data-i18n="translation:resume_change_model">Change model</span>
-                </button>`}
+                </button>` : ''}
             </div>
 
+            ${canChangeModel ? `
             <div class="resume-override" data-tid="${job.translation_id}"
                  data-provider="${DomHelpers.escapeHtml(origProvider)}"
                  data-model="${DomHelpers.escapeHtml(origModel)}"
@@ -173,7 +177,7 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
                         Resume with this model
                     </button>
                 </div>
-            </div>
+            </div>` : ''}
         </div>
     `;
 }
@@ -312,7 +316,7 @@ export const ResumeManager = {
             const warningBanner = createWarningBanner(hasActiveTranslation ? activeJobs : null);
 
             // Build jobs HTML
-            const jobsHtml = jobs.map(job => formatJobCard(job, hasActiveTranslation, activeJobs)).join('');
+            const jobsHtml = jobs.map(job => formatJobCard(job, hasActiveTranslation)).join('');
 
             if (!listContainer) {
                 console.error('Error: resumableJobsList element not found');
@@ -447,6 +451,11 @@ export const ResumeManager = {
         } catch (error) {
             if (error.data?.code === 'deepseek_peak_pricing') {
                 DeepSeekPricingManager.handleBlockedResponse(error.data);
+                return;
+            }
+            if (error.status === 409 && error.data?.code === 'superseded_job') {
+                MessageLogger.showMessage(t('translation:job_superseded_message'), 'info');
+                await this.loadResumableJobs();
                 return;
             }
             // Enhanced error message for active translation conflicts

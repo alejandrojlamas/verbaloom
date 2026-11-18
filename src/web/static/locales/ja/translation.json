@@ -1,4 +1,8 @@
 {
+  "job_card_superseded": "以前の下書き",
+  "job_card_download_published": "公開済みの版をダウンロード",
+  "job_card_published_at": "最終版は{{date}}に公開されました",
+  "job_superseded_message": "このカードから新しい版をダウンロードできます。",
   "job_card_download_draft": "下書きをダウンロード",
   "job_card_validating_saved": "保存済みのテキストを使ってファイルを検証しています…",
   "job_card_finalization_pending": "公開待ち",

@@ -1,4 +1,8 @@
 {
+  "job_card_superseded": "이전 초안",
+  "job_card_download_published": "게시된 버전 다운로드",
+  "job_card_published_at": "최종본 게시 일시 {{date}}",
+  "job_superseded_message": "이 카드에서 더 최신 버전을 다운로드할 수 있습니다.",
   "job_card_download_draft": "초안 다운로드",
   "job_card_validating_saved": "저장된 텍스트로 파일을 검증하는 중…",
   "job_card_finalization_pending": "게시 대기",

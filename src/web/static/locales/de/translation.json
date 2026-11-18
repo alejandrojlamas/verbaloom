@@ -1,4 +1,8 @@
 {
+  "job_card_superseded": "Früherer Entwurf",
+  "job_card_download_published": "Veröffentlichte Version herunterladen",
+  "job_card_published_at": "Endfassung veröffentlicht am {{date}}",
+  "job_superseded_message": "Eine neuere Version steht hier bereits zum Download bereit.",
   "job_card_download_draft": "Entwurf herunterladen",
   "job_card_validating_saved": "Datei wird anhand des gespeicherten Textes geprüft…",
   "job_card_finalization_pending": "Veröffentlichung ausstehend",

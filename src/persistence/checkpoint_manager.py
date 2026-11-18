@@ -112,6 +112,12 @@ class CheckpointManager:
         """
         return self.db.get_job(translation_id)
 
+    def find_later_completed_jobs(
+        self, translation_id: str, intended_output_filename: str,
+    ) -> List[Dict[str, Any]]:
+        """Find persisted publication candidates for a resumable job."""
+        return self.db.find_later_completed_jobs(translation_id, intended_output_filename)
+
     def update_job_config(self, translation_id: str, config: Dict[str, Any]) -> bool:
         """
         Update the configuration of an existing job.

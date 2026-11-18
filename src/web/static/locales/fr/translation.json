@@ -1,4 +1,8 @@
 {
+  "job_card_superseded": "Brouillon antérieur",
+  "job_card_download_published": "Télécharger la version publiée",
+  "job_card_published_at": "Version finale publiée le {{date}}",
+  "job_superseded_message": "Une version plus récente est déjà disponible en téléchargement sur cette carte.",
   "job_card_download_draft": "Télécharger le brouillon",
   "job_card_validating_saved": "Validation du fichier à partir du texte enregistré…",
   "job_card_finalization_pending": "Publication en attente",

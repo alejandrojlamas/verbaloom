@@ -354,21 +354,59 @@ class Database:
                 if not row:
                     return None
 
-                return {
-                    'translation_id': row['translation_id'],
-                    'status': row['status'],
-                    'file_type': row['file_type'],
-                    'config': json.loads(row['config']),
-                    'progress': json.loads(row['progress']),
-                    'translation_context': json.loads(row['translation_context']) if row['translation_context'] else None,
-                    'created_at': row['created_at'],
-                    'updated_at': row['updated_at'],
-                    'paused_at': row['paused_at'],
-                    'completed_at': row['completed_at']
-                }
+                return self._decode_job(row)
             except Exception as e:
                 print(f"Error getting job: {e}")
                 return None
+
+    @staticmethod
+    def _decode_job(row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            'translation_id': row['translation_id'],
+            'status': row['status'],
+            'file_type': row['file_type'],
+            'config': json.loads(row['config']),
+            'progress': json.loads(row['progress']),
+            'translation_context': json.loads(row['translation_context']) if row['translation_context'] else None,
+            'created_at': row['created_at'],
+            'updated_at': row['updated_at'],
+            'paused_at': row['paused_at'],
+            'completed_at': row['completed_at'],
+        }
+
+    def find_later_completed_jobs(
+        self, translation_id: str, intended_output_filename: str,
+    ) -> List[Dict[str, Any]]:
+        """Find newer completed jobs with the exact same intended or published name."""
+        if not intended_output_filename:
+            return []
+        with self._lock:
+            try:
+                rows = self._get_connection().execute(
+                    """
+                    SELECT candidate.*
+                    FROM translation_jobs AS candidate
+                    JOIN translation_jobs AS original ON original.translation_id = :original_id
+                    WHERE candidate.status = 'completed'
+                        AND (
+                            candidate.created_at > original.created_at
+                            OR (candidate.created_at = original.created_at AND candidate.rowid > original.rowid)
+                        )
+                        AND CASE
+                            WHEN NOT json_valid(candidate.config) THEN 0
+                            WHEN NULLIF(json_extract(candidate.config, '$._requested_output_filename'), '') IS NOT NULL
+                                THEN json_extract(candidate.config, '$._requested_output_filename') = :filename
+                            ELSE json_extract(candidate.config, '$._job_output_filename') = :filename
+                                OR json_extract(candidate.config, '$.output_filename') = :filename
+                        END
+                    ORDER BY candidate.completed_at DESC, candidate.created_at DESC, candidate.rowid DESC
+                    """,
+                    {'original_id': translation_id, 'filename': intended_output_filename},
+                ).fetchall()
+                return [self._decode_job(row) for row in rows]
+            except (sqlite3.Error, ValueError) as e:
+                print(f"Error finding later completed jobs: {e}")
+                return []
 
     def update_job_config(self, translation_id: str, config: Dict[str, Any]) -> bool:
         """

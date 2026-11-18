@@ -1,4 +1,8 @@
 {
+  "job_card_superseded": "Borrador anterior",
+  "job_card_download_published": "Descargar versión final",
+  "job_card_published_at": "Versión final publicada el {{date}}",
+  "job_superseded_message": "Ya puedes descargar la versión más reciente en esta tarjeta.",
   "job_card_finalization_pending": "Pendiente de publicación",
   "job_card_download_draft": "Descargar borrador",
   "job_card_validating_saved": "Validando el archivo con el texto ya guardado…",
