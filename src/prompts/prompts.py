@@ -272,8 +272,9 @@ _TEXT_TRANSFORM_MODE_SPECS = {
             "everyday verbs and the order in which a speaker would say things. In a warm conversation at home, "
             "for example, 'Mi padre obtuvo las entradas para el partido' could become 'Mi papá consiguió los boletos "
             "para el partido.' A formal setting or a distant relationship can call for a different choice. "
-            "Read verbs with their objects: use the combination an ordinary Mexican speaker uses for that activity, "
-            "such as 'metió un gol' for 'marcó un gol'. Recheck the complete turn after changing a kinship term or a noun "
+            "Read verbs with their objects: use the combination an ordinary Mexican speaker uses for that activity. "
+            "Examples include 'metió un gol' in sports, 'pescó un pez' in a fishing story, and 'se le fue el camión' "
+            "when someone missed the bus. Recheck the complete turn after changing a kinship term or a noun "
             "so that the surrounding syntax also sounds spoken. "
             "Use nearby dialogue and narration to preserve each character's cadence, treatment and degree of directness.",
             "Use Mexican colloquialisms, slang or profanity when they carry the source's familiarity, humor, roughness "
@@ -327,6 +328,13 @@ _TEXT_TRANSFORM_MODE_SPECS = {
         ],
     },
 }
+
+
+_MEXICAN_DIALOGUE_REVIEW = (
+    "Review every spoken turn before returning the text. Rewrite translated-sounding turns as a Mexican speaker "
+    "would actually say them in that relationship and scene. Pay special attention to family references and "
+    "everyday verb phrases. Retain each factual detail and each meaningful narrative image.\n\n"
+)
 
 
 def build_text_transform_instructions(
@@ -777,9 +785,10 @@ For consistency and natural flow, here's what came immediately before:
             main_content,
         )
 
+        dialogue_review = _MEXICAN_DIALOGUE_REVIEW if transform_mode == "mexican_spanish" else ""
         user_prompt = f"""{previous_translation_block_text}{surrounding_context_section}{continuity_section}{glossary_section}# TEXT TO TRANSFORM
 
-{INPUT_TAG_IN}
+{dialogue_review}{INPUT_TAG_IN}
 {main_content}
 {INPUT_TAG_OUT}
 
@@ -1196,12 +1205,13 @@ For consistency and natural flow, here's what came immediately before:
             heading="SURROUNDING DRAFT CONTEXT",
         )
 
+        dialogue_review = _MEXICAN_DIALOGUE_REVIEW if transform_mode == "mexican_spanish" else ""
         user_prompt = f"""{previous_context_block}{surrounding_context_section}{continuity_section}{glossary_section}# TEXT TO TRANSFORM
 
 The following {target_language} text must be transformed with mode: {mode_label}.
 Apply the active mode/profile directly. Preserve all real content.
 
-{INPUT_TAG_IN}
+{dialogue_review}{INPUT_TAG_IN}
 {draft_translation}
 {INPUT_TAG_OUT}
 

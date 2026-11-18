@@ -155,6 +155,7 @@ def test_mexican_adaptation_uses_one_editorial_policy_in_writing_and_refinement(
         assert "Keep effective passages verbatim" in request.system
         assert "irony, ambiguity and factual details" in request.system
         assert source in request.user
+        assert "Review every spoken turn before returning the text." in request.user
     assert "placeholder markers exactly" in writing.system
     assert "placeholder" in epub.system.lower()
 
