@@ -110,6 +110,19 @@ def test_rejects_mexican_spanish_locale_regression():
     assert "mexican_spanish_regression" in {issue.code for issue in decision.rejections}
 
 
+def test_mexican_adaptation_treats_contextual_slang_as_advisory():
+    decision = assess_refinement(
+        "—Se acostaron juntos, eso fue todo.",
+        "—Cogieron, eso fue todo.",
+        chunk_index=8,
+        target_language="Spanish",
+        prompt_options={"text_transform_mode": "mexican_spanish", "spanish_variant": "neutral"},
+    )
+
+    assert decision.accepted is True
+    assert "mexican_spanish_context_review" in {issue.code for issue in decision.issues}
+
+
 def test_rejects_lost_asterisk_omission_marker():
     decision = assess_refinement(
         "No es mi intención entrar en la investigación. * * * Reina una confusión absoluta.",

@@ -19,7 +19,7 @@ from src.core.locale_quality import (
     format_mexican_spanish_issues,
     is_mexican_spanish_target,
 )
-from src.core.text_transform import is_faithful_modernize, modernize_guard_findings
+from src.core.text_transform import is_faithful_modernize, modernize_guard_findings, text_transform_mode
 from src.utils.text_encoding import mojibake_score, remove_artifact_glyphs
 from src.utils.json_extraction import extract_tagged_payload, loads_first_json_object
 
@@ -833,6 +833,18 @@ def _check_mexican_spanish_locale(
 
     draft_counts = count_mexican_spanish_issues(draft)
     refined_counts = count_mexican_spanish_issues(refined)
+    if text_transform_mode(prompt_options) == "mexican_spanish":
+        # The same verb can be a calque or intentional Mexican slang. Leave
+        # its interpretation to contextual repair instead of rejecting on sight.
+        draft_counts.pop("coger_regional", None)
+        ambiguous = refined_counts.pop("coger_regional", 0)
+        if ambiguous:
+            issues.append(QualityIssue(
+                "mexican_spanish_context_review",
+                "warning",
+                "Hay usos regionales que requieren interpretar la acepción en contexto",
+                format_mexican_spanish_issues({"coger_regional": ambiguous}),
+            ))
     draft_total = sum(draft_counts.values())
     refined_total = sum(refined_counts.values())
 

@@ -119,3 +119,51 @@ def test_literary_polish_preserves_intentional_period_voice_in_mexican_spanish()
 
     assert "Preserve an intentional period voice" in prompt.system
     assert "remove every Peninsular/archaic Spanish form" not in prompt.system
+
+
+@pytest.mark.parametrize("target", ["Spanish", "es-MX"])
+def test_mexican_adaptation_uses_one_editorial_policy_in_writing_and_refinement(target):
+    options = {"text_transform_mode": "mexican_spanish", "spanish_variant": "neutral"}
+    source = "[id0]—Ya ni la amuelas —dijo Nora. El patio seguía a oscuras.[id1]"
+    writing = generate_translation_prompt(
+        source, "", "", "", source_language="Spanish", target_language=target,
+        prompt_options=options, has_placeholders=True, placeholder_format=("[id", "]"),
+    )
+    refinement = generate_refinement_prompt(
+        source, target_language=target, prompt_options=options, has_placeholders=False,
+    )
+    epub = generate_post_processing_prompt(
+        source, target_language=target, prompt_options=options, has_placeholders=True,
+        placeholder_format=("[id", "]"),
+    )
+
+    for request in (writing, refinement, epub):
+        assert request.system.count("contemporary editorial Mexican Spanish (es-MX)") == 1
+        assert "neutral Latin American Spanish" not in request.system
+        assert "rebuild sentences or passages substantially" in request.system
+        assert "Mexican colloquialisms, slang or profanity" in request.system
+        assert "speaker, relationship, social register, era and scene" in request.system
+        assert "Keep effective passages verbatim" in request.system
+        assert "irony, ambiguity and factual details" in request.system
+        assert source in request.user
+    assert "placeholder markers exactly" in writing.system
+    assert "placeholder" in epub.system.lower()
+
+
+@pytest.mark.parametrize("old_description", [
+    "Adapt into natural Mexican or Latin American Spanish.",
+    "Adapta a español mexicano o latinoamericano natural.",
+])
+def test_mexican_adaptation_ignores_only_legacy_generated_descriptions(old_description):
+    options = {"text_transform_mode": "mexican_spanish"}
+    prompt = generate_refinement_prompt(
+        "El patio seguía a oscuras.", target_language="Spanish",
+        prompt_options=options, additional_instructions=old_description,
+    )
+    custom = generate_refinement_prompt(
+        "El patio seguía a oscuras.", target_language="Spanish",
+        prompt_options=options, additional_instructions="Keep the narrator's long pauses.",
+    )
+
+    assert old_description not in prompt.system
+    assert "Keep the narrator's long pauses." in custom.system
