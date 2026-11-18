@@ -264,8 +264,11 @@ _TEXT_TRANSFORM_MODE_SPECS = {
         ),
         "rules": [
             "Where wording feels translated, rebuild sentences or passages substantially within their existing paragraphs. "
-            "Choose Mexican idioms, collocations, word order and forms of address that carry the same effect. "
-            "Resolve English calques and stiff connectors as well as unmotivated regionalisms from other varieties.",
+            "Change clause order, sentence rhythm, idioms and forms of address to carry the same effect in Mexican Spanish. "
+            "Resolve English calques, stiff connectors and unmotivated regionalisms from other varieties.",
+            "Read each exchange as an action. Identify whether a speaker is teasing, evading, reassuring, challenging or keeping "
+            "their distance. Recast the line to do that in the character's own voice. Use nearby dialogue and narration to "
+            "preserve each character's distinctive cadence, treatment and degree of directness across passages.",
             "Use Mexican colloquialisms, slang or profanity when they carry the source's familiarity, humor, roughness "
             "or emphasis. Choose their strength according to the speaker, relationship, social register, era and scene. "
             "Keep formal or reflective narration in its own register.",

@@ -141,6 +141,8 @@ def test_mexican_adaptation_uses_one_editorial_policy_in_writing_and_refinement(
         assert request.system.count("contemporary editorial Mexican Spanish (es-MX)") == 1
         assert "neutral Latin American Spanish" not in request.system
         assert "rebuild sentences or passages substantially" in request.system
+        assert "Change clause order, sentence rhythm" in request.system
+        assert "Recast the line to do that in the character's own voice" in request.system
         assert "Mexican colloquialisms, slang or profanity" in request.system
         assert "speaker, relationship, social register, era and scene" in request.system
         assert "Keep effective passages verbatim" in request.system
